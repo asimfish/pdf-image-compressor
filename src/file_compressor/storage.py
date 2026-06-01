@@ -228,20 +228,23 @@ class Storage:
         return cur.rowcount > 0
 
     def stats(self) -> dict:
-        pdf_row = self._conn.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(file_size),0) AS total FROM pdfs").fetchone()
-        ver_row = self._conn.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(file_size),0) AS total FROM versions").fetchone()
-        saved = self._conn.execute("""
-            SELECT COALESCE(SUM(p.file_size - best.best_size), 0)
-            FROM pdfs p
-            JOIN (SELECT pdf_id, MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best
-            ON p.id = best.pdf_id
-        """).fetchone()[0]
+        row = self._conn.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM pdfs) AS pdf_count,
+                (SELECT COUNT(*) FROM versions) AS version_count,
+                (SELECT COALESCE(SUM(file_size), 0) FROM pdfs) AS total_original_bytes,
+                (SELECT COALESCE(SUM(file_size), 0) FROM versions) AS total_compressed_bytes,
+                (SELECT COALESCE(SUM(p.file_size - best.best_size), 0)
+                 FROM pdfs p
+                 JOIN (SELECT pdf_id, MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best
+                 ON p.id = best.pdf_id) AS total_saved_bytes
+        """).fetchone()
         return {
-            "pdf_count": pdf_row["cnt"],
-            "version_count": ver_row["cnt"],
-            "total_original_bytes": pdf_row["total"],
-            "total_compressed_bytes": ver_row["total"],
-            "total_saved_bytes": saved,
+            "pdf_count": row[0],
+            "version_count": row[1],
+            "total_original_bytes": row[2],
+            "total_compressed_bytes": row[3],
+            "total_saved_bytes": row[4],
         }
 
 
