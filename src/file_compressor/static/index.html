@@ -92,6 +92,10 @@
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
           </div>
           <div class="flex items-center gap-2">
+            <template x-if="bestSaving(pdf) > 0">
+              <span class="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium"
+                x-text="'saved ' + (bestSaving(pdf) * 100).toFixed(0) + '%'"></span>
+            </template>
             <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium"
               x-text="(versionCache[pdf.id] || []).length + ' versions'"></span>
             <svg class="w-5 h-5 text-gray-400 transition-transform" :class="expanded === pdf.id && 'rotate-180'"
@@ -524,6 +528,12 @@ function app() {
       await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
       this.loadVersions(pdfId);
       this.loadLibrary();
+    },
+
+    bestSaving(pdf) {
+      const versions = this.versionCache[pdf.id] || [];
+      if (versions.length === 0) return 0;
+      return Math.max(...versions.map(v => v.compression_ratio || 0));
     },
 
     fmtSize(bytes) {
