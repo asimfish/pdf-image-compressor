@@ -331,3 +331,26 @@ def test_compress_rejects_bad_quality(tmp_path: Path):
     pdf_id = upload.json()["id"]
     resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "999"})
     assert resp.status_code == 422
+
+
+def test_upload_rejects_bad_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bts.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bts.pdf", f, "application/pdf")},
+            data={"target_size": "abc"},
+        )
+    assert resp.status_code == 422
+    assert "target_size" in resp.json()["detail"].lower()
+
+
+def test_compress_rejects_bad_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "cbts.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cbts.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"target_size": "invalid"})
+    assert resp.status_code == 422

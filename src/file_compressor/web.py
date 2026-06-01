@@ -22,13 +22,18 @@ app = FastAPI(title="PDF Manager")
 _VALID_MODES = {"auto", "optimize", "raster"}
 
 
-def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int) -> None:
+def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_size: Optional[str] = None) -> None:
     if not 1 <= quality <= 95:
         raise HTTPException(422, detail="quality must be between 1 and 95")
     if pdf_mode not in _VALID_MODES:
         raise HTTPException(422, detail=f"pdf_mode must be one of {sorted(_VALID_MODES)}")
     if not 36 <= pdf_dpi <= 300:
         raise HTTPException(422, detail="pdf_dpi must be between 36 and 300")
+    if target_size:
+        try:
+            parse_size(target_size)
+        except ValueError:
+            raise HTTPException(422, detail=f"Invalid target_size format: {target_size}")
 
 _STATIC = Path(__file__).parent / "static"
 _storage: Optional[Storage] = None
@@ -105,7 +110,7 @@ async def api_upload_pdf(
     pdf_grayscale: bool = Form(False),
     notes: str = Form(""),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     storage = _get_storage()
     filename = Path(file.filename or "upload.pdf").name
     if not filename.lower().endswith(".pdf"):
@@ -163,7 +168,7 @@ async def api_compress_pdf(
     pdf_grayscale: bool = Form(False),
     label: str = Form(""),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     storage = _get_storage()
     pdf = storage.get_pdf(pdf_id)
     if not pdf:
@@ -192,7 +197,7 @@ async def api_batch_compress(
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     storage = _get_storage()
     pdfs = storage.list_pdfs()
     if not pdfs:
