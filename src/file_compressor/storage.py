@@ -176,11 +176,19 @@ class Storage:
         version_count = self._conn.execute("SELECT COUNT(*) FROM versions").fetchone()[0]
         total_original = self._conn.execute("SELECT COALESCE(SUM(file_size),0) FROM pdfs").fetchone()[0]
         total_compressed = self._conn.execute("SELECT COALESCE(SUM(file_size),0) FROM versions").fetchone()[0]
+        # Sum of (original - best_version) per PDF that has at least one version
+        saved = self._conn.execute("""
+            SELECT COALESCE(SUM(p.file_size - best.best_size), 0)
+            FROM pdfs p
+            JOIN (SELECT pdf_id, MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best
+            ON p.id = best.pdf_id
+        """).fetchone()[0]
         return {
             "pdf_count": pdf_count,
             "version_count": version_count,
             "total_original_bytes": total_original,
             "total_compressed_bytes": total_compressed,
+            "total_saved_bytes": saved,
         }
 
 

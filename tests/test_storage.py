@@ -110,6 +110,20 @@ def test_stats(tmp_path: Path):
     assert stats["pdf_count"] == 2
     assert stats["total_original_bytes"] == 3000
     assert stats["version_count"] == 0
+    assert stats["total_saved_bytes"] == 0
+    storage.close()
+
+
+def test_stats_with_savings(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("big.pdf", b"X" * 10000, 5)
+    storage.add_version(
+        pdf_id=pdf.id, label="compressed", file_data=b"Y" * 3000,
+        quality=50, pdf_mode="raster", pdf_dpi=100, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.7,
+    )
+    stats = storage.stats()
+    assert stats["total_saved_bytes"] == 7000
     storage.close()
 
 
