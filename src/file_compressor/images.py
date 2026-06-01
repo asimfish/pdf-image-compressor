@@ -58,7 +58,7 @@ def _render_image(source: Path, suffix: str, quality: int, max_edge: Optional[in
 
 def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
     if max_edge is None or max_edge <= 0:
-        return image.copy()
+        return image
     copy = image.copy()
     copy.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
     return copy
