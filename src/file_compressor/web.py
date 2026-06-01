@@ -260,6 +260,7 @@ async def compress_upload(
     max_edge: Optional[int] = Form(None),
     target_size: Optional[str] = Form(None),
     pdf_mode: str = Form("auto"),
+    pdf_dpi: int = Form(120),
     to_webp: bool = Form(False),
     pdf_grayscale: bool = Form(False),
     archive: Optional[str] = Form(None),
@@ -284,6 +285,7 @@ async def compress_upload(
         output_dir=output_dir,
         archive=archive,
         pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi,
         pdf_grayscale=pdf_grayscale,
     )
     source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
