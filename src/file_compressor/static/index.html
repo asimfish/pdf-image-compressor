@@ -90,6 +90,16 @@
               <span x-text="fmtDate(pdf.upload_time)"></span>
             </div>
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
+            <template x-if="bestVersion(pdf)">
+              <div class="mt-2 flex items-center gap-2">
+                <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full bg-green-400 rounded-full transition-all"
+                    :style="'width:' + (bestVersion(pdf).file_size / pdf.file_size * 100) + '%'"></div>
+                </div>
+                <span class="text-xs text-gray-500 whitespace-nowrap"
+                  x-text="fmtSize(bestVersion(pdf).file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
+              </div>
+            </template>
           </div>
           <div class="flex items-center gap-2">
             <template x-if="bestSaving(pdf) > 0">
@@ -534,6 +544,12 @@ function app() {
       const versions = this.versionCache[pdf.id] || [];
       if (versions.length === 0) return 0;
       return Math.max(...versions.map(v => v.compression_ratio || 0));
+    },
+
+    bestVersion(pdf) {
+      const versions = this.versionCache[pdf.id] || [];
+      if (versions.length === 0) return null;
+      return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
     },
 
     fmtSize(bytes) {
