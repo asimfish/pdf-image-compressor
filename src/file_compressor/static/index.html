@@ -42,6 +42,8 @@
       <div class="text-right text-sm text-gray-500" x-show="stats">
         <span x-text="stats?.pdf_count + ' PDFs'"></span>
         <span class="mx-1">·</span>
+        <span x-text="stats?.version_count + ' versions'"></span>
+        <span class="mx-1">·</span>
         <span x-text="fmtSize(stats?.total_original_bytes)"></span>
         <template x-if="stats?.total_saved_bytes > 0">
           <span class="ml-2 text-green-600 font-medium" x-text="'saved ' + fmtSize(stats.total_saved_bytes)"></span>
