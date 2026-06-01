@@ -458,3 +458,16 @@ def test_upload_accepts_boundary_dpi(tmp_path: Path):
             data={"pdf_dpi": "36"},
         )
     assert resp.status_code == 200
+
+
+def test_compress_with_relative_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "rel.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("rel.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    original_size = upload.json()["file_size"]
+    half = original_size // 2
+    target = f"{half}B"
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"target_size": target})
+    assert resp.status_code == 200
