@@ -564,6 +564,8 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 10;
       this.uploadStatus = 'Uploading...';
+      let succeeded = 0;
+      let failed = 0;
 
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = new FormData();
@@ -583,8 +585,10 @@ function app() {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
             throw new Error(err.detail || 'Upload failed');
           }
+          succeeded++;
         } catch (e) {
-          this.showToast('Upload failed: ' + e.message, 'error');
+          failed++;
+          this.showToast(`${this.uploadFiles[i].name}: ${e.message}`, 'error');
         }
         this.uploadProgress = Math.round(((i + 1) / this.uploadFiles.length) * 100);
       }
@@ -593,7 +597,13 @@ function app() {
       this.showUpload = false;
       this.uploadFiles = [];
       this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, notes: '' };
-      this.showToast('Upload complete');
+      if (failed === 0) {
+        this.showToast(`Uploaded ${succeeded} PDF(s)`);
+      } else if (succeeded > 0) {
+        this.showToast(`Uploaded ${succeeded}, failed ${failed}`, 'error');
+      } else {
+        this.showToast('All uploads failed', 'error');
+      }
       this.loadLibrary();
     },
 
