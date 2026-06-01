@@ -471,9 +471,9 @@ function app() {
         list = list.filter(p => p.filename.toLowerCase().includes(q) || (p.notes || '').toLowerCase().includes(q));
       }
       if (this.filterTab === 'Uncompressed') {
-        list = list.filter(p => (this.versionCache[p.id] || []).length === 0);
+        list = list.filter(p => (p.version_count || 0) === 0);
       } else if (this.filterTab === 'Compressed') {
-        list = list.filter(p => (this.versionCache[p.id] || []).length > 0);
+        list = list.filter(p => (p.version_count || 0) > 0);
       }
       const sorted = [...list];
       switch (this.sortBy) {
@@ -486,11 +486,11 @@ function app() {
     },
 
     get uncompressedCount() {
-      return this.pdfs.filter(p => (this.versionCache[p.id] || []).length === 0).length;
+      return this.pdfs.filter(p => (p.version_count || 0) === 0).length;
     },
 
     get compressedCount() {
-      return this.pdfs.filter(p => (this.versionCache[p.id] || []).length > 0).length;
+      return this.pdfs.filter(p => (p.version_count || 0) > 0).length;
     },
 
     async loadLibrary() {
