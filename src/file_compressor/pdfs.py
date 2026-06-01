@@ -131,5 +131,5 @@ def _fitz():
     try:
         import fitz
     except ImportError as exc:
-        raise RuntimeError("PDF compression requires PyMuPDF. Install project dependencies with: python -m pip install -e .") from exc
+        raise RuntimeError("PDF compression requires PyMuPDF. Install with: uv pip install -e .") from exc
     return fitz
