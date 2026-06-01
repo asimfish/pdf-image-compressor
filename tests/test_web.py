@@ -659,3 +659,34 @@ def test_full_upload_compress_download_flow(tmp_path: Path):
     dl = client.get(f"/api/versions/{ver_id}/download")
     assert dl.status_code == 200
     assert len(dl.content) > 0
+
+
+# ── Missing file edge cases ──
+
+def test_download_pdf_file_missing_on_disk(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "miss.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("miss.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    # Delete the original file from storage
+    from file_compressor.web import _get_storage
+    storage = _get_storage()
+    stored_path = storage.get_pdf_path(pdf_id)
+    stored_path.unlink()
+    resp = client.get(f"/api/pdfs/{pdf_id}/download")
+    assert resp.status_code == 404
+
+
+def test_compress_pdf_original_missing(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "miss2.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("miss2.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    from file_compressor.web import _get_storage
+    storage = _get_storage()
+    stored_path = storage.get_pdf_path(pdf_id)
+    stored_path.unlink()
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 404
