@@ -101,6 +101,8 @@ async def api_upload_pdf(
     notes: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    if len(notes) > 5000:
+        raise HTTPException(422, detail="notes must be 5000 characters or fewer")
     storage = _get_storage()
     filename = Path(file.filename or "upload.pdf").name
     if not filename.lower().endswith(".pdf"):

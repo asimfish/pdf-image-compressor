@@ -116,6 +116,18 @@ def test_upload_with_notes(tmp_path: Path):
     assert data["notes"] == "Important document"
 
 
+def test_upload_rejects_notes_too_long(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "longnotes.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("longnotes.pdf", f, "application/pdf")},
+            data={"notes": "x" * 5001},
+        )
+    assert resp.status_code == 422
+
+
 def test_list_pdfs_empty(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.get("/api/pdfs")
