@@ -108,6 +108,15 @@ def test_upload_rejects_non_pdf(tmp_path: Path):
     assert resp.status_code == 400
 
 
+def test_upload_rejects_invalid_pdf_content(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post(
+        "/api/pdfs/upload",
+        files={"file": ("bad.pdf", b"not a real pdf", "application/pdf")},
+    )
+    assert resp.status_code == 400
+
+
 def test_upload_quality_95_creates_version(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "q95.pdf")

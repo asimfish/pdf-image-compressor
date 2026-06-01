@@ -344,7 +344,11 @@ def _compress_and_store(
             pdf_dpi=pdf_dpi,
             pdf_grayscale=pdf_grayscale,
         )
-        compress_path(src, config, out)
+        summary = compress_path(src, config, out)
+        if not out.exists():
+            failed = [r for r in summary.results if r.status == "failed"]
+            detail = failed[0].error if failed else "Compression produced no output"
+            raise RuntimeError(detail)
         compressed_data = out.read_bytes()
 
     original_size = len(original_data)
