@@ -149,3 +149,27 @@ def test_compress_path_zip_with_target(tmp_path: Path):
     config = CompressionConfig(archive="zip", target_bytes=10_000, output_dir=tmp_path)
     summary = compress_path(docs, config)
     assert summary.archive is not None
+
+
+def test_compress_unsupported_file_type(tmp_path: Path):
+    source = tmp_path / "file.xyz"
+    source.write_text("hello")
+    output = tmp_path / "out.xyz"
+    config = CompressionConfig(output_dir=tmp_path)
+    summary = compress_path(source, config, output)
+    assert summary.results[0].status == "failed"
+    assert "Unsupported" in (summary.results[0].error or "")
+
+
+def test_compress_relative_output_dir(tmp_path: Path):
+    source = _make_pdf(tmp_path / "input.pdf")
+    import os
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        config = CompressionConfig(output_dir=Path("relative_out"))
+        summary = compress_path(source, config)
+        assert summary.results[0].status == "ok"
+        assert summary.results[0].output.exists()
+    finally:
+        os.chdir(old_cwd)

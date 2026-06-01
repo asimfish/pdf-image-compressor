@@ -81,3 +81,84 @@ def test_compress_png_low_quality_quantizes(tmp_path: Path):
     result = summary.results[0]
     assert result.status == "ok"
     assert result.compressed_size is not None
+
+
+def test_compress_rgba_to_jpg(tmp_path: Path):
+    source = tmp_path / "rgba.png"
+    Image.new("RGBA", (400, 300), (255, 0, 0, 128)).save(source)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path, to_webp=False)
+    compress_image(source, output, config)
+
+    assert output.exists()
+    assert output.suffix == ".jpg"
+
+
+def test_compress_palette_transparency_to_jpg(tmp_path: Path):
+    source = tmp_path / "pal.png"
+    img = Image.new("P", (100, 100))
+    img.info["transparency"] = 0
+    img.save(source)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path)
+    compress_image(source, output, config)
+    assert output.exists()
+
+
+def test_compress_grayscale_to_jpg(tmp_path: Path):
+    source = tmp_path / "gray.jpg"
+    Image.new("L", (200, 200), 128).save(source)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path)
+    compress_image(source, output, config)
+    assert output.exists()
+
+
+def test_compress_grayscale_to_webp(tmp_path: Path):
+    source = tmp_path / "gray.png"
+    Image.new("L", (200, 200), 128).save(source)
+    output = tmp_path / "out.webp"
+
+    config = CompressionConfig(output_dir=tmp_path, to_webp=True)
+    compress_image(source, output, config)
+    assert output.exists()
+
+
+def test_compress_unsupported_image_raises(tmp_path: Path):
+    source = tmp_path / "bad.jpg"
+    source.write_text("not an image")
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path)
+    import pytest
+    with pytest.raises(RuntimeError, match="Unsupported or corrupt"):
+        compress_image(source, output, config)
+
+
+def test_edge_candidates_with_max_edge():
+    from file_compressor.images import _edge_candidates
+    result = _edge_candidates(2000)
+    assert result[0] == 2000
+    assert all(e >= 320 for e in result)
+    assert len(result) == 5
+
+
+def test_edge_candidates_without_max_edge():
+    from file_compressor.images import _edge_candidates
+    result = _edge_candidates(None)
+    assert result[0] is None
+    assert 2400 in result
+    assert len(result) == 10
+
+
+def test_compress_fallback_format(tmp_path: Path):
+    source = tmp_path / "input.tiff"
+    Image.new("RGB", (200, 200), "red").save(source, format="TIFF")
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path)
+    compress_image(source, output, config)
+    assert output.exists()
