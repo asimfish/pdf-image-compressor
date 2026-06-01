@@ -20,6 +20,18 @@
 
 <div x-data="app()" x-init="loadLibrary()" class="max-w-6xl mx-auto px-4 py-8">
 
+  <!-- Connection Error Banner -->
+  <div x-show="apiError" x-cloak class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+    <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+    </svg>
+    <div class="flex-1">
+      <p class="text-red-800 font-medium text-sm">Cannot connect to server</p>
+      <p class="text-red-600 text-xs">Make sure the server is running: <code class="bg-red-100 px-1 rounded">uv run file-compressor web</code></p>
+    </div>
+    <button @click="loadLibrary()" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 transition">Retry</button>
+  </div>
+
   <!-- Header -->
   <header class="flex items-center justify-between mb-8">
     <div>
@@ -174,7 +186,7 @@
 
   <!-- Upload Modal -->
   <div x-show="showUpload" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showUpload = false">
+    @click.self="showUpload = false" @keydown.escape.window="showUpload = false">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
 
@@ -271,7 +283,7 @@
 
   <!-- Compress Modal -->
   <div x-show="showCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showCompress = false">
+    @click.self="showCompress = false" @keydown.escape.window="showCompress = false">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-1">Compress PDF</h2>
       <p class="text-sm text-gray-500 mb-5" x-text="compressTarget?.filename"></p>
@@ -339,7 +351,7 @@
 
   <!-- Notes Modal -->
   <div x-show="showNotes" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showNotes = false">
+    @click.self="showNotes = false" @keydown.escape.window="showNotes = false">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
       <textarea x-model="notesText" rows="4"
@@ -369,6 +381,7 @@ function app() {
     presets: ['200KB', '500KB', '1MB', '2MB', '5MB'],
     expanded: null,
     loading: true,
+    apiError: false,
 
     // Upload
     showUpload: false,
@@ -402,6 +415,7 @@ function app() {
 
     async loadLibrary() {
       this.loading = true;
+      this.apiError = false;
       try {
         const [pdfsRes, statsRes] = await Promise.all([fetch('/api/pdfs'), fetch('/api/stats')]);
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
@@ -412,6 +426,7 @@ function app() {
           this.loadVersions(pdf.id);
         }
       } catch (e) {
+        this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
       }
       this.loading = false;
