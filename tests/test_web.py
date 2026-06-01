@@ -108,6 +108,22 @@ def test_upload_rejects_non_pdf(tmp_path: Path):
     assert resp.status_code == 400
 
 
+def test_upload_quality_95_creates_version(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "q95.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("q95.pdf", f, "application/pdf")},
+            data={"quality": "95"},
+        )
+    assert upload.status_code == 200
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    assert len(versions) >= 1
+    assert versions[0]["quality"] == 95
+
+
 def test_list_pdfs(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "a.pdf")

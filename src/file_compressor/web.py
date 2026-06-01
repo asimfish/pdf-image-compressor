@@ -129,11 +129,10 @@ async def api_upload_pdf(
     result["warning"] = None
 
     target_bytes = parse_size(target_size)
-    if target_bytes or quality < 95:
-        try:
-            _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
-        except Exception as exc:
-            result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
+    try:
+        _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
+    except Exception as exc:
+        result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
 
     return result
 
