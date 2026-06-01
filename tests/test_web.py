@@ -373,6 +373,12 @@ def test_delete_version(tmp_path: Path):
     assert client.get(f"/api/pdfs/{pdf_id}/versions").json() == []
 
 
+def test_list_versions_nonexistent_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/pdfs/nonexistent/versions")
+    assert resp.status_code == 404
+
+
 def test_download_version_nonexistent(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.get("/api/versions/nonexistent/download")
