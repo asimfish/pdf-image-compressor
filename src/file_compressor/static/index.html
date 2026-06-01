@@ -427,8 +427,9 @@
 
   <!-- Toast -->
   <div x-show="toast" x-cloak x-transition
-    class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium"
-    :class="toastType === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'">
+    class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium cursor-pointer"
+    :class="toastType === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'"
+    @click="toast = ''">
     <span x-text="toast"></span>
   </div>
 </div>
@@ -795,7 +796,8 @@ function app() {
     showToast(msg, type = 'success') {
       this.toast = msg;
       this.toastType = type;
-      setTimeout(() => { this.toast = ''; }, 3000);
+      const delay = type === 'error' ? 8000 : 3000;
+      setTimeout(() => { if (this.toast === msg) this.toast = ''; }, delay);
     },
   };
 }
