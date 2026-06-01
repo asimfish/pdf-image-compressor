@@ -91,6 +91,7 @@ def api_list_pdfs():
         best = bests.get(p.id)
         d["best_compression_ratio"] = best["best_ratio"] if best else None
         d["best_compressed_size"] = best["best_size"] if best else None
+        d["best_version_id"] = best["best_id"] if best else None
         result.append(d)
     return result
 

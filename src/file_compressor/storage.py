@@ -110,10 +110,12 @@ class Storage:
 
     def pdf_best_versions(self) -> dict[str, dict]:
         rows = self._conn.execute("""
-            SELECT pdf_id, MIN(file_size) AS best_size, MAX(compression_ratio) AS best_ratio
-            FROM versions WHERE compression_ratio IS NOT NULL GROUP BY pdf_id
+            SELECT v.pdf_id, v.id AS best_id, v.file_size AS best_size, v.compression_ratio AS best_ratio
+            FROM versions v
+            INNER JOIN (SELECT pdf_id, MIN(file_size) AS min_size FROM versions GROUP BY pdf_id) m
+            ON v.pdf_id = m.pdf_id AND v.file_size = m.min_size
         """).fetchall()
-        return {row["pdf_id"]: {"best_size": row["best_size"], "best_ratio": row["best_ratio"]} for row in rows}
+        return {row["pdf_id"]: {"best_id": row["best_id"], "best_size": row["best_size"], "best_ratio": row["best_ratio"]} for row in rows}
 
     def get_pdf_path(self, pdf_id: str) -> Optional[Path]:
         row = self._conn.execute("SELECT file_path FROM pdfs WHERE id=?", (pdf_id,)).fetchone()

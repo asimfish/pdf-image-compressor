@@ -510,8 +510,13 @@ function app() {
     },
 
     async loadVersions(pdfId) {
-      const res = await fetch(`/api/pdfs/${pdfId}/versions`);
-      this.versionCache[pdfId] = await res.json();
+      try {
+        const res = await fetch(`/api/pdfs/${pdfId}/versions`);
+        if (!res.ok) throw new Error('Failed to load versions');
+        this.versionCache[pdfId] = await res.json();
+      } catch (e) {
+        this.showToast('Failed to load versions: ' + e.message, 'error');
+      }
     },
 
     toggleExpand(pdfId) {
@@ -728,7 +733,7 @@ function app() {
       const versions = this.versionCache[pdf.id] || [];
       if (versions.length === 0) {
         if (!pdf.best_compressed_size) return null;
-        return { file_size: pdf.best_compressed_size };
+        return { id: pdf.best_version_id, file_size: pdf.best_compressed_size };
       }
       return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
     },
