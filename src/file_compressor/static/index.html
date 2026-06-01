@@ -194,7 +194,7 @@
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-sm text-gray-800" x-text="v.label"></div>
                     <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
-                      <span x-text="fmtSize(v.file_size)"></span>
+                      <span x-text="fmtSize(v.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
                       <span x-show="v.compression_ratio > 0" class="text-green-600" x-text="'-' + (v.compression_ratio * 100).toFixed(1) + '%'"></span>
                       <span x-show="v.compression_ratio !== null && v.compression_ratio <= 0" class="text-amber-500" x-text="v.compression_ratio !== null ? 'optimized' : ''"></span>
                       <span x-text="'Q' + v.quality + ' · ' + v.pdf_mode + ' · ' + v.pdf_dpi + 'dpi'"></span>
