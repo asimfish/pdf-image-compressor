@@ -174,3 +174,54 @@ def test_delete_version(tmp_path: Path):
     resp = client.delete(f"/api/versions/{ver_id}")
     assert resp.status_code == 200
     assert client.get(f"/api/pdfs/{pdf_id}/versions").json() == []
+
+
+# ── Validation error tests ──
+
+def test_upload_rejects_bad_quality(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bq.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bq.pdf", f, "application/pdf")},
+            data={"quality": "0"},
+        )
+    assert resp.status_code == 422
+    assert "quality" in resp.json()["detail"].lower()
+
+
+def test_upload_rejects_bad_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bm.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bm.pdf", f, "application/pdf")},
+            data={"pdf_mode": "invalid"},
+        )
+    assert resp.status_code == 422
+    assert "pdf_mode" in resp.json()["detail"].lower()
+
+
+def test_upload_rejects_bad_dpi(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bd.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bd.pdf", f, "application/pdf")},
+            data={"pdf_dpi": "5"},
+        )
+    assert resp.status_code == 422
+    assert "dpi" in resp.json()["detail"].lower()
+
+
+def test_compress_rejects_bad_quality(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "cbq.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cbq.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "999"})
+    assert resp.status_code == 422

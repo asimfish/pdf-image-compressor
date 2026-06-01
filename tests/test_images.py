@@ -3,6 +3,7 @@ from pathlib import Path
 from PIL import Image
 
 from file_compressor.core import compress_path
+from file_compressor.images import compress_image
 from file_compressor.models import CompressionConfig
 
 
@@ -31,3 +32,26 @@ def test_compress_image_to_webp(tmp_path: Path):
     assert result.output is not None
     assert result.output.suffix == ".webp"
     assert result.output.exists()
+
+
+def test_compress_image_with_target_size(tmp_path: Path):
+    source = tmp_path / "big.jpg"
+    Image.new("RGB", (2000, 1500), "green").save(source, quality=95)
+    output = tmp_path / "small.jpg"
+
+    config = CompressionConfig(target_bytes=50_000, output_dir=tmp_path)
+    compress_image(source, output, config)
+
+    assert output.exists()
+    assert output.stat().st_size <= 60_000
+
+
+def test_compress_image_bmp_to_jpg(tmp_path: Path):
+    source = tmp_path / "input.bmp"
+    Image.new("RGB", (400, 300), "yellow").save(source, format="BMP")
+
+    summary = compress_path(source, CompressionConfig(output_dir=tmp_path / "compressed", quality=70))
+
+    result = summary.results[0]
+    assert result.output is not None
+    assert result.output.suffix == ".jpg"
