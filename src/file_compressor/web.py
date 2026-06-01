@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("pdf_manager")
 
 import fitz
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -112,6 +115,7 @@ async def api_upload_pdf(
         raise HTTPException(400, detail="Invalid PDF file")
 
     pdf = storage.add_pdf(filename, data, page_count, notes)
+    logger.info("Uploaded PDF %s (%s, %d pages)", filename, format_size(len(data)), page_count)
     result = asdict(pdf)
     result["warning"] = None
 
@@ -119,6 +123,7 @@ async def api_upload_pdf(
     try:
         _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
     except Exception as exc:
+        logger.warning("Initial compression failed for %s: %s", filename, exc)
         result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
 
     return result
@@ -171,7 +176,9 @@ async def api_compress_pdf(
     try:
         ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
     except Exception as exc:
+        logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail=f"Compression failed: {exc}")
+    logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(len(data)), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
     return asdict(ver)
 
 
@@ -190,6 +197,7 @@ async def api_batch_compress(
         raise HTTPException(404, detail="No PDFs in library")
 
     target_bytes = parse_size(target_size)
+    logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), quality, pdf_mode)
     results = []
     for pdf in pdfs:
         path = storage.get_pdf_path(pdf.id)
@@ -221,6 +229,7 @@ def api_delete_pdf(pdf_id: str):
     storage = _get_storage()
     if not storage.delete_pdf(pdf_id):
         raise HTTPException(404, "PDF not found")
+    logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
 
@@ -294,12 +303,18 @@ async def compress_upload(
         pdf_dpi=pdf_dpi,
         pdf_grayscale=pdf_grayscale,
     )
-    source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
-    output = output_dir / "compressed.zip" if archive == "zip" else None
-    summary = compress_path(source, config, output)
-    result = summary.archive or next((item for item in summary.results if item.output is not None), None)
-    if result is None or result.output is None:
-        raise RuntimeError("Compression failed")
+    try:
+        source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
+        output = output_dir / "compressed.zip" if archive == "zip" else None
+        summary = compress_path(source, config, output)
+        result = summary.archive or next((item for item in summary.results if item.output is not None), None)
+        if result is None or result.output is None:
+            raise HTTPException(500, detail="Compression produced no output")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Legacy compress failed: %s", exc)
+        raise HTTPException(500, detail=f"Compression failed: {exc}")
     response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
     response.background = BackgroundTask(shutil.rmtree, temp_path, True)
     return response
@@ -335,6 +350,7 @@ def _compress_and_store(
         if not out.exists():
             failed = [r for r in summary.results if r.status == "failed"]
             detail = failed[0].error if failed else "Compression produced no output"
+            logger.error("Compression produced no output for pdf %s: %s", pdf_id, detail)
             raise RuntimeError(detail)
         compressed_data = out.read_bytes()
 

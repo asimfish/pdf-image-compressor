@@ -499,3 +499,64 @@ def test_compress_with_relative_target_size(tmp_path: Path):
     target = f"{half}B"
     resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"target_size": target})
     assert resp.status_code == 200
+
+
+# ── Legacy /compress endpoint tests ──
+
+def test_legacy_compress_single_file(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "legacy.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("legacy.pdf", f, "application/pdf"))],
+            data={"quality": "70"},
+        )
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+
+
+def test_legacy_compress_with_grayscale(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "gray.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("gray.pdf", f, "application/pdf"))],
+            data={"pdf_grayscale": "true"},
+        )
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+
+
+def test_legacy_compress_rejects_non_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post(
+        "/compress",
+        files=[("files", ("test.txt", b"not a pdf", "text/plain"))],
+    )
+    assert resp.status_code == 500
+
+
+def test_legacy_compress_with_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "ts.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("ts.pdf", f, "application/pdf"))],
+            data={"target_size": "500KB"},
+        )
+    assert resp.status_code == 200
+
+
+def test_legacy_compress_with_pdf_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "mode.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("mode.pdf", f, "application/pdf"))],
+            data={"pdf_mode": "raster", "pdf_dpi": "150"},
+        )
+    assert resp.status_code == 200
