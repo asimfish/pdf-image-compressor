@@ -429,7 +429,7 @@
 
   <!-- Notes Modal -->
   <div x-show="showNotes" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showNotes = false" @keydown.escape.window="showNotes = false">
+    @click.self="showNotes = false; notesTarget = null" @keydown.escape.window="if (showNotes) { showNotes = false; notesTarget = null }"
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
       <textarea x-model="notesText" rows="4" maxlength="5000"
@@ -439,7 +439,7 @@
           x-text="notesText.length + ' / 5000'"></span>
       </div>
       <div class="flex gap-3 mt-4">
-        <button @click="showNotes = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
+        <button @click="showNotes = false; notesTarget = null" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
         <button @click="saveNotes()" :disabled="notesText.length > 5000"
           class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
       </div>
