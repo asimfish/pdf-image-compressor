@@ -71,6 +71,27 @@ def test_upload_pdf(tmp_path: Path):
     assert "id" in data
 
 
+def test_upload_with_notes(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "notes.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("notes.pdf", f, "application/pdf")},
+            data={"notes": "Important document"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["notes"] == "Important document"
+
+
+def test_list_pdfs_empty(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/pdfs")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_upload_rejects_non_pdf(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
