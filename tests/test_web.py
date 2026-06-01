@@ -624,3 +624,32 @@ def test_legacy_compress_with_pdf_mode(tmp_path: Path):
             data={"pdf_mode": "raster", "pdf_dpi": "150"},
         )
     assert resp.status_code == 200
+
+
+# ── Integration test ──
+
+def test_full_upload_compress_download_flow(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "flow.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("flow.pdf", f, "application/pdf")})
+    assert upload.status_code == 200
+    pdf_id = upload.json()["id"]
+    original_size = upload.json()["file_size"]
+
+    compress = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "pdf_mode": "raster"})
+    assert compress.status_code == 200
+    ver_id = compress.json()["id"]
+    assert compress.json()["compression_ratio"] is not None
+
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    assert len(versions) >= 2
+
+    pdfs = client.get("/api/pdfs").json()
+    assert len(pdfs) == 1
+    assert pdfs[0]["version_count"] >= 2
+    assert pdfs[0]["best_compressed_size"] <= original_size
+
+    dl = client.get(f"/api/versions/{ver_id}/download")
+    assert dl.status_code == 200
+    assert len(dl.content) > 0
