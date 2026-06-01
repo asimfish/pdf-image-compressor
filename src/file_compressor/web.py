@@ -81,7 +81,14 @@ def api_stats():
 @app.get("/api/pdfs")
 def api_list_pdfs():
     storage = _get_storage()
-    return [asdict(p) for p in storage.list_pdfs()]
+    pdfs = storage.list_pdfs()
+    counts = storage.pdf_version_counts()
+    result = []
+    for p in pdfs:
+        d = asdict(p)
+        d["version_count"] = counts.get(p.id, 0)
+        result.append(d)
+    return result
 
 
 @app.post("/api/pdfs/upload")

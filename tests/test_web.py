@@ -87,6 +87,21 @@ def test_list_pdfs(tmp_path: Path):
     assert len(resp.json()) == 1
 
 
+def test_list_pdfs_includes_version_count(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "vc.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("vc.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    pdfs = client.get("/api/pdfs").json()
+    assert pdfs[0]["version_count"] >= 1
+
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    pdfs = client.get("/api/pdfs").json()
+    assert pdfs[0]["version_count"] >= 2
+
+
 def test_download_pdf(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "dl.pdf")

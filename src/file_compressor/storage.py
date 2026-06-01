@@ -104,6 +104,10 @@ class Storage:
         rows = self._conn.execute("SELECT * FROM pdfs ORDER BY upload_time DESC").fetchall()
         return [_row_to_pdf(r) for r in rows]
 
+    def pdf_version_counts(self) -> dict[str, int]:
+        rows = self._conn.execute("SELECT pdf_id, COUNT(*) AS cnt FROM versions GROUP BY pdf_id").fetchall()
+        return {row["pdf_id"]: row["cnt"] for row in rows}
+
     def get_pdf_path(self, pdf_id: str) -> Optional[Path]:
         row = self._conn.execute("SELECT file_path FROM pdfs WHERE id=?", (pdf_id,)).fetchone()
         return Path(row["file_path"]) if row else None
