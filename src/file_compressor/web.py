@@ -53,7 +53,7 @@ def init_storage(data_dir: Path) -> None:
 
 
 class NotesUpdate(BaseModel):
-    notes: str
+    notes: str = ""
 
 
 # ── Frontend ──
@@ -222,6 +222,8 @@ async def api_batch_compress(
 
 @app.put("/api/pdfs/{pdf_id}/notes")
 def api_update_notes(pdf_id: str, body: NotesUpdate):
+    if len(body.notes) > 5000:
+        raise HTTPException(422, detail="notes must be 5000 characters or fewer")
     storage = _get_storage()
     if not storage.update_notes(pdf_id, body.notes):
         raise HTTPException(404, "PDF not found")
