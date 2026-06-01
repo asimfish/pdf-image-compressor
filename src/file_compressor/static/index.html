@@ -208,7 +208,14 @@
             </div>
 
             <!-- Version List -->
-            <div x-show="versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">
+            <div x-show="versionLoading[pdf.id]" class="text-sm text-gray-400 py-4 text-center">
+              <svg class="w-5 h-5 mx-auto text-gray-300 animate-spin mb-2" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              Loading versions...
+            </div>
+            <div x-show="!versionLoading[pdf.id] && versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">
               No compressed versions yet. Click "New Compression" to create one.
             </div>
             <div class="space-y-2" x-show="(versionCache[pdf.id] || []).length > 0">
@@ -449,6 +456,7 @@ function app() {
   return {
     pdfs: [],
     versionCache: {},
+    versionLoading: {},
     stats: null,
     search: '',
     sortBy: 'date',
@@ -546,6 +554,7 @@ function app() {
     },
 
     async loadVersions(pdfId) {
+      this.versionLoading[pdfId] = true;
       try {
         const res = await fetch(`/api/pdfs/${pdfId}/versions`);
         if (!res.ok) throw new Error('Failed to load versions');
@@ -553,6 +562,7 @@ function app() {
       } catch (e) {
         this.showToast('Failed to load versions: ' + e.message, 'error');
       }
+      this.versionLoading[pdfId] = false;
     },
 
     toggleExpand(pdfId) {
