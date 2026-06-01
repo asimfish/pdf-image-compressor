@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
+import fitz
 import pytest
 
-from file_compressor.cli import build_parser, print_summary, _format_result, _summary_to_json
+from file_compressor.cli import build_parser, main, print_summary, run_compress, _format_result, _result_to_json, _summary_to_json
 from file_compressor.models import CompressionResult, CompressionSummary
 
 
@@ -223,3 +225,120 @@ def test_summary_to_json_roundtrip():
     parsed = json.loads(serialized)
     assert parsed["results"][0]["compression_ratio"] == 0.5
     assert parsed["archive"]["saved_bytes"] == 3000
+
+
+# ── _result_to_json edge cases ──
+
+def test_result_to_json_none():
+    assert _result_to_json(None) is None
+
+
+def test_result_to_json_output_none():
+    result = CompressionResult(
+        source=Path("a.pdf"), output=None,
+        original_size=100, compressed_size=None, status="failed",
+    )
+    data = _result_to_json(result)
+    assert data["output"] is None
+    assert data["saved_bytes"] is None
+    assert data["compression_ratio"] is None
+
+
+# ── _format_result edge cases ──
+
+def test_format_result_partial():
+    result = CompressionResult(
+        source=Path("p.pdf"), output=Path("p_out.pdf"),
+        original_size=1000, compressed_size=600, status="partial",
+    )
+    text = _format_result(result)
+    assert "OK" in text
+    assert "40.0%" in text
+
+
+# ── run_compress ──
+
+def _make_pdf(path: Path, pages: int = 3) -> None:
+    doc = fitz.open()
+    for _ in range(pages):
+        doc.new_page()
+    doc.save(str(path))
+    doc.close()
+
+
+def test_run_compress_basic(tmp_path):
+    src = tmp_path / "input.pdf"
+    _make_pdf(src)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    args = Namespace(
+        input=src, output=None, output_dir=out_dir, quality=70,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
+        json_report=False,
+    )
+    run_compress(args)
+
+    compressed = list(out_dir.glob("*.pdf"))
+    assert len(compressed) == 1
+    assert compressed[0].stat().st_size > 0
+
+
+def test_run_compress_with_output(tmp_path):
+    src = tmp_path / "input.pdf"
+    _make_pdf(src)
+    out = tmp_path / "result.pdf"
+
+    args = Namespace(
+        input=src, output=out, output_dir=tmp_path, quality=50,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="raster",
+        pdf_dpi=100, pdf_grayscale=True, keep_metadata=False,
+        json_report=False,
+    )
+    run_compress(args)
+    assert out.exists()
+
+
+def test_run_compress_json_report(tmp_path, capsys):
+    src = tmp_path / "input.pdf"
+    _make_pdf(src)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    args = Namespace(
+        input=src, output=None, output_dir=out_dir, quality=82,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
+        json_report=True,
+    )
+    run_compress(args)
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert "results" in parsed
+    assert len(parsed["results"]) == 1
+
+
+# ── main dispatch ──
+
+def test_main_compress(tmp_path):
+    src = tmp_path / "input.pdf"
+    _make_pdf(src)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    with patch("sys.argv", ["file-compressor", "compress", str(src), "--output-dir", str(out_dir)]):
+        main()
+
+    compressed = list(out_dir.glob("*.pdf"))
+    assert len(compressed) == 1
+
+
+def test_main_no_command(capsys):
+    with patch("sys.argv", ["file-compressor"]):
+        main()
+    captured = capsys.readouterr()
+    assert "usage:" in captured.out.lower() or "file-compressor" in captured.out.lower()
