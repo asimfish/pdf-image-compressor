@@ -92,6 +92,16 @@ def test_list_pdfs_empty(tmp_path: Path):
     assert resp.json() == []
 
 
+def test_upload_returns_warning_field(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "warn.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("warn.pdf", f, "application/pdf")})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "warning" in data
+
+
 def test_upload_rejects_non_pdf(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
