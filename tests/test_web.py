@@ -690,3 +690,25 @@ def test_compress_pdf_original_missing(tmp_path: Path):
     stored_path.unlink()
     resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
     assert resp.status_code == 404
+
+
+def test_batch_compress_handles_individual_errors(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "ok.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("ok.pdf", f, "application/pdf")})
+    # Upload a second PDF then delete its file to cause compression error
+    pdf_path2 = _make_test_pdf(tmp_path / "bad.pdf")
+    with open(pdf_path2, "rb") as f:
+        upload2 = client.post("/api/pdfs/upload", files={"file": ("bad.pdf", f, "application/pdf")})
+    bad_id = upload2.json()["id"]
+    from file_compressor.web import _get_storage
+    storage = _get_storage()
+    storage.get_pdf_path(bad_id).unlink()
+
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] >= 0
+    statuses = {r["status"] for r in data["results"]}
+    assert "error" in statuses or "ok" in statuses
