@@ -124,15 +124,26 @@
               </div>
             </template>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2" @click.stop>
             <template x-if="bestSaving(pdf) > 0">
               <span class="text-xs px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium"
                 x-text="'saved ' + (bestSaving(pdf) * 100).toFixed(0) + '%'"></span>
             </template>
-            <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium"
-              x-text="(versionCache[pdf.id] || []).length + ' versions'"></span>
-            <svg class="w-5 h-5 text-gray-400 transition-transform" :class="expanded === pdf.id && 'rotate-180'"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <template x-if="bestVersion(pdf)">
+              <a :href="'/api/versions/' + bestVersion(pdf).id + '/download'" target="_blank"
+                class="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
+                title="Download best version">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+              </a>
+            </template>
+            <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium cursor-pointer"
+              x-text="(versionCache[pdf.id] || []).length + ' versions'"
+              @click="toggleExpand(pdf.id)"></span>
+            <svg class="w-5 h-5 text-gray-400 transition-transform cursor-pointer" :class="expanded === pdf.id && 'rotate-180'"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              @click="toggleExpand(pdf.id)">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
           </div>
