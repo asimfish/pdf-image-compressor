@@ -325,6 +325,12 @@ def test_update_notes_rejects_too_long(tmp_path: Path):
     assert resp.status_code == 422
 
 
+def test_update_notes_nonexistent_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.put("/api/pdfs/nonexistent/notes", json={"notes": "hello"})
+    assert resp.status_code == 404
+
+
 def test_delete_pdf(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "d.pdf")
