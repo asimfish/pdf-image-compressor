@@ -40,7 +40,6 @@ def format_size(size: Optional[int]) -> str:
         if value < 1000 or unit == "GB":
             return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
         value /= 1000
-    return f"{value:.1f} GB"
 
 
 def is_image(path: Path) -> bool:
