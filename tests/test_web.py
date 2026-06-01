@@ -318,6 +318,25 @@ def test_delete_version(tmp_path: Path):
     assert client.get(f"/api/pdfs/{pdf_id}/versions").json() == []
 
 
+def test_download_version_nonexistent(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/versions/nonexistent/download")
+    assert resp.status_code == 404
+
+
+def test_delete_version_nonexistent(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.delete("/api/versions/nonexistent")
+    assert resp.status_code == 404
+
+
+def test_batch_delete_empty(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-delete", json={"pdf_ids": []})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 0
+
+
 # ── Validation error tests ──
 
 def test_upload_rejects_bad_quality(tmp_path: Path):

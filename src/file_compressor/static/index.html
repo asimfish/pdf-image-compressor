@@ -546,11 +546,13 @@ function app() {
       }
     },
     toggleSelect(pdfId) {
-      if (this.selectedPdfs[pdfId]) {
-        delete this.selectedPdfs[pdfId];
+      const next = { ...this.selectedPdfs };
+      if (next[pdfId]) {
+        delete next[pdfId];
       } else {
-        this.selectedPdfs[pdfId] = true;
+        next[pdfId] = true;
       }
+      this.selectedPdfs = next;
     },
 
     async batchDelete() {
@@ -575,18 +577,14 @@ function app() {
 
     handleDrop(e) {
       this.dragOver = false;
-      const all = [...e.dataTransfer.files];
-      const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (pdfs.length === 0) {
-        this.showToast('Only PDF files are supported', 'error');
-        return;
-      }
-      if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
-      this.uploadFiles = pdfs;
+      this._selectFiles([...e.dataTransfer.files]);
     },
 
     handleFiles(files) {
-      const all = [...files];
+      this._selectFiles([...files]);
+    },
+
+    _selectFiles(all) {
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (pdfs.length === 0) {
         this.showToast('Only PDF files are supported', 'error');
