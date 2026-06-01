@@ -56,6 +56,15 @@
         <span x-show="!batchCompressing">Compress All</span>
         <span x-show="batchCompressing">Compressing...</span>
       </button>
+      <button @click="selectMode = !selectMode; selectedPdfs.clear()"
+        class="px-4 py-2.5 rounded-xl font-semibold transition shadow-sm"
+        :class="selectMode ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">
+        <span x-text="selectMode ? 'Cancel' : 'Select'"></span>
+      </button>
+      <button x-show="selectMode && selectedPdfs.size > 0" @click="batchDelete()"
+        class="px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition shadow-sm">
+        Delete (<span x-text="selectedPdfs.size"></span>)
+      </button>
     </div>
   </header>
 
@@ -111,7 +120,11 @@
     <template x-for="pdf in filteredPdfs" :key="pdf.id">
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition fade-in">
         <!-- Card Header -->
-        <div class="flex items-start gap-4 p-5 cursor-pointer" @click="toggleExpand(pdf.id)">
+        <div class="flex items-start gap-4 p-5 cursor-pointer" @click="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)">
+          <div x-show="selectMode" @click.stop class="flex items-center pt-1">
+            <input type="checkbox" :checked="selectedPdfs.has(pdf.id)" @change="toggleSelect(pdf.id)"
+              class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+          </div>
           <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
             <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 24 24">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
@@ -424,6 +437,8 @@ function app() {
     loading: true,
     apiError: false,
     batchCompressing: false,
+    selectMode: false,
+    selectedPdfs: new Set(),
 
     // Upload
     showUpload: false,
@@ -506,6 +521,34 @@ function app() {
       this.expanded = this.expanded === pdfId ? null : pdfId;
       if (this.expanded && !this.versionCache[pdfId]) {
         this.loadVersions(pdfId);
+      }
+    },
+
+    toggleSelect(pdfId) {
+      if (this.selectedPdfs.has(pdfId)) {
+        this.selectedPdfs.delete(pdfId);
+      } else {
+        this.selectedPdfs.add(pdfId);
+      }
+    },
+
+    async batchDelete() {
+      const count = this.selectedPdfs.size;
+      if (!confirm(`Delete ${count} PDF(s) and all their versions?`)) return;
+      try {
+        const res = await fetch('/api/pdfs/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdf_ids: [...this.selectedPdfs] }),
+        });
+        if (!res.ok) throw new Error('Batch delete failed');
+        const data = await res.json();
+        this.showToast(`Deleted ${data.deleted} PDFs`);
+        this.selectedPdfs.clear();
+        this.selectMode = false;
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Delete failed: ' + e.message, 'error');
       }
     },
 

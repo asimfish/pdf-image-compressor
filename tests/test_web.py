@@ -191,6 +191,22 @@ def test_delete_nonexistent(tmp_path: Path):
     assert resp.status_code == 404
 
 
+def test_batch_delete(tmp_path: Path):
+    client = _client(tmp_path)
+    ids = []
+    for name in ["x.pdf", "y.pdf", "z.pdf"]:
+        pdf_path = _make_test_pdf(tmp_path / name)
+        with open(pdf_path, "rb") as f:
+            upload = client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
+        ids.append(upload.json()["id"])
+    resp = client.post("/api/pdfs/batch-delete", json={"pdf_ids": ids[:2]})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == 2
+    remaining = client.get("/api/pdfs").json()
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == ids[2]
+
+
 def test_download_version(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "dv.pdf")

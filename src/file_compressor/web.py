@@ -218,6 +218,20 @@ def api_delete_pdf(pdf_id: str):
     return {"ok": True}
 
 
+class BatchDeleteRequest(BaseModel):
+    pdf_ids: list[str]
+
+
+@app.post("/api/pdfs/batch-delete")
+def api_batch_delete(body: BatchDeleteRequest):
+    storage = _get_storage()
+    deleted = 0
+    for pdf_id in body.pdf_ids:
+        if storage.delete_pdf(pdf_id):
+            deleted += 1
+    return {"deleted": deleted}
+
+
 # ── Version CRUD ──
 
 @app.get("/api/versions/{version_id}/download")
