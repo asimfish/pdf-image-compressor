@@ -502,9 +502,6 @@ function app() {
         if (!statsRes.ok) throw new Error('Failed to load stats');
         this.pdfs = await pdfsRes.json();
         this.stats = await statsRes.json();
-        for (const pdf of this.pdfs) {
-          this.loadVersions(pdf.id);
-        }
       } catch (e) {
         this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
@@ -713,13 +710,16 @@ function app() {
 
     bestSaving(pdf) {
       const versions = this.versionCache[pdf.id] || [];
-      if (versions.length === 0) return 0;
-      return Math.max(...versions.map(v => v.compression_ratio || 0));
+      if (versions.length > 0) return Math.max(...versions.map(v => v.compression_ratio || 0));
+      return pdf.best_compression_ratio || 0;
     },
 
     bestVersion(pdf) {
       const versions = this.versionCache[pdf.id] || [];
-      if (versions.length === 0) return null;
+      if (versions.length === 0) {
+        if (!pdf.best_compressed_size) return null;
+        return { file_size: pdf.best_compressed_size };
+      }
       return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
     },
 

@@ -96,6 +96,8 @@ def test_list_pdfs_includes_version_count(tmp_path: Path):
 
     pdfs = client.get("/api/pdfs").json()
     assert pdfs[0]["version_count"] >= 1
+    assert pdfs[0]["best_compression_ratio"] is not None
+    assert pdfs[0]["best_compressed_size"] is not None
 
     client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
     pdfs = client.get("/api/pdfs").json()

@@ -108,6 +108,13 @@ class Storage:
         rows = self._conn.execute("SELECT pdf_id, COUNT(*) AS cnt FROM versions GROUP BY pdf_id").fetchall()
         return {row["pdf_id"]: row["cnt"] for row in rows}
 
+    def pdf_best_versions(self) -> dict[str, dict]:
+        rows = self._conn.execute("""
+            SELECT pdf_id, MIN(file_size) AS best_size, MAX(compression_ratio) AS best_ratio
+            FROM versions WHERE compression_ratio IS NOT NULL GROUP BY pdf_id
+        """).fetchall()
+        return {row["pdf_id"]: {"best_size": row["best_size"], "best_ratio": row["best_ratio"]} for row in rows}
+
     def get_pdf_path(self, pdf_id: str) -> Optional[Path]:
         row = self._conn.execute("SELECT file_path FROM pdfs WHERE id=?", (pdf_id,)).fetchone()
         return Path(row["file_path"]) if row else None
