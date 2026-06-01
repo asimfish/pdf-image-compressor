@@ -142,6 +142,26 @@ def test_compress_nonexistent(tmp_path: Path):
     assert resp.status_code == 404
 
 
+def test_batch_compress(tmp_path: Path):
+    client = _client(tmp_path)
+    for name in ["a.pdf", "b.pdf"]:
+        pdf_path = _make_test_pdf(tmp_path / name)
+        with open(pdf_path, "rb") as f:
+            client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 2
+    assert len(data["results"]) == 2
+    assert all(r["status"] == "ok" for r in data["results"])
+
+
+def test_batch_compress_empty_library(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})
+    assert resp.status_code == 404
+
+
 def test_update_notes(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "n.pdf")

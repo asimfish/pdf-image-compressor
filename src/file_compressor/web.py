@@ -168,6 +168,37 @@ async def api_compress_pdf(
     return asdict(ver)
 
 
+@app.post("/api/pdfs/batch-compress")
+async def api_batch_compress(
+    quality: int = Form(82),
+    target_size: Optional[str] = Form(None),
+    pdf_mode: str = Form("auto"),
+    pdf_dpi: int = Form(120),
+    pdf_grayscale: bool = Form(False),
+):
+    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    storage = _get_storage()
+    pdfs = storage.list_pdfs()
+    if not pdfs:
+        raise HTTPException(404, detail="No PDFs in library")
+
+    target_bytes = parse_size(target_size)
+    results = []
+    for pdf in pdfs:
+        path = storage.get_pdf_path(pdf.id)
+        if not path or not path.exists():
+            continue
+        try:
+            data = path.read_bytes()
+            label = _auto_label(target_bytes, quality, pdf_mode)
+            ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok"})
+        except Exception as exc:
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": str(exc)})
+
+    return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results}
+
+
 @app.put("/api/pdfs/{pdf_id}/notes")
 def api_update_notes(pdf_id: str, body: NotesUpdate):
     storage = _get_storage()

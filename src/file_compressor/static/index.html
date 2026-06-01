@@ -51,6 +51,11 @@
         class="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">
         + Upload PDF
       </button>
+      <button @click="batchCompress()" :disabled="batchCompressing || pdfs.length === 0"
+        class="px-4 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+        <span x-show="!batchCompressing">Compress All</span>
+        <span x-show="batchCompressing">Compressing...</span>
+      </button>
     </div>
   </header>
 
@@ -389,6 +394,7 @@ function app() {
     expanded: null,
     loading: true,
     apiError: false,
+    batchCompressing: false,
 
     // Upload
     showUpload: false,
@@ -507,6 +513,26 @@ function app() {
       this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, notes: '' };
       this.showToast('Upload complete');
       this.loadLibrary();
+    },
+
+    async batchCompress() {
+      if (!confirm(`Compress all ${this.pdfs.length} PDFs with default settings?`)) return;
+      this.batchCompressing = true;
+      try {
+        const fd = new FormData();
+        fd.append('quality', '82');
+        fd.append('pdf_mode', 'auto');
+        fd.append('pdf_dpi', '120');
+        fd.append('pdf_grayscale', 'false');
+        const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Batch compress failed');
+        const data = await res.json();
+        this.showToast(`Compressed ${data.compressed} PDFs`);
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Batch compress failed: ' + e.message, 'error');
+      }
+      this.batchCompressing = false;
     },
 
     compressPdf(pdf) {
