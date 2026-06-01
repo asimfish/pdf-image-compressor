@@ -107,21 +107,6 @@ def test_update_notes_nonexistent(tmp_path: Path):
     storage.close()
 
 
-def test_pdf_best_versions(tmp_path: Path):
-    storage = Storage(tmp_path)
-    pdf = storage.add_pdf("best.pdf", b"%PDF" * 100, 5)
-    storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"small",
-        quality=50, pdf_mode="raster", pdf_dpi=100, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.7,
-    )
-    bests = storage.pdf_best_versions()
-    assert pdf.id in bests
-    assert bests[pdf.id]["best_ratio"] == 0.7
-    assert bests[pdf.id]["best_size"] == len(b"small")
-    storage.close()
-
-
 def test_stats(tmp_path: Path):
     storage = Storage(tmp_path)
     storage.add_pdf("a.pdf", b"A" * 1000, 3)
