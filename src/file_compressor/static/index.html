@@ -497,11 +497,10 @@ function app() {
       this.loading = true;
       this.apiError = false;
       try {
-        const [pdfsRes, statsRes] = await Promise.all([fetch('/api/pdfs'), fetch('/api/stats')]);
+        const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
-        if (!statsRes.ok) throw new Error('Failed to load stats');
         this.pdfs = await pdfsRes.json();
-        this.stats = await statsRes.json();
+        fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
       } catch (e) {
         this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
