@@ -120,15 +120,17 @@ async def api_upload_pdf(
         raise HTTPException(400, detail="Invalid PDF file")
 
     pdf = storage.add_pdf(filename, data, page_count, notes)
+    result = asdict(pdf)
+    result["warning"] = None
 
     target_bytes = parse_size(target_size)
     if target_bytes or quality < 95:
         try:
             _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
-        except Exception:
-            pass
+        except Exception as exc:
+            result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
 
-    return asdict(pdf)
+    return result
 
 
 @app.get("/api/pdfs/{pdf_id}/download")

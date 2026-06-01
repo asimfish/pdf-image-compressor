@@ -589,6 +589,8 @@ function app() {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
             throw new Error(err.detail || 'Upload failed');
           }
+          const data = await res.json();
+          if (data.warning) this.showToast(data.warning, 'error');
           succeeded++;
         } catch (e) {
           failed++;
