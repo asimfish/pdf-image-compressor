@@ -164,7 +164,10 @@ async def api_compress_pdf(
     if not label:
         label = _auto_label(target_bytes, quality, pdf_mode)
 
-    ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+    try:
+        ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+    except Exception as exc:
+        raise HTTPException(500, detail=f"Compression failed: {exc}")
     return asdict(ver)
 
 
