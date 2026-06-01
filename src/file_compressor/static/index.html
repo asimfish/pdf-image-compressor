@@ -198,7 +198,7 @@
             </div>
 
             <!-- Version List -->
-            <div x-show="(versionCache[pdf.id] || []).length === 0" class="text-sm text-gray-400 py-4 text-center">
+            <div x-show="versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">
               No compressed versions yet. Click "New Compression" to create one.
             </div>
             <div class="space-y-2" x-show="(versionCache[pdf.id] || []).length > 0">
