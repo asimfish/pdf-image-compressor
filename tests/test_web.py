@@ -222,6 +222,16 @@ def test_update_notes(tmp_path: Path):
     assert pdfs[0]["notes"] == "hello world"
 
 
+def test_update_notes_accepts_max_length(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "ml.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("ml.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.put(f"/api/pdfs/{pdf_id}/notes", json={"notes": "x" * 5000})
+    assert resp.status_code == 200
+
+
 def test_update_notes_rejects_too_long(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "nl.pdf")
