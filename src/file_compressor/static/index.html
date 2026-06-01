@@ -76,6 +76,16 @@
     </select>
   </div>
 
+  <!-- Filter Tabs -->
+  <div class="mb-6 flex gap-2">
+    <template x-for="tab in ['All', 'Uncompressed', 'Compressed']" :key="tab">
+      <button @click="filterTab = tab"
+        class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
+        :class="filterTab === tab ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+        x-text="tab + (tab === 'All' ? '' : tab === 'Uncompressed' ? ' (' + uncompressedCount + ')' : ' (' + compressedCount + ')')"></button>
+    </template>
+  </div>
+
   <!-- Loading State -->
   <div x-show="loading" class="text-center py-20">
     <svg class="w-10 h-10 mx-auto text-blue-500 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
@@ -406,6 +416,7 @@ function app() {
     stats: null,
     search: '',
     sortBy: 'date',
+    filterTab: 'All',
     presets: ['200KB', '500KB', '1MB', '2MB', '5MB'],
     expanded: null,
     loading: true,
@@ -442,6 +453,11 @@ function app() {
         const q = this.search.toLowerCase();
         list = list.filter(p => p.filename.toLowerCase().includes(q) || (p.notes || '').toLowerCase().includes(q));
       }
+      if (this.filterTab === 'Uncompressed') {
+        list = list.filter(p => (this.versionCache[p.id] || []).length === 0);
+      } else if (this.filterTab === 'Compressed') {
+        list = list.filter(p => (this.versionCache[p.id] || []).length > 0);
+      }
       const sorted = [...list];
       switch (this.sortBy) {
         case 'name': sorted.sort((a, b) => a.filename.localeCompare(b.filename)); break;
@@ -450,6 +466,14 @@ function app() {
         default: sorted.sort((a, b) => b.upload_time.localeCompare(a.upload_time)); break;
       }
       return sorted;
+    },
+
+    get uncompressedCount() {
+      return this.pdfs.filter(p => (this.versionCache[p.id] || []).length === 0).length;
+    },
+
+    get compressedCount() {
+      return this.pdfs.filter(p => (this.versionCache[p.id] || []).length > 0).length;
     },
 
     async loadLibrary() {
