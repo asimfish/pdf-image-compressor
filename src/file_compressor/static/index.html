@@ -673,27 +673,42 @@ function app() {
 
     async saveNotes() {
       if (!this.notesTarget) return;
-      await fetch(`/api/pdfs/${this.notesTarget.id}/notes`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: this.notesText }),
-      });
-      this.showNotes = false;
-      this.loadLibrary();
+      try {
+        const res = await fetch(`/api/pdfs/${this.notesTarget.id}/notes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: this.notesText }),
+        });
+        if (!res.ok) throw new Error('Failed to save notes');
+        this.showNotes = false;
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Save failed: ' + e.message, 'error');
+      }
     },
 
     async deletePdf(pdf) {
       if (!confirm(`Delete "${pdf.filename}" and all versions?`)) return;
-      await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
-      this.showToast('Deleted');
-      this.loadLibrary();
+      try {
+        const res = await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        this.showToast('Deleted');
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Delete failed: ' + e.message, 'error');
+      }
     },
 
     async deleteVersion(pdfId, versionId) {
       if (!confirm('Delete this version?')) return;
-      await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
-      this.loadVersions(pdfId);
-      this.loadLibrary();
+      try {
+        const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Delete failed');
+        this.loadVersions(pdfId);
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Delete failed: ' + e.message, 'error');
+      }
     },
 
     bestSaving(pdf) {
