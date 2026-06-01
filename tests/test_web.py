@@ -240,6 +240,21 @@ def test_compress_creates_version(tmp_path: Path):
     assert data["quality"] == 50
 
 
+def test_compress_with_grayscale(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "gr.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("gr.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(
+        f"/api/pdfs/{pdf_id}/compress",
+        data={"pdf_mode": "raster", "pdf_grayscale": "true"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pdf_grayscale"] is True
+
+
 def test_compress_nonexistent(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/nonexistent/compress", data={"quality": "50"})
