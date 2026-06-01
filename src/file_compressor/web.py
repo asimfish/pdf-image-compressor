@@ -70,7 +70,7 @@ def index() -> HTMLResponse:
 # ── Health ──
 
 @app.get("/api/health")
-def api_health():
+def api_health() -> dict:
     storage = _get_storage()
     stats = storage.stats()
     return {"status": "ok", "pdf_count": stats["pdf_count"], "version_count": stats["version_count"]}
@@ -79,14 +79,14 @@ def api_health():
 # ── Stats ──
 
 @app.get("/api/stats")
-def api_stats():
+def api_stats() -> dict:
     return _get_storage().stats()
 
 
 # ── PDF CRUD ──
 
 @app.get("/api/pdfs")
-def api_list_pdfs():
+def api_list_pdfs() -> list:
     return _get_storage().list_pdfs_with_stats()
 
 
@@ -132,7 +132,7 @@ async def api_upload_pdf(
 
 
 @app.get("/api/pdfs/{pdf_id}/download")
-def api_download_pdf(pdf_id: str):
+def api_download_pdf(pdf_id: str) -> FileResponse:
     storage = _get_storage()
     pdf = storage.get_pdf(pdf_id)
     if not pdf:
@@ -144,7 +144,7 @@ def api_download_pdf(pdf_id: str):
 
 
 @app.get("/api/pdfs/{pdf_id}/versions")
-def api_list_versions(pdf_id: str):
+def api_list_versions(pdf_id: str) -> list:
     storage = _get_storage()
     if not storage.get_pdf(pdf_id):
         raise HTTPException(404, "PDF not found")
@@ -217,7 +217,7 @@ async def api_batch_compress(
 
 
 @app.put("/api/pdfs/{pdf_id}/notes")
-def api_update_notes(pdf_id: str, body: NotesUpdate):
+def api_update_notes(pdf_id: str, body: NotesUpdate) -> dict:
     if len(body.notes) > 5000:
         raise HTTPException(422, detail="notes must be 5000 characters or fewer")
     storage = _get_storage()
@@ -227,7 +227,7 @@ def api_update_notes(pdf_id: str, body: NotesUpdate):
 
 
 @app.delete("/api/pdfs/{pdf_id}")
-def api_delete_pdf(pdf_id: str):
+def api_delete_pdf(pdf_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_pdf(pdf_id):
         raise HTTPException(404, "PDF not found")
@@ -240,7 +240,7 @@ class BatchDeleteRequest(BaseModel):
 
 
 @app.post("/api/pdfs/batch-delete")
-def api_batch_delete(body: BatchDeleteRequest):
+def api_batch_delete(body: BatchDeleteRequest) -> dict:
     storage = _get_storage()
     deleted = storage.batch_delete_pdfs(body.pdf_ids)
     return {"deleted": deleted}
@@ -249,7 +249,7 @@ def api_batch_delete(body: BatchDeleteRequest):
 # ── Version CRUD ──
 
 @app.get("/api/versions/{version_id}/download")
-def api_download_version(version_id: str):
+def api_download_version(version_id: str) -> FileResponse:
     storage = _get_storage()
     path = storage.get_version_path(version_id)
     if not path or not path.exists():
@@ -258,7 +258,7 @@ def api_download_version(version_id: str):
 
 
 @app.delete("/api/versions/{version_id}")
-def api_delete_version(version_id: str):
+def api_delete_version(version_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_version(version_id):
         raise HTTPException(404, "Version not found")
