@@ -104,6 +104,33 @@ class Storage:
         rows = self._conn.execute("SELECT * FROM pdfs ORDER BY upload_time DESC").fetchall()
         return [_row_to_pdf(r) for r in rows]
 
+    def list_pdfs_with_stats(self) -> list[dict]:
+        rows = self._conn.execute("""
+            SELECT p.*,
+                   COALESCE(vc.cnt, 0) AS version_count,
+                   bv.best_id, bv.best_size, bv.best_ratio
+            FROM pdfs p
+            LEFT JOIN (SELECT pdf_id, COUNT(*) AS cnt FROM versions GROUP BY pdf_id) vc ON p.id = vc.pdf_id
+            LEFT JOIN (
+                SELECT v.pdf_id, v.id AS best_id, v.file_size AS best_size, v.compression_ratio AS best_ratio
+                FROM versions v
+                INNER JOIN (SELECT pdf_id, MIN(file_size) AS min_size FROM versions GROUP BY pdf_id) m
+                ON v.pdf_id = m.pdf_id AND v.file_size = m.min_size
+            ) bv ON p.id = bv.pdf_id
+            ORDER BY p.upload_time DESC
+        """).fetchall()
+        return [
+            {
+                "id": r["id"], "filename": r["filename"], "file_size": r["file_size"],
+                "page_count": r["page_count"], "upload_time": r["upload_time"], "notes": r["notes"],
+                "version_count": r["version_count"],
+                "best_compression_ratio": r["best_ratio"],
+                "best_compressed_size": r["best_size"],
+                "best_version_id": r["best_id"],
+            }
+            for r in rows
+        ]
+
     def pdf_version_counts(self) -> dict[str, int]:
         rows = self._conn.execute("SELECT pdf_id, COUNT(*) AS cnt FROM versions GROUP BY pdf_id").fetchall()
         return {row["pdf_id"]: row["cnt"] for row in rows}

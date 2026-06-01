@@ -84,20 +84,7 @@ def api_stats():
 
 @app.get("/api/pdfs")
 def api_list_pdfs():
-    storage = _get_storage()
-    pdfs = storage.list_pdfs()
-    counts = storage.pdf_version_counts()
-    bests = storage.pdf_best_versions()
-    result = []
-    for p in pdfs:
-        d = asdict(p)
-        d["version_count"] = counts.get(p.id, 0)
-        best = bests.get(p.id)
-        d["best_compression_ratio"] = best["best_ratio"] if best else None
-        d["best_compressed_size"] = best["best_size"] if best else None
-        d["best_version_id"] = best["best_id"] if best else None
-        result.append(d)
-    return result
+    return _get_storage().list_pdfs_with_stats()
 
 
 @app.post("/api/pdfs/upload")
