@@ -37,6 +37,28 @@ def test_stats_empty(tmp_path: Path):
     assert data["version_count"] == 0
 
 
+def test_health(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["pdf_count"] == 0
+    assert data["version_count"] == 0
+
+
+def test_health_with_data(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["pdf_count"] == 1
+
+
 def test_upload_pdf(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "test.pdf")

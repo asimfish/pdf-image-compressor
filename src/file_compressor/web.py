@@ -60,6 +60,15 @@ def index() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
+# ── Health ──
+
+@app.get("/api/health")
+def api_health():
+    storage = _get_storage()
+    stats = storage.stats()
+    return {"status": "ok", "pdf_count": stats["pdf_count"], "version_count": stats["version_count"]}
+
+
 # ── Stats ──
 
 @app.get("/api/stats")
