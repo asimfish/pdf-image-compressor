@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF Manager</title>
+  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .drop-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
+    .fade-in { animation: fadeIn .2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"
+    integrity="sha384-fzmr1kBM865vGJHBkGJ0vOM1KJfriPAsEDejc3s3M69V6LY0F84V1/3M03+YpeT" crossorigin="anonymous"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+<div x-data="app()" x-init="loadLibrary()" class="max-w-6xl mx-auto px-4 py-8">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between mb-8">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-800">PDF Manager</h1>
+      <p class="text-sm text-gray-500 mt-1">Upload, compress, and manage your PDF library</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-right text-sm text-gray-500" x-show="stats">
+        <span x-text="stats?.pdf_count + ' PDFs'"></span>
+        <span class="mx-1">·</span>
+        <span x-text="fmtSize(stats?.total_original_bytes)"></span>
+      </div>
+      <button @click="showUpload = true"
+        class="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">
+        + Upload PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- Search / Filter -->
+  <div class="mb-6 flex gap-3">
+    <div class="flex-1 relative">
+      <input type="text" x-model="search" placeholder="Search PDFs..."
+        class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+      <svg class="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div x-show="loading" class="text-center py-20">
+    <svg class="w-10 h-10 mx-auto text-blue-500 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+    </svg>
+    <p class="text-gray-400">Loading library...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div x-show="filteredPdfs.length === 0 && !loading" class="text-center py-20">
+    <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+    </svg>
+    <p class="text-gray-500 text-lg">No PDFs yet</p>
+    <p class="text-gray-400 text-sm mt-1">Upload your first PDF to get started</p>
+  </div>
+
+  <!-- PDF Grid -->
+  <div class="grid gap-4" x-show="filteredPdfs.length > 0">
+    <template x-for="pdf in filteredPdfs" :key="pdf.id">
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition fade-in">
+        <!-- Card Header -->
+        <div class="flex items-start gap-4 p-5 cursor-pointer" @click="toggleExpand(pdf.id)">
+          <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+            <svg class="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z"/>
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <h3 class="font-semibold text-gray-800 truncate" x-text="pdf.filename"></h3>
+            <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
+              <span x-text="fmtSize(pdf.file_size)"></span>
+              <span x-text="pdf.page_count + ' pages'"></span>
+              <span x-text="fmtDate(pdf.upload_time)"></span>
+            </div>
+            <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium"
+              x-text="(versionCache[pdf.id] || []).length + ' versions'"></span>
+            <svg class="w-5 h-5 text-gray-400 transition-transform" :class="expanded === pdf.id && 'rotate-180'"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Expanded Panel -->
+        <div x-show="expanded === pdf.id" x-collapse class="border-t border-gray-100">
+          <div class="p-5">
+            <!-- Actions Bar -->
+            <div class="flex items-center gap-2 mb-4">
+              <button @click="compressPdf(pdf)"
+                class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition">
+                + New Compression
+              </button>
+              <a :href="'/api/pdfs/' + pdf.id + '/download'" target="_blank"
+                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition">
+                Download Original
+              </a>
+              <button @click="editNotes(pdf)"
+                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition">
+                Edit Notes
+              </button>
+              <button @click="deletePdf(pdf)"
+                class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition ml-auto">
+                Delete
+              </button>
+            </div>
+
+            <!-- Version List -->
+            <div x-show="(versionCache[pdf.id] || []).length === 0" class="text-sm text-gray-400 py-4 text-center">
+              No compressed versions yet. Click "New Compression" to create one.
+            </div>
+            <div class="space-y-2" x-show="(versionCache[pdf.id] || []).length > 0">
+              <template x-for="v in (versionCache[pdf.id] || [])" :key="v.id">
+                <div class="flex items-center gap-4 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-800" x-text="v.label"></div>
+                    <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                      <span x-text="fmtSize(v.file_size)"></span>
+                      <span x-show="v.compression_ratio > 0" class="text-green-600" x-text="'-' + (v.compression_ratio * 100).toFixed(1) + '%'"></span>
+                      <span x-show="v.compression_ratio !== null && v.compression_ratio <= 0" class="text-amber-500" x-text="v.compression_ratio !== null ? 'optimized' : ''"></span>
+                      <span x-text="'Q' + v.quality + ' · ' + v.pdf_mode + ' · ' + v.pdf_dpi + 'dpi'"></span>
+                      <span x-text="fmtDate(v.created_at)"></span>
+                    </div>
+                  </div>
+                  <a :href="'/api/versions/' + v.id + '/download'" target="_blank"
+                    class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition">
+                    Download
+                  </a>
+                  <button @click="deleteVersion(pdf.id, v.id)"
+                    class="px-3 py-1.5 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition">
+                    Delete
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Upload Modal -->
+  <div x-show="showUpload" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    @click.self="showUpload = false">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop>
+      <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
+
+      <!-- Drop Zone -->
+      <div class="drop-zone border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-5 transition"
+        :class="dragOver && 'drag-over'"
+        @dragover.prevent="dragOver = true" @dragleave="dragOver = false"
+        @drop.prevent="handleDrop($event)"
+        @click="$refs.fileInput.click()">
+        <input type="file" accept=".pdf" multiple x-ref="fileInput" class="hidden" @change="handleFiles($event.target.files)">
+        <svg class="w-10 h-10 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        <p class="text-gray-600 font-medium">Drop PDFs here or click to browse</p>
+        <p class="text-sm text-gray-400 mt-1" x-show="uploadFiles.length > 0" x-text="uploadFiles.length + ' file(s) selected'"></p>
+      </div>
+
+      <!-- Selected Files -->
+      <div x-show="uploadFiles.length > 0" class="mb-4 space-y-1">
+        <template x-for="(f, i) in uploadFiles" :key="i">
+          <div class="flex items-center gap-2 text-sm text-gray-600">
+            <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+            <span class="truncate flex-1" x-text="f.name"></span>
+            <span class="text-gray-400" x-text="fmtSize(f.size)"></span>
+            <button @click="uploadFiles.splice(i, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
+          </div>
+        </template>
+      </div>
+
+      <!-- Compression Settings -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Target Size</label>
+          <input type="text" x-model="uploadForm.target_size" placeholder="e.g. 500KB, 2MB"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Quality (1-95)</label>
+          <input type="number" x-model.number="uploadForm.quality" min="1" max="95"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">PDF Mode</label>
+          <select x-model="uploadForm.pdf_mode"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+            <option value="auto">Auto</option>
+            <option value="optimize">Optimize (keep text)</option>
+            <option value="raster">Raster (max compression)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">DPI</label>
+          <input type="number" x-model.number="uploadForm.pdf_dpi" min="36" max="300"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mb-5">
+        <input type="checkbox" x-model="uploadForm.pdf_grayscale" id="grayscale" class="rounded">
+        <label for="grayscale" class="text-sm text-gray-700">Convert to grayscale</label>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+        <input type="text" x-model="uploadForm.notes" placeholder="Add a note..."
+          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+      </div>
+
+      <!-- Progress -->
+      <div x-show="uploading" class="mt-4">
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full bg-blue-600 rounded-full transition-all" :style="'width:' + uploadProgress + '%'"></div>
+        </div>
+        <p class="text-sm text-gray-500 mt-1 text-center" x-text="uploadStatus"></p>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex gap-3 mt-5">
+        <button @click="showUpload = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
+        <button @click="doUpload()" :disabled="uploadFiles.length === 0 || uploading"
+          class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
+          Upload & Compress
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compress Modal -->
+  <div x-show="showCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    @click.self="showCompress = false">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
+      <h2 class="text-xl font-bold mb-1">Compress PDF</h2>
+      <p class="text-sm text-gray-500 mb-5" x-text="compressTarget?.filename"></p>
+
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Target Size</label>
+          <input type="text" x-model="compressForm.target_size" placeholder="e.g. 500KB"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Quality</label>
+          <input type="number" x-model.number="compressForm.quality" min="1" max="95"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">PDF Mode</label>
+          <select x-model="compressForm.pdf_mode"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+            <option value="auto">Auto</option>
+            <option value="optimize">Optimize</option>
+            <option value="raster">Raster</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">DPI</label>
+          <input type="number" x-model.number="compressForm.pdf_dpi" min="36" max="300"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mb-5">
+        <input type="checkbox" x-model="compressForm.pdf_grayscale" id="grayscale2" class="rounded">
+        <label for="grayscale2" class="text-sm text-gray-700">Grayscale</label>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Version Label</label>
+        <input type="text" x-model="compressForm.label" placeholder="e.g. Email version"
+          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+      </div>
+
+      <div x-show="compressing" class="mt-4">
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full bg-green-600 rounded-full animate-pulse w-full"></div>
+        </div>
+        <p class="text-sm text-gray-500 mt-1 text-center">Compressing...</p>
+      </div>
+
+      <div class="flex gap-3 mt-5">
+        <button @click="showCompress = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
+        <button @click="doCompress()" :disabled="compressing"
+          class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40">
+          Compress
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Modal -->
+  <div x-show="showNotes" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    @click.self="showNotes = false">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
+      <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
+      <textarea x-model="notesText" rows="4"
+        class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm resize-none"></textarea>
+      <div class="flex gap-3 mt-4">
+        <button @click="showNotes = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
+        <button @click="saveNotes()" class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div x-show="toast" x-cloak x-transition
+    class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium"
+    :class="toastType === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'">
+    <span x-text="toast"></span>
+  </div>
+</div>
+
+<script>
+function app() {
+  return {
+    pdfs: [],
+    versionCache: {},
+    stats: null,
+    search: '',
+    expanded: null,
+    loading: true,
+
+    // Upload
+    showUpload: false,
+    uploadFiles: [],
+    uploading: false,
+    uploadProgress: 0,
+    uploadStatus: '',
+    dragOver: false,
+    uploadForm: { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, notes: '' },
+
+    // Compress
+    showCompress: false,
+    compressTarget: null,
+    compressing: false,
+    compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, label: '' },
+
+    // Notes
+    showNotes: false,
+    notesTarget: null,
+    notesText: '',
+
+    // Toast
+    toast: '',
+    toastType: 'success',
+
+    get filteredPdfs() {
+      if (!this.search.trim()) return this.pdfs;
+      const q = this.search.toLowerCase();
+      return this.pdfs.filter(p => p.filename.toLowerCase().includes(q) || (p.notes || '').toLowerCase().includes(q));
+    },
+
+    async loadLibrary() {
+      this.loading = true;
+      try {
+        const [pdfsRes, statsRes] = await Promise.all([fetch('/api/pdfs'), fetch('/api/stats')]);
+        if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
+        if (!statsRes.ok) throw new Error('Failed to load stats');
+        this.pdfs = await pdfsRes.json();
+        this.stats = await statsRes.json();
+        for (const pdf of this.pdfs) {
+          this.loadVersions(pdf.id);
+        }
+      } catch (e) {
+        this.showToast('Failed to load library: ' + e.message, 'error');
+      }
+      this.loading = false;
+    },
+
+    async loadVersions(pdfId) {
+      const res = await fetch(`/api/pdfs/${pdfId}/versions`);
+      this.versionCache[pdfId] = await res.json();
+    },
+
+    toggleExpand(pdfId) {
+      this.expanded = this.expanded === pdfId ? null : pdfId;
+      if (this.expanded && !this.versionCache[pdfId]) {
+        this.loadVersions(pdfId);
+      }
+    },
+
+    handleDrop(e) {
+      this.dragOver = false;
+      const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (files.length) this.uploadFiles = files;
+    },
+
+    handleFiles(files) {
+      this.uploadFiles = [...files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    },
+
+    async doUpload() {
+      if (!this.uploadFiles.length) return;
+      this.uploading = true;
+      this.uploadProgress = 10;
+      this.uploadStatus = 'Uploading...';
+
+      for (let i = 0; i < this.uploadFiles.length; i++) {
+        const fd = new FormData();
+        fd.append('file', this.uploadFiles[i]);
+        fd.append('quality', this.uploadForm.quality);
+        fd.append('target_size', this.uploadForm.target_size);
+        fd.append('pdf_mode', this.uploadForm.pdf_mode);
+        fd.append('pdf_dpi', this.uploadForm.pdf_dpi);
+        fd.append('pdf_grayscale', this.uploadForm.pdf_grayscale);
+        fd.append('notes', this.uploadForm.notes);
+        this.uploadProgress = Math.round(((i + 0.5) / this.uploadFiles.length) * 100);
+        this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
+
+        try {
+          const res = await fetch('/api/pdfs/upload', { method: 'POST', body: fd });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            throw new Error(err.detail || 'Upload failed');
+          }
+        } catch (e) {
+          this.showToast('Upload failed: ' + e.message, 'error');
+        }
+        this.uploadProgress = Math.round(((i + 1) / this.uploadFiles.length) * 100);
+      }
+
+      this.uploading = false;
+      this.showUpload = false;
+      this.uploadFiles = [];
+      this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, notes: '' };
+      this.showToast('Upload complete');
+      this.loadLibrary();
+    },
+
+    compressPdf(pdf) {
+      this.compressTarget = pdf;
+      this.compressForm = { quality: 82, target_size: '500KB', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, label: '' };
+      this.showCompress = true;
+    },
+
+    async doCompress() {
+      if (!this.compressTarget) return;
+      this.compressing = true;
+      try {
+        const fd = new FormData();
+        fd.append('quality', this.compressForm.quality);
+        fd.append('target_size', this.compressForm.target_size);
+        fd.append('pdf_mode', this.compressForm.pdf_mode);
+        fd.append('pdf_dpi', this.compressForm.pdf_dpi);
+        fd.append('pdf_grayscale', this.compressForm.pdf_grayscale);
+        fd.append('label', this.compressForm.label);
+        const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || 'Compression failed');
+        }
+        this.showToast('Compression complete');
+        this.loadVersions(this.compressTarget.id);
+        this.loadLibrary();
+      } catch (e) {
+        this.showToast('Compression failed: ' + e.message, 'error');
+      }
+      this.compressing = false;
+      this.showCompress = false;
+    },
+
+    editNotes(pdf) {
+      this.notesTarget = pdf;
+      this.notesText = pdf.notes || '';
+      this.showNotes = true;
+    },
+
+    async saveNotes() {
+      if (!this.notesTarget) return;
+      await fetch(`/api/pdfs/${this.notesTarget.id}/notes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: this.notesText }),
+      });
+      this.showNotes = false;
+      this.loadLibrary();
+    },
+
+    async deletePdf(pdf) {
+      if (!confirm(`Delete "${pdf.filename}" and all versions?`)) return;
+      await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
+      this.showToast('Deleted');
+      this.loadLibrary();
+    },
+
+    async deleteVersion(pdfId, versionId) {
+      if (!confirm('Delete this version?')) return;
+      await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
+      this.loadVersions(pdfId);
+      this.loadLibrary();
+    },
+
+    fmtSize(bytes) {
+      if (!bytes) return '-';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let v = bytes, u = 0;
+      while (v >= 1000 && u < 3) { v /= 1000; u++; }
+      return v.toFixed(u === 0 ? 0 : 1) + ' ' + units[u];
+    },
+
+    fmtDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    },
+
+    showToast(msg, type = 'success') {
+      this.toast = msg;
+      this.toastType = type;
+      setTimeout(() => { this.toast = ''; }, 3000);
+    },
+  };
+}
+</script>
+</body>
+</html>

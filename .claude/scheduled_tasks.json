@@ -1,0 +1,14 @@
+{
+  "tasks": [
+    {
+      "id": "d4de33fe",
+      "cron": "*/30 * * * *",
+      "prompt": "You are continuing the PDF Manager project at /Users/liyufeng/Desktop/research/pdf-image-compressor.\n\n## Task: Analyze, Plan, Improve\n\n1. **Analyze** — Run all tests, check the web server, review code quality:\n   - `uv run pytest tests/ -v`\n   - Start web server and test key endpoints\n   - Check for code smells, missing error handling, edge cases\n\n2. **Plan** — Based on analysis, pick 1-2 concrete improvements:\n   - Prioritize: bugs > UX issues > missing features > performance > polish\n   - Write a brief plan (what to change, why, in which files)\n\n3. **Implement** — Make the changes:\n   - Edit the code\n   - Run tests to verify no regressions\n   - Test the web server if UI changed\n   - Git commit with descriptive message\n\n4. **Report** — Summarize what was done and what's next\n\n## Current project structure\n- `src/file_compressor/` — Python package (core.py, pdfs.py, images.py, web.py, storage.py, cli.py, utils.py, models.py, archive.py)\n- `src/file_compressor/static/index.html` — SPA frontend\n- `tests/` — pytest test suite\n- Data stored in `~/.pdf-manager`\n\n## Quality targets\n- Test coverage 80%+\n- All functions < 50 lines\n- All files < 800 lines\n- Proper error handling at boundaries\n- Immutable data patterns",
+      "createdAt": 1780326178729,
+      "recurring": true,
+      "createdBySessionId": "05ac2152-c206-4fe2-a436-320210164493",
+      "createdByPid": 98635,
+      "createdByProcStart": "Mon Jun  1 13:17:48 2026"
+    }
+  ]
+}

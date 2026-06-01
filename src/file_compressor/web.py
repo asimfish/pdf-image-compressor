@@ -1,0 +1,298 @@
+from __future__ import annotations
+
+import shutil
+import tempfile
+from dataclasses import asdict
+from pathlib import Path
+from typing import Optional
+
+import fitz
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.background import BackgroundTask
+
+from .core import compress_path
+from .models import CompressionConfig
+from .storage import Storage
+from .utils import format_size, parse_size
+
+app = FastAPI(title="PDF Manager")
+
+_VALID_MODES = {"auto", "optimize", "raster"}
+
+
+def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int) -> None:
+    if not 1 <= quality <= 95:
+        raise HTTPException(422, detail="quality must be between 1 and 95")
+    if pdf_mode not in _VALID_MODES:
+        raise HTTPException(422, detail=f"pdf_mode must be one of {sorted(_VALID_MODES)}")
+    if not 36 <= pdf_dpi <= 300:
+        raise HTTPException(422, detail="pdf_dpi must be between 36 and 300")
+
+_STATIC = Path(__file__).parent / "static"
+_storage: Optional[Storage] = None
+
+
+def _get_storage() -> Storage:
+    global _storage
+    if _storage is None:
+        data_dir = Path.home() / ".pdf-manager"
+        _storage = Storage(data_dir)
+    return _storage
+
+
+def init_storage(data_dir: Path) -> None:
+    global _storage
+    _storage = Storage(data_dir)
+
+
+class NotesUpdate(BaseModel):
+    notes: str
+
+
+# ── Frontend ──
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
+# ── Stats ──
+
+@app.get("/api/stats")
+def api_stats():
+    return _get_storage().stats()
+
+
+# ── PDF CRUD ──
+
+@app.get("/api/pdfs")
+def api_list_pdfs():
+    storage = _get_storage()
+    return [asdict(p) for p in storage.list_pdfs()]
+
+
+@app.post("/api/pdfs/upload")
+async def api_upload_pdf(
+    file: UploadFile = File(...),
+    quality: int = Form(82),
+    target_size: Optional[str] = Form(None),
+    pdf_mode: str = Form("auto"),
+    pdf_dpi: int = Form(120),
+    pdf_grayscale: bool = Form(False),
+    notes: str = Form(""),
+):
+    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    storage = _get_storage()
+    filename = Path(file.filename or "upload.pdf").name
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(400, detail="Only PDF files are supported")
+
+    data = await file.read()
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+        page_count = len(doc)
+        doc.close()
+    except Exception:
+        raise HTTPException(400, detail="Invalid PDF file")
+
+    pdf = storage.add_pdf(filename, data, page_count, notes)
+
+    target_bytes = parse_size(target_size)
+    if target_bytes or quality < 95:
+        try:
+            _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
+        except Exception:
+            pass
+
+    return asdict(pdf)
+
+
+@app.get("/api/pdfs/{pdf_id}/download")
+def api_download_pdf(pdf_id: str):
+    storage = _get_storage()
+    pdf = storage.get_pdf(pdf_id)
+    if not pdf:
+        raise HTTPException(404, "PDF not found")
+    path = storage.get_pdf_path(pdf_id)
+    if not path or not path.exists():
+        raise HTTPException(404, "File not found")
+    return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
+
+
+@app.get("/api/pdfs/{pdf_id}/versions")
+def api_list_versions(pdf_id: str):
+    storage = _get_storage()
+    if not storage.get_pdf(pdf_id):
+        raise HTTPException(404, "PDF not found")
+    return [asdict(v) for v in storage.list_versions(pdf_id)]
+
+
+@app.post("/api/pdfs/{pdf_id}/compress")
+async def api_compress_pdf(
+    pdf_id: str,
+    quality: int = Form(82),
+    target_size: Optional[str] = Form(None),
+    pdf_mode: str = Form("auto"),
+    pdf_dpi: int = Form(120),
+    pdf_grayscale: bool = Form(False),
+    label: str = Form(""),
+):
+    _validate_compress_params(quality, pdf_mode, pdf_dpi)
+    storage = _get_storage()
+    pdf = storage.get_pdf(pdf_id)
+    if not pdf:
+        raise HTTPException(404, detail="PDF not found")
+    path = storage.get_pdf_path(pdf_id)
+    if not path or not path.exists():
+        raise HTTPException(404, detail="Original file missing")
+
+    data = path.read_bytes()
+    target_bytes = parse_size(target_size)
+    if not label:
+        label = _auto_label(target_bytes, quality, pdf_mode)
+
+    ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+    return asdict(ver)
+
+
+@app.put("/api/pdfs/{pdf_id}/notes")
+def api_update_notes(pdf_id: str, body: NotesUpdate):
+    storage = _get_storage()
+    if not storage.update_notes(pdf_id, body.notes):
+        raise HTTPException(404, "PDF not found")
+    return {"ok": True}
+
+
+@app.delete("/api/pdfs/{pdf_id}")
+def api_delete_pdf(pdf_id: str):
+    storage = _get_storage()
+    if not storage.delete_pdf(pdf_id):
+        raise HTTPException(404, "PDF not found")
+    return {"ok": True}
+
+
+# ── Version CRUD ──
+
+@app.get("/api/versions/{version_id}/download")
+def api_download_version(version_id: str):
+    storage = _get_storage()
+    path = storage.get_version_path(version_id)
+    if not path or not path.exists():
+        raise HTTPException(404, "Version not found")
+    return FileResponse(path, filename=path.name, media_type="application/pdf")
+
+
+@app.delete("/api/versions/{version_id}")
+def api_delete_version(version_id: str):
+    storage = _get_storage()
+    if not storage.delete_version(version_id):
+        raise HTTPException(404, "Version not found")
+    return {"ok": True}
+
+
+# ── Legacy compress endpoint (backward compat) ──
+
+@app.post("/compress")
+async def compress_upload(
+    files: list[UploadFile] = File(...),
+    quality: int = Form(82),
+    max_edge: Optional[int] = Form(None),
+    target_size: Optional[str] = Form(None),
+    pdf_mode: str = Form("auto"),
+    to_webp: bool = Form(False),
+    pdf_grayscale: bool = Form(False),
+    archive: Optional[str] = Form(None),
+) -> FileResponse:
+    temp = tempfile.mkdtemp(prefix="file_compressor_web_")
+    temp_path = Path(temp)
+    upload_dir = temp_path / "uploads"
+    output_dir = temp_path / "compressed"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in files:
+        safe_name = Path(item.filename or "uploaded.bin").name
+        target = upload_dir / safe_name
+        with target.open("wb") as handle:
+            shutil.copyfileobj(item.file, handle)
+
+    config = CompressionConfig(
+        quality=quality,
+        max_edge=max_edge,
+        to_webp=to_webp,
+        target_bytes=parse_size(target_size),
+        output_dir=output_dir,
+        archive=archive,
+        pdf_mode=pdf_mode,
+        pdf_grayscale=pdf_grayscale,
+    )
+    source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
+    output = output_dir / "compressed.zip" if archive == "zip" else None
+    summary = compress_path(source, config, output)
+    result = summary.archive or next((item for item in summary.results if item.output is not None), None)
+    if result is None or result.output is None:
+        raise RuntimeError("Compression failed")
+    response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
+    response.background = BackgroundTask(shutil.rmtree, temp_path, True)
+    return response
+
+
+# ── Helpers ──
+
+def _compress_and_store(
+    storage: Storage,
+    pdf_id: str,
+    original_data: bytes,
+    quality: int,
+    target_bytes: Optional[int],
+    pdf_mode: str,
+    pdf_dpi: int,
+    pdf_grayscale: bool,
+    label: str,
+):
+    with tempfile.TemporaryDirectory(prefix="pdf_compress_") as td:
+        td_path = Path(td)
+        src = td_path / "input.pdf"
+        src.write_bytes(original_data)
+        out = td_path / "output.pdf"
+        config = CompressionConfig(
+            quality=quality,
+            target_bytes=target_bytes,
+            output_dir=td_path,
+            pdf_mode=pdf_mode,
+            pdf_dpi=pdf_dpi,
+            pdf_grayscale=pdf_grayscale,
+        )
+        compress_path(src, config, out)
+        compressed_data = out.read_bytes()
+
+    original_size = len(original_data)
+    compressed_size = len(compressed_data)
+    ratio = 1.0 - (compressed_size / original_size) if original_size > 0 else None
+
+    if not label:
+        label = _auto_label(target_bytes, quality, pdf_mode)
+
+    return storage.add_version(
+        pdf_id=pdf_id,
+        label=label,
+        file_data=compressed_data,
+        quality=quality,
+        pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi,
+        pdf_grayscale=pdf_grayscale,
+        target_bytes=target_bytes,
+        compression_ratio=ratio,
+    )
+
+
+def _auto_label(target_bytes: Optional[int], quality: int, pdf_mode: str) -> str:
+    parts = []
+    if target_bytes:
+        parts.append(format_size(target_bytes))
+    parts.append(f"Q{quality}")
+    parts.append(pdf_mode)
+    return " · ".join(parts)

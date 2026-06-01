@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Optional, Union
+
+from .archive import create_zip
+from .images import compress_image, output_suffix_for_image
+from .models import CompressionConfig, CompressionResult, CompressionSummary
+from .pdfs import compress_pdf
+from .utils import is_image, is_pdf, iter_supported_files, relative_output_path, unique_path
+
+
+def compress_path(source: Union[Path, str], config: CompressionConfig, output: Optional[Union[Path, str]] = None) -> CompressionSummary:
+    source_path = Path(source).expanduser().resolve()
+    if not source_path.exists():
+        raise FileNotFoundError(source_path)
+    output_path = Path(output).expanduser().resolve() if output is not None else None
+    if config.archive == "zip":
+        return _compress_to_zip(source_path, config, output_path)
+    if config.archive not in {None, ""}:
+        raise ValueError("archive must be zip or omitted")
+    return _compress_files(source_path, config, output_path)
+
+
+def _compress_files(source: Path, config: CompressionConfig, output: Optional[Path]) -> CompressionSummary:
+    root = source if source.is_dir() else source.parent
+    output_dir = output if output is not None and source.is_dir() else config.output_dir
+    if output is not None and source.is_file() and output.suffix == "":
+        output_dir = output
+        output = None
+    if not output_dir.is_absolute():
+        output_dir = (Path.cwd() / output_dir).resolve()
+    results: list[CompressionResult] = []
+
+    files = list(iter_supported_files(source))
+    if source.is_file() and output is not None:
+        files = [source]
+
+    for file_path in files:
+        try:
+            original_size = file_path.stat().st_size
+            explicit_output = output if source.is_file() else None
+            target = _output_for_file(file_path, root, output_dir, explicit_output, config)
+            written = _compress_one(file_path, target, config)
+            results.append(
+                CompressionResult(
+                    source=file_path,
+                    output=written,
+                    original_size=original_size,
+                    compressed_size=written.stat().st_size,
+                    status="ok",
+                )
+            )
+        except Exception as exc:
+            results.append(
+                CompressionResult(
+                    source=file_path,
+                    output=None,
+                    original_size=file_path.stat().st_size if file_path.exists() else 0,
+                    compressed_size=None,
+                    status="failed",
+                    error=str(exc),
+                )
+            )
+    return CompressionSummary(results=results)
+
+
+def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[Path]) -> CompressionSummary:
+    archive_output = output or config.output_dir / f"{source.stem if source.is_file() else source.name}.zip"
+    if not archive_output.is_absolute():
+        archive_output = (Path.cwd() / archive_output).resolve()
+    archive_output = unique_path(archive_output, config.overwrite)
+    qualities = _archive_quality_candidates(config.quality, config.target_bytes)
+    best_summary: Optional[CompressionSummary] = None
+    best_archive: Optional[Path] = None
+    best_size: Optional[int] = None
+
+    with TemporaryDirectory(prefix="file_compressor_zip_") as temp_dir:
+        temp_root = Path(temp_dir)
+        for attempt, quality in enumerate(qualities):
+            staging = temp_root / f"attempt_{attempt}"
+            staging.mkdir(parents=True, exist_ok=True)
+            attempt_config = _archive_attempt_config(config, quality, attempt)
+            summary = _compress_files(source, attempt_config, staging)
+            candidate = temp_root / f"candidate_{attempt}.zip"
+            create_zip(staging, candidate)
+            size = candidate.stat().st_size
+            archive_result = CompressionResult(
+                source=source,
+                output=archive_output,
+                original_size=sum(result.original_size for result in summary.results),
+                compressed_size=size,
+                status="ok" if all(result.status == "ok" for result in summary.results) else "partial",
+            )
+            summary.archive = archive_result
+            if best_size is None or size < best_size:
+                best_summary = summary
+                best_archive = candidate
+                best_size = size
+            if config.target_bytes is None or size <= config.target_bytes:
+                archive_output.parent.mkdir(parents=True, exist_ok=True)
+                archive_output.write_bytes(candidate.read_bytes())
+                return summary
+        if best_summary is None or best_archive is None:
+            raise RuntimeError("Archive compression produced no output")
+        archive_output.parent.mkdir(parents=True, exist_ok=True)
+        archive_output.write_bytes(best_archive.read_bytes())
+        best_summary.archive = CompressionResult(
+            source=source,
+            output=archive_output,
+            original_size=sum(result.original_size for result in best_summary.results),
+            compressed_size=archive_output.stat().st_size,
+            status="best_over_target" if config.target_bytes else "ok",
+        )
+        return best_summary
+
+
+def _compress_one(source: Path, output: Path, config: CompressionConfig) -> Path:
+    if is_image(source):
+        return compress_image(source, output, config)
+    if is_pdf(source):
+        return compress_pdf(source, output, config)
+    raise ValueError(f"Unsupported file type: {source}")
+
+
+def _output_for_file(source: Path, root: Path, output_dir: Path, explicit_output: Optional[Path], config: CompressionConfig) -> Path:
+    if explicit_output is not None and source.is_file():
+        explicit_output.parent.mkdir(parents=True, exist_ok=True)
+        return unique_path(explicit_output, config.overwrite)
+    suffix = output_suffix_for_image(source, config) if is_image(source) else source.suffix.lower()
+    return relative_output_path(source, root, output_dir, suffix, config.overwrite)
+
+
+def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list[int]:
+    start = max(1, min(95, start))
+    if target_bytes is None:
+        return [start]
+    values = list(range(start, 19, -8))
+    if values[-1] != 20:
+        values.append(20)
+    return values
+
+
+def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: int) -> CompressionConfig:
+    dpi_values = [config.pdf_dpi, 140, 120, 110, 100, 90, 80, 72, 65]
+    edge_values = [config.max_edge, 2400, 2000, 1800, 1600, 1400, 1200, 1000]
+    dpi = dpi_values[min(attempt, len(dpi_values) - 1)] or config.pdf_dpi
+    edge = edge_values[min(attempt, len(edge_values) - 1)]
+    pdf_mode = config.pdf_mode
+    if config.target_bytes is not None and attempt > 0 and pdf_mode == "auto":
+        pdf_mode = "raster"
+    return replace(
+        config,
+        quality=quality,
+        target_bytes=None,
+        output_dir=Path("."),
+        pdf_dpi=max(36, int(dpi)),
+        max_edge=edge,
+        pdf_mode=pdf_mode,
+    )

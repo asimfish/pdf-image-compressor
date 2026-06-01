@@ -1,0 +1,176 @@
+from pathlib import Path
+
+import fitz
+from fastapi.testclient import TestClient
+
+from file_compressor.web import app, init_storage
+
+
+def _make_test_pdf(path: Path, pages: int = 3) -> Path:
+    doc = fitz.open()
+    for i in range(pages):
+        page = doc.new_page()
+        page.insert_text((72, 72), f"Page {i + 1} content for testing.", fontsize=24)
+    doc.save(path)
+    doc.close()
+    return path
+
+
+def _client(tmp_path: Path) -> TestClient:
+    init_storage(tmp_path)
+    return TestClient(app)
+
+
+def test_index_returns_html(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "PDF Manager" in resp.text
+
+
+def test_stats_empty(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pdf_count"] == 0
+    assert data["version_count"] == 0
+
+
+def test_upload_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["filename"] == "test.pdf"
+    assert data["page_count"] == 3
+    assert "id" in data
+
+
+def test_upload_rejects_non_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
+    assert resp.status_code == 400
+
+
+def test_list_pdfs(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "a.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("a.pdf", f, "application/pdf")})
+    resp = client.get("/api/pdfs")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+def test_download_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "dl.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("dl.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.get(f"/api/pdfs/{pdf_id}/download")
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+
+
+def test_download_nonexistent(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/pdfs/nonexistent/download")
+    assert resp.status_code == 404
+
+
+def test_list_versions(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "v.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("v.pdf", f, "application/pdf")},
+            data={"target_size": "50KB"},
+        )
+    pdf_id = upload.json()["id"]
+    resp = client.get(f"/api/pdfs/{pdf_id}/versions")
+    assert resp.status_code == 200
+    versions = resp.json()
+    assert len(versions) >= 1
+
+
+def test_compress_creates_version(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "c.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("c.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(
+        f"/api/pdfs/{pdf_id}/compress",
+        data={"quality": "50", "pdf_mode": "raster", "label": "test version"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["label"] == "test version"
+    assert data["quality"] == 50
+
+
+def test_compress_nonexistent(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/nonexistent/compress", data={"quality": "50"})
+    assert resp.status_code == 404
+
+
+def test_update_notes(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "n.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("n.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.put(f"/api/pdfs/{pdf_id}/notes", json={"notes": "hello world"})
+    assert resp.status_code == 200
+    pdfs = client.get("/api/pdfs").json()
+    assert pdfs[0]["notes"] == "hello world"
+
+
+def test_delete_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "d.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("d.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.delete(f"/api/pdfs/{pdf_id}")
+    assert resp.status_code == 200
+    assert client.get("/api/pdfs").json() == []
+
+
+def test_delete_nonexistent(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.delete("/api/pdfs/nonexistent")
+    assert resp.status_code == 404
+
+
+def test_download_version(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "dv.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("dv.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    assert len(versions) >= 1
+    ver_id = versions[0]["id"]
+    resp = client.get(f"/api/versions/{ver_id}/download")
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+
+
+def test_delete_version(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "delv.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("delv.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    ver_id = versions[0]["id"]
+    resp = client.delete(f"/api/versions/{ver_id}")
+    assert resp.status_code == 200
+    assert client.get(f"/api/pdfs/{pdf_id}/versions").json() == []
