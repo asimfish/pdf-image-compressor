@@ -364,3 +364,71 @@ def test_compress_rejects_bad_target_size(tmp_path: Path):
     pdf_id = upload.json()["id"]
     resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"target_size": "invalid"})
     assert resp.status_code == 422
+
+
+def test_upload_rejects_quality_above_95(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "hq.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("hq.pdf", f, "application/pdf")},
+            data={"quality": "96"},
+        )
+    assert resp.status_code == 422
+
+
+def test_upload_rejects_dpi_above_300(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "hd.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("hd.pdf", f, "application/pdf")},
+            data={"pdf_dpi": "301"},
+        )
+    assert resp.status_code == 422
+
+
+def test_compress_rejects_bad_dpi(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "cbd.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cbd.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"pdf_dpi": "5"})
+    assert resp.status_code == 422
+
+
+def test_compress_rejects_bad_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "cbm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cbm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"pdf_mode": "invalid"})
+    assert resp.status_code == 422
+
+
+def test_upload_accepts_boundary_quality(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bq1.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bq1.pdf", f, "application/pdf")},
+            data={"quality": "1"},
+        )
+    assert resp.status_code == 200
+
+
+def test_upload_accepts_boundary_dpi(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "bd36.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("bd36.pdf", f, "application/pdf")},
+            data={"pdf_dpi": "36"},
+        )
+    assert resp.status_code == 200
