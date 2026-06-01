@@ -555,12 +555,25 @@ function app() {
 
     handleDrop(e) {
       this.dragOver = false;
-      const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (files.length) this.uploadFiles = files;
+      const all = [...e.dataTransfer.files];
+      const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfs.length === 0) {
+        this.showToast('Only PDF files are supported', 'error');
+        return;
+      }
+      if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
+      this.uploadFiles = pdfs;
     },
 
     handleFiles(files) {
-      this.uploadFiles = [...files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      const all = [...files];
+      const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (pdfs.length === 0) {
+        this.showToast('Only PDF files are supported', 'error');
+        return;
+      }
+      if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
+      this.uploadFiles = pdfs;
     },
 
     async doUpload() {
