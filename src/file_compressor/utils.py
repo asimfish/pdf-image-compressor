@@ -80,10 +80,7 @@ def unique_path(path: Path, overwrite: bool) -> Path:
 
 def relative_output_path(source: Path, root: Path, output_dir: Path, suffix: Optional[str], overwrite: bool) -> Path:
     rel = source.relative_to(root) if source != root else source.name
-    if isinstance(rel, Path):
-        target = output_dir / rel
-    else:
-        target = output_dir / rel
+    target = output_dir / rel
     if suffix is not None:
         target = target.with_suffix(suffix)
     target.parent.mkdir(parents=True, exist_ok=True)
