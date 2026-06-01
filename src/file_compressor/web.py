@@ -17,7 +17,7 @@ from starlette.background import BackgroundTask
 
 from .core import compress_path
 from .models import CompressionConfig
-from .storage import Storage
+from .storage import Storage, VersionRecord
 from .utils import format_size, parse_size
 
 app = FastAPI(title="PDF Manager")
@@ -329,7 +329,7 @@ def _compress_and_store(
     pdf_dpi: int,
     pdf_grayscale: bool,
     label: str,
-):
+) -> VersionRecord:
     with tempfile.TemporaryDirectory(prefix="pdf_compress_") as td:
         td_path = Path(td)
         src = td_path / "input.pdf"
