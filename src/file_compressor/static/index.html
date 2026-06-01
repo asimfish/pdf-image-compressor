@@ -54,7 +54,7 @@
     </div>
   </header>
 
-  <!-- Search / Filter -->
+  <!-- Search / Filter / Sort -->
   <div class="mb-6 flex gap-3">
     <div class="flex-1 relative">
       <input type="text" x-model="search" placeholder="Search PDFs..."
@@ -63,6 +63,12 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
       </svg>
     </div>
+    <select x-model="sortBy" class="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+      <option value="date">Newest</option>
+      <option value="name">Name</option>
+      <option value="size">Largest</option>
+      <option value="savings">Most Saved</option>
+    </select>
   </div>
 
   <!-- Loading State -->
@@ -378,6 +384,7 @@ function app() {
     versionCache: {},
     stats: null,
     search: '',
+    sortBy: 'date',
     presets: ['200KB', '500KB', '1MB', '2MB', '5MB'],
     expanded: null,
     loading: true,
@@ -408,9 +415,19 @@ function app() {
     toastType: 'success',
 
     get filteredPdfs() {
-      if (!this.search.trim()) return this.pdfs;
-      const q = this.search.toLowerCase();
-      return this.pdfs.filter(p => p.filename.toLowerCase().includes(q) || (p.notes || '').toLowerCase().includes(q));
+      let list = this.pdfs;
+      if (this.search.trim()) {
+        const q = this.search.toLowerCase();
+        list = list.filter(p => p.filename.toLowerCase().includes(q) || (p.notes || '').toLowerCase().includes(q));
+      }
+      const sorted = [...list];
+      switch (this.sortBy) {
+        case 'name': sorted.sort((a, b) => a.filename.localeCompare(b.filename)); break;
+        case 'size': sorted.sort((a, b) => b.file_size - a.file_size); break;
+        case 'savings': sorted.sort((a, b) => this.bestSaving(b) - this.bestSaving(a)); break;
+        default: sorted.sort((a, b) => b.upload_time.localeCompare(a.upload_time)); break;
+      }
+      return sorted;
     },
 
     async loadLibrary() {
