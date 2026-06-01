@@ -154,3 +154,30 @@ def test_file_on_disk(tmp_path: Path):
     assert (tmp_path / "versions").is_dir()
     assert (tmp_path / "library.db").is_file()
     storage.close()
+
+
+def test_batch_delete_pdfs(tmp_path: Path):
+    storage = Storage(tmp_path)
+    ids = []
+    for name in ["a.pdf", "b.pdf", "c.pdf"]:
+        pdf = storage.add_pdf(name, b"%PDF", 1)
+        storage.add_version(
+            pdf_id=pdf.id, label="v1", file_data=b"compressed",
+            quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+            target_bytes=None, compression_ratio=None,
+        )
+        ids.append(pdf.id)
+
+    deleted = storage.batch_delete_pdfs(ids[:2])
+    assert deleted == 2
+    assert storage.get_pdf(ids[0]) is None
+    assert storage.get_pdf(ids[1]) is None
+    assert storage.get_pdf(ids[2]) is not None
+    assert len(storage.list_pdfs()) == 1
+    storage.close()
+
+
+def test_batch_delete_pdfs_empty(tmp_path: Path):
+    storage = Storage(tmp_path)
+    assert storage.batch_delete_pdfs([]) == 0
+    storage.close()
