@@ -322,10 +322,13 @@
         <p class="text-sm text-gray-500 mt-1 text-center" x-text="uploadStatus"></p>
       </div>
 
+      <!-- Validation Errors -->
+      <div x-show="uploadValidation" class="mt-3 text-sm text-red-600" x-text="uploadValidation"></div>
+
       <!-- Actions -->
       <div class="flex gap-3 mt-5">
         <button @click="showUpload = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
-        <button @click="doUpload()" :disabled="uploadFiles.length === 0 || uploading"
+        <button @click="doUpload()" :disabled="uploadFiles.length === 0 || uploading || uploadValidation"
           class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">
           Upload & Compress
         </button>
@@ -391,9 +394,11 @@
         <p class="text-sm text-gray-500 mt-1 text-center">Compressing...</p>
       </div>
 
+      <div x-show="compressValidation" class="mt-3 text-sm text-red-600" x-text="compressValidation"></div>
+
       <div class="flex gap-3 mt-5">
         <button @click="showCompress = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
-        <button @click="doCompress()" :disabled="compressing"
+        <button @click="doCompress()" :disabled="compressing || compressValidation"
           class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40">
           Compress
         </button>
@@ -468,6 +473,22 @@ function app() {
     // Toast
     toast: '',
     toastType: 'success',
+
+    get uploadValidation() {
+      const q = this.uploadForm.quality;
+      if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
+      const d = this.uploadForm.pdf_dpi;
+      if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
+      return '';
+    },
+
+    get compressValidation() {
+      const q = this.compressForm.quality;
+      if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
+      const d = this.compressForm.pdf_dpi;
+      if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
+      return '';
+    },
 
     get filteredPdfs() {
       let list = this.pdfs;
