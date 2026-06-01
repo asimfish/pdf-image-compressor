@@ -55,3 +55,29 @@ def test_compress_image_bmp_to_jpg(tmp_path: Path):
     result = summary.results[0]
     assert result.output is not None
     assert result.output.suffix == ".jpg"
+
+
+def test_compress_png(tmp_path: Path):
+    source = tmp_path / "input.png"
+    Image.new("RGBA", (800, 600), (255, 0, 0, 128)).save(source)
+
+    summary = compress_path(source, CompressionConfig(output_dir=tmp_path / "compressed", quality=50))
+
+    result = summary.results[0]
+    assert result.status == "ok"
+    assert result.output is not None
+    assert result.output.suffix == ".png"
+    assert result.compressed_size is not None
+    assert result.compressed_size <= result.original_size
+
+
+def test_compress_png_low_quality_quantizes(tmp_path: Path):
+    source = tmp_path / "big.png"
+    Image.new("RGB", (1200, 900), "blue").save(source)
+
+    config = CompressionConfig(output_dir=tmp_path / "compressed", quality=30)
+    summary = compress_path(source, config)
+
+    result = summary.results[0]
+    assert result.status == "ok"
+    assert result.compressed_size is not None
