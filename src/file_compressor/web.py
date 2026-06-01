@@ -197,6 +197,7 @@ async def api_batch_compress(
         raise HTTPException(404, detail="No PDFs in library")
 
     target_bytes = parse_size(target_size)
+    label = _auto_label(target_bytes, quality, pdf_mode)
     logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), quality, pdf_mode)
     results = []
     for pdf in pdfs:
@@ -205,7 +206,6 @@ async def api_batch_compress(
             continue
         try:
             data = path.read_bytes()
-            label = _auto_label(target_bytes, quality, pdf_mode)
             ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok"})
         except Exception as exc:
@@ -240,10 +240,7 @@ class BatchDeleteRequest(BaseModel):
 @app.post("/api/pdfs/batch-delete")
 def api_batch_delete(body: BatchDeleteRequest):
     storage = _get_storage()
-    deleted = 0
-    for pdf_id in body.pdf_ids:
-        if storage.delete_pdf(pdf_id):
-            deleted += 1
+    deleted = storage.batch_delete_pdfs(body.pdf_ids)
     return {"deleted": deleted}
 
 
