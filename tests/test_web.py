@@ -37,6 +37,23 @@ def test_stats_empty(tmp_path: Path):
     assert data["version_count"] == 0
 
 
+def test_stats_with_data(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "st.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("st.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    resp = client.get("/api/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pdf_count"] == 1
+    assert data["version_count"] >= 2
+    assert data["total_original_bytes"] > 0
+    assert data["total_compressed_bytes"] > 0
+    assert data["total_saved_bytes"] >= 0
+
+
 def test_health(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.get("/api/health")
@@ -45,6 +62,20 @@ def test_health(tmp_path: Path):
     assert data["status"] == "ok"
     assert data["pdf_count"] == 0
     assert data["version_count"] == 0
+
+
+def test_health_with_versions(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "hv.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("hv.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pdf_count"] == 1
+    assert data["version_count"] >= 2
 
 
 def test_health_with_data(tmp_path: Path):
