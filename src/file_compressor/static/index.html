@@ -56,14 +56,14 @@
         <span x-show="!batchCompressing">Compress All</span>
         <span x-show="batchCompressing">Compressing...</span>
       </button>
-      <button @click="selectMode = !selectMode; selectedPdfs.clear()"
+      <button @click="selectMode = !selectMode; selectedPdfs = {}"
         class="px-4 py-2.5 rounded-xl font-semibold transition shadow-sm"
         :class="selectMode ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'">
         <span x-text="selectMode ? 'Cancel' : 'Select'"></span>
       </button>
-      <button x-show="selectMode && selectedPdfs.size > 0" @click="batchDelete()"
+      <button x-show="selectMode && Object.keys(selectedPdfs).length > 0" @click="batchDelete()"
         class="px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition shadow-sm">
-        Delete (<span x-text="selectedPdfs.size"></span>)
+        Delete (<span x-text="Object.keys(selectedPdfs).length"></span>)
       </button>
     </div>
   </header>
@@ -122,7 +122,7 @@
         <!-- Card Header -->
         <div class="flex items-start gap-4 p-5 cursor-pointer" @click="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)">
           <div x-show="selectMode" @click.stop class="flex items-center pt-1">
-            <input type="checkbox" :checked="selectedPdfs.has(pdf.id)" @change="toggleSelect(pdf.id)"
+            <input type="checkbox" :checked="selectedPdfs[pdf.id]" @change="toggleSelect(pdf.id)"
               class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
           </div>
           <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
@@ -438,7 +438,7 @@ function app() {
     apiError: false,
     batchCompressing: false,
     selectMode: false,
-    selectedPdfs: new Set(),
+    selectedPdfs: {},
 
     // Upload
     showUpload: false,
@@ -525,26 +525,26 @@ function app() {
     },
 
     toggleSelect(pdfId) {
-      if (this.selectedPdfs.has(pdfId)) {
-        this.selectedPdfs.delete(pdfId);
+      if (this.selectedPdfs[pdfId]) {
+        delete this.selectedPdfs[pdfId];
       } else {
-        this.selectedPdfs.add(pdfId);
+        this.selectedPdfs[pdfId] = true;
       }
     },
 
     async batchDelete() {
-      const count = this.selectedPdfs.size;
-      if (!confirm(`Delete ${count} PDF(s) and all their versions?`)) return;
+      const ids = Object.keys(this.selectedPdfs);
+      if (!confirm(`Delete ${ids.length} PDF(s) and all their versions?`)) return;
       try {
         const res = await fetch('/api/pdfs/batch-delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdf_ids: [...this.selectedPdfs] }),
+          body: JSON.stringify({ pdf_ids: ids }),
         });
         if (!res.ok) throw new Error('Batch delete failed');
         const data = await res.json();
         this.showToast(`Deleted ${data.deleted} PDFs`);
-        this.selectedPdfs.clear();
+        this.selectedPdfs = {};
         this.selectMode = false;
         this.loadLibrary();
       } catch (e) {
