@@ -618,7 +618,7 @@ function app() {
       this.uploadProgress = 10;
       this.uploadStatus = 'Uploading...';
       let succeeded = 0;
-      let failed = 0;
+      const errors = [];
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
         this.uploadProgress = Math.round(((i + 0.5) / this.uploadFiles.length) * 100);
@@ -630,11 +630,10 @@ function app() {
             throw new Error(err.detail || 'Upload failed');
           }
           const data = await res.json();
-          if (data.warning) this.showToast(data.warning, 'error');
+          if (data.warning) errors.push(data.warning);
           succeeded++;
         } catch (e) {
-          failed++;
-          this.showToast(`${this.uploadFiles[i].name}: ${e.message}`, 'error');
+          errors.push(`${this.uploadFiles[i].name}: ${e.message}`);
         }
         this.uploadProgress = Math.round(((i + 1) / this.uploadFiles.length) * 100);
       }
@@ -642,12 +641,12 @@ function app() {
       this.showUpload = false;
       this.uploadFiles = [];
       this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, notes: '' };
-      if (failed === 0) {
+      if (errors.length === 0) {
         this.showToast(`Uploaded ${succeeded} PDF(s)`);
       } else if (succeeded > 0) {
-        this.showToast(`Uploaded ${succeeded}, failed ${failed}`, 'error');
+        this.showToast(`Uploaded ${succeeded}, ${errors.length} error(s): ${errors.join('; ')}`, 'error');
       } else {
-        this.showToast('All uploads failed', 'error');
+        this.showToast(`Upload failed: ${errors.join('; ')}`, 'error');
       }
       this.loadLibrary();
     },
@@ -664,7 +663,7 @@ function app() {
         const data = await res.json();
         const errors = (data.results || []).filter(r => r.status === 'error');
         if (errors.length > 0) {
-          this.showToast(`Compressed ${data.compressed}, ${errors.length} failed: ${errors.map(e => e.filename).join(', ')}`, 'error');
+          this.showToast(`Compressed ${data.compressed}, ${errors.length} failed: ${errors.map(e => e.filename + ' (' + (e.error || 'unknown') + ')').join('; ')}`, 'error');
         } else {
           this.showToast(`Compressed ${data.compressed} PDFs`);
         }
