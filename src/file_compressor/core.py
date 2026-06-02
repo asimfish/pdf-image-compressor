@@ -55,11 +55,15 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
                 )
             )
         except Exception as exc:
+            try:
+                orig_size = file_path.stat().st_size
+            except OSError:
+                orig_size = 0
             results.append(
                 CompressionResult(
                     source=file_path,
                     output=None,
-                    original_size=file_path.stat().st_size if file_path.exists() else 0,
+                    original_size=orig_size,
                     compressed_size=None,
                     status="failed",
                     error=str(exc),
