@@ -371,3 +371,29 @@ def test_migration_adds_strip_metadata_column(tmp_path: Path):
     assert len(versions) == 1
     assert versions[0].strip_metadata is True
     storage.close()
+
+
+def test_add_pdf_cleans_file_on_db_error(tmp_path: Path):
+    storage = Storage(tmp_path)
+    originals = tmp_path / "originals"
+    # Close DB so INSERT fails
+    storage._conn.close()
+    try:
+        storage.add_pdf("fail.pdf", b"%PDF-1.4", 1)
+    except Exception:
+        pass
+    assert not any(originals.iterdir())
+
+
+def test_add_version_cleans_file_on_db_error(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("ok.pdf", b"%PDF-1.4", 1)
+    versions = tmp_path / "versions"
+    # Close DB so INSERT fails
+    storage._conn.close()
+    try:
+        storage.add_version(pdf.id, "v1", b"%PDF-1.4 compressed", 82, "auto", 120, False, None, 0.5)
+    except Exception:
+        pass
+    remaining = list(versions.iterdir())
+    assert len(remaining) == 0
