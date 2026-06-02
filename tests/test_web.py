@@ -1120,3 +1120,17 @@ def test_compress_strip_metadata_default_true(tmp_path: Path):
     assert resp.status_code == 200
     assert len(captured_configs) == 1
     assert captured_configs[0].strip_metadata is True
+
+
+def test_version_list_includes_strip_metadata(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "vsm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("vsm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "strip_metadata": "false"})
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    assert len(versions) >= 1
+    # Find the version with strip_metadata=false
+    sm_false = [v for v in versions if v["strip_metadata"] is False]
+    assert len(sm_false) >= 1

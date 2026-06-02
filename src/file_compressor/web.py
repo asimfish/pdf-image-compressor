@@ -388,6 +388,7 @@ def _compress_and_store(
         pdf_grayscale=pdf_grayscale,
         target_bytes=target_bytes,
         compression_ratio=ratio,
+        strip_metadata=strip_metadata,
     )
 
 

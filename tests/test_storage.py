@@ -298,3 +298,76 @@ def test_batch_delete_rollback_on_error(tmp_path: Path):
     assert storage.get_pdf(p1.id) is not None
     assert storage.get_pdf(p2.id) is not None
     storage.close()
+
+
+def test_version_strip_metadata_true(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("sm.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="stripped", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5, strip_metadata=True,
+    )
+    assert v.strip_metadata is True
+    versions = storage.list_versions(pdf.id)
+    assert versions[0].strip_metadata is True
+    storage.close()
+
+
+def test_version_strip_metadata_false(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("nosm.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="kept", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5, strip_metadata=False,
+    )
+    assert v.strip_metadata is False
+    versions = storage.list_versions(pdf.id)
+    assert versions[0].strip_metadata is False
+    storage.close()
+
+
+def test_version_strip_metadata_default_true(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("def.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="default", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+    assert v.strip_metadata is True
+    storage.close()
+
+
+def test_migration_adds_strip_metadata_column(tmp_path: Path):
+    """Test that an existing database without strip_metadata column gets migrated."""
+    import sqlite3
+    db_path = tmp_path / "library.db"
+    (tmp_path / "originals").mkdir()
+    (tmp_path / "versions").mkdir()
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript("""
+        CREATE TABLE pdfs (
+            id TEXT PRIMARY KEY, filename TEXT NOT NULL, file_path TEXT NOT NULL,
+            file_size INTEGER NOT NULL, page_count INTEGER NOT NULL DEFAULT 0,
+            upload_time TEXT NOT NULL, notes TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE versions (
+            id TEXT PRIMARY KEY, pdf_id TEXT NOT NULL REFERENCES pdfs(id) ON DELETE CASCADE,
+            label TEXT NOT NULL, file_path TEXT NOT NULL, file_size INTEGER NOT NULL,
+            quality INTEGER NOT NULL, pdf_mode TEXT NOT NULL DEFAULT 'auto',
+            pdf_dpi INTEGER NOT NULL DEFAULT 120, pdf_grayscale INTEGER NOT NULL DEFAULT 0,
+            target_bytes INTEGER, compression_ratio REAL, created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("INSERT INTO pdfs VALUES ('p1','test.pdf','',100,1,'2024-01-01','')")
+    conn.execute("INSERT INTO versions VALUES ('v1','p1','v1','',50,80,'auto',120,0,NULL,0.5,'2024-01-01')")
+    conn.commit()
+    conn.close()
+
+    storage = Storage(tmp_path)
+    versions = storage.list_versions("p1")
+    assert len(versions) == 1
+    assert versions[0].strip_metadata is True
+    storage.close()

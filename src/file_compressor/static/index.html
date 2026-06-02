@@ -692,7 +692,7 @@ function app() {
         pdf_mode: version.pdf_mode,
         pdf_dpi: version.pdf_dpi,
         pdf_grayscale: version.pdf_grayscale,
-        strip_metadata: true,
+        strip_metadata: version.strip_metadata !== false,
         label: '',
       };
       this.showCompress = true;

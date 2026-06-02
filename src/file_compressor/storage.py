@@ -28,6 +28,7 @@ class VersionRecord:
     pdf_mode: str
     pdf_dpi: int
     pdf_grayscale: bool
+    strip_metadata: bool
     target_bytes: Optional[int]
     compression_ratio: Optional[float]
     created_at: str
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS versions (
     pdf_mode TEXT NOT NULL DEFAULT 'auto',
     pdf_dpi INTEGER NOT NULL DEFAULT 120,
     pdf_grayscale INTEGER NOT NULL DEFAULT 0,
+    strip_metadata INTEGER NOT NULL DEFAULT 1,
     target_bytes INTEGER,
     compression_ratio REAL,
     created_at TEXT NOT NULL
@@ -76,6 +78,7 @@ class Storage:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
 
     def __enter__(self) -> "Storage":
         return self
@@ -85,6 +88,13 @@ class Storage:
 
     def close(self) -> None:
         self._conn.close()
+
+    def _migrate(self) -> None:
+        """Add missing columns for backward compatibility with older databases."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(versions)").fetchall()}
+        if "strip_metadata" not in cols:
+            self._conn.execute("ALTER TABLE versions ADD COLUMN strip_metadata INTEGER NOT NULL DEFAULT 1")
+            self._conn.commit()
 
     # ── PDF CRUD ──
 
@@ -190,19 +200,21 @@ class Storage:
         pdf_grayscale: bool,
         target_bytes: Optional[int],
         compression_ratio: Optional[float],
+        strip_metadata: bool = True,
     ) -> VersionRecord:
         ver_id = uuid.uuid4().hex[:12]
         file_path = self._versions / f"{ver_id}.pdf"
         file_path.write_bytes(file_data)
         now = _now_iso()
         self._conn.execute(
-            "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), target_bytes, compression_ratio, now),
+            "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
         )
         self._conn.commit()
         return VersionRecord(
             id=ver_id, pdf_id=pdf_id, label=label, file_size=len(file_data),
             quality=quality, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi, pdf_grayscale=bool(pdf_grayscale),
+            strip_metadata=bool(strip_metadata),
             target_bytes=target_bytes, compression_ratio=compression_ratio, created_at=now,
         )
 
@@ -264,6 +276,7 @@ def _row_to_version(row: sqlite3.Row) -> VersionRecord:
         pdf_mode=row["pdf_mode"],
         pdf_dpi=row["pdf_dpi"],
         pdf_grayscale=bool(row["pdf_grayscale"]),
+        strip_metadata=bool(row["strip_metadata"]),
         target_bytes=row["target_bytes"],
         compression_ratio=row["compression_ratio"],
         created_at=row["created_at"],
