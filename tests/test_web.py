@@ -571,6 +571,20 @@ def test_compress_with_relative_target_size(tmp_path: Path):
     assert resp.status_code == 200
 
 
+def test_upload_rejects_file_too_large(tmp_path: Path):
+    client = _client(tmp_path)
+    from unittest.mock import patch
+    # Create a fake large file by mocking the size check
+    big_data = b"%PDF-1.4 fake" + b"\x00" * 100
+    with patch("file_compressor.web._MAX_UPLOAD_BYTES", 50):
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("big.pdf", big_data, "application/pdf")},
+        )
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["detail"].lower()
+
+
 # ── Legacy /compress endpoint tests ──
 
 def test_legacy_compress_single_file(tmp_path: Path):

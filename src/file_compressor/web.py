@@ -23,6 +23,7 @@ from .utils import format_size, parse_size
 app = FastAPI(title="PDF Manager")
 
 _VALID_MODES = {"auto", "optimize", "raster"}
+_MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
 def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_size: Optional[str] = None) -> None:
@@ -109,6 +110,8 @@ async def api_upload_pdf(
         raise HTTPException(400, detail="Only PDF files are supported")
 
     data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, detail=f"File too large ({format_size(len(data))}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
     try:
         doc = fitz.open(stream=data, filetype="pdf")
         page_count = len(doc)
