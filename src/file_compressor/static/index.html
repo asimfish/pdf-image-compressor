@@ -467,6 +467,16 @@ function app() {
     // Toast
     toast: '',
     toastType: 'success',
+    _buildCompressFd(form, extras) {
+      const fd = new FormData();
+      fd.append('quality', form.quality);
+      fd.append('target_size', form.target_size);
+      fd.append('pdf_mode', form.pdf_mode);
+      fd.append('pdf_dpi', form.pdf_dpi);
+      fd.append('pdf_grayscale', form.pdf_grayscale);
+      if (extras) Object.entries(extras).forEach(([k, v]) => fd.append(k, v));
+      return fd;
+    },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
       return /^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 2MB)';
@@ -596,14 +606,7 @@ function app() {
       let succeeded = 0;
       let failed = 0;
       for (let i = 0; i < this.uploadFiles.length; i++) {
-        const fd = new FormData();
-        fd.append('file', this.uploadFiles[i]);
-        fd.append('quality', this.uploadForm.quality);
-        fd.append('target_size', this.uploadForm.target_size);
-        fd.append('pdf_mode', this.uploadForm.pdf_mode);
-        fd.append('pdf_dpi', this.uploadForm.pdf_dpi);
-        fd.append('pdf_grayscale', this.uploadForm.pdf_grayscale);
-        fd.append('notes', this.uploadForm.notes);
+        const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
         this.uploadProgress = Math.round(((i + 0.5) / this.uploadFiles.length) * 100);
         this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
         try {
@@ -641,12 +644,7 @@ function app() {
     async doBatchCompress() {
       this.batchCompressing = true;
       try {
-        const fd = new FormData();
-        fd.append('quality', this.batchForm.quality);
-        fd.append('target_size', this.batchForm.target_size);
-        fd.append('pdf_mode', this.batchForm.pdf_mode);
-        fd.append('pdf_dpi', this.batchForm.pdf_dpi);
-        fd.append('pdf_grayscale', this.batchForm.pdf_grayscale);
+        const fd = this._buildCompressFd(this.batchForm);
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Batch compress failed');
         const data = await res.json();
@@ -685,13 +683,7 @@ function app() {
       if (!this.compressTarget) return;
       this.compressing = true;
       try {
-        const fd = new FormData();
-        fd.append('quality', this.compressForm.quality);
-        fd.append('target_size', this.compressForm.target_size);
-        fd.append('pdf_mode', this.compressForm.pdf_mode);
-        fd.append('pdf_dpi', this.compressForm.pdf_dpi);
-        fd.append('pdf_grayscale', this.compressForm.pdf_grayscale);
-        fd.append('label', this.compressForm.label);
+        const fd = this._buildCompressFd(this.compressForm, { label: this.compressForm.label });
         const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
