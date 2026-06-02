@@ -200,7 +200,7 @@
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-sm text-gray-800">
                       <span x-text="v.label"></span>
-                      <span x-show="v.file_size === Math.min(...(versionCache[pdf.id] || []).map(x => x.file_size)) && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
+                      <span x-show="bestVersion(pdf)?.file_size === v.file_size && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
                     </div>
                     <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
                       <span x-text="fmtSize(v.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
