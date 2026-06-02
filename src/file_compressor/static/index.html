@@ -226,7 +226,6 @@
     @keydown.enter.window="if (showUpload && uploadFiles.length > 0 && !uploading && !uploadValidation) doUpload()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
-      <!-- Drop Zone -->
       <div class="drop-zone border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-5 transition" :class="dragOver && 'drag-over'" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop($event)" @click="$refs.fileInput.click()">
         <input type="file" accept=".pdf" multiple x-ref="fileInput" class="hidden" @change="handleFiles($event.target.files)">
         <svg class="w-10 h-10 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -288,7 +287,6 @@
         <label class="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
         <textarea x-model="uploadForm.notes" maxlength="5000" rows="2" placeholder="Add a note..." class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm resize-none"></textarea>
       </div>
-      <!-- Progress -->
       <div x-show="uploading" class="mt-4">
         <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div class="h-full bg-blue-600 rounded-full transition-all" :style="'width:' + uploadProgress + '%'"></div>
@@ -780,7 +778,9 @@ function app() {
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       let v = bytes, u = 0;
       while (v >= 1000 && u < 4) { v /= 1000; u++; }
-      return v.toFixed(u === 0 ? 0 : 1) + ' ' + units[u];
+      const fixed = v.toFixed(u === 0 ? 0 : 1);
+      if (fixed === '1000.0' && u < 4) return '1.0 ' + units[u + 1];
+      return fixed + ' ' + units[u];
     },
     fmtDate(iso) {
       if (!iso) return '';
