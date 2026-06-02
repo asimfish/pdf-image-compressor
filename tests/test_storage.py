@@ -236,3 +236,30 @@ def test_list_pdfs_with_stats_multiple(tmp_path: Path):
     assert p1_stats["version_count"] == 1
     assert p2_stats["version_count"] == 0
     storage.close()
+
+
+def test_delete_pdf_cleans_version_files(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("doc.pdf", b"%PDF" * 100, 2)
+    v1 = storage.add_version(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed1",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+    v2 = storage.add_version(
+        pdf_id=pdf.id, label="v2", file_data=b"compressed2",
+        quality=60, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.7,
+    )
+    v1_path = storage.get_version_path(v1.id)
+    v2_path = storage.get_version_path(v2.id)
+    assert v1_path is not None and v1_path.exists()
+    assert v2_path is not None and v2_path.exists()
+
+    storage.delete_pdf(pdf.id)
+
+    assert not v1_path.exists()
+    assert not v2_path.exists()
+    assert storage.get_pdf(pdf.id) is None
+    assert storage.list_versions(pdf.id) == []
+    storage.close()

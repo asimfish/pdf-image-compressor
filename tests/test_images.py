@@ -268,3 +268,31 @@ def test_compress_image_preserves_exif_when_disabled(tmp_path: Path):
     with Image.open(output) as img:
         exif = img.getexif()
         assert len(exif) > 0
+
+
+def test_compress_path_strips_exif_by_default(tmp_path: Path):
+    source = tmp_path / "exif.jpg"
+    _make_jpeg_with_exif(source)
+
+    config = CompressionConfig(output_dir=tmp_path / "out", quality=82, strip_metadata=True)
+    summary = compress_path(source, config)
+
+    assert summary.results[0].status == "ok"
+    out_path = summary.results[0].output
+    assert out_path is not None
+    with Image.open(out_path) as img:
+        assert len(img.getexif()) == 0
+
+
+def test_compress_path_preserves_exif_when_disabled(tmp_path: Path):
+    source = tmp_path / "exif.jpg"
+    _make_jpeg_with_exif(source)
+
+    config = CompressionConfig(output_dir=tmp_path / "out", quality=82, strip_metadata=False)
+    summary = compress_path(source, config)
+
+    assert summary.results[0].status == "ok"
+    out_path = summary.results[0].output
+    assert out_path is not None
+    with Image.open(out_path) as img:
+        assert len(img.getexif()) > 0
