@@ -6,3 +6,4 @@ compressed/
 *.egg-info/
 .DS_Store
 .gitnexus
+.claude/

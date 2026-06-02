@@ -138,6 +138,8 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
     start = max(1, min(95, start))
     if target_bytes is None:
         return [start]
+    if start <= 20:
+        return [start]
     values = list(range(start, 19, -8))
     if values[-1] != 20:
         values.append(20)

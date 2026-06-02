@@ -141,6 +141,22 @@ def test_archive_quality_candidates_clamped():
     assert candidates[0] == 95
 
 
+def test_archive_quality_candidates_low_quality_with_target():
+    candidates = _archive_quality_candidates(1, 50_000)
+    assert candidates == [1]
+
+
+def test_archive_quality_candidates_boundary_20():
+    candidates = _archive_quality_candidates(20, 50_000)
+    assert candidates == [20]
+
+
+def test_archive_quality_candidates_just_above_20():
+    candidates = _archive_quality_candidates(21, 50_000)
+    assert candidates[0] == 21
+    assert 20 in candidates
+
+
 def test_compress_path_zip_with_target(tmp_path: Path):
     docs = tmp_path / "docs"
     docs.mkdir()

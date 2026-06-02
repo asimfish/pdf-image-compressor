@@ -719,6 +719,24 @@ def test_batch_compress_rejects_invalid_params(tmp_path: Path):
     assert resp.status_code == 422
 
 
+def test_batch_compress_rejects_bad_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"pdf_mode": "invalid"})
+    assert resp.status_code == 422
+
+
+def test_batch_compress_rejects_bad_dpi(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"pdf_dpi": "5"})
+    assert resp.status_code == 422
+
+
+def test_batch_compress_rejects_bad_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"target_size": "abc"})
+    assert resp.status_code == 422
+
+
 def test_upload_rejects_file_too_large(tmp_path: Path):
     client = _client(tmp_path)
     from unittest.mock import patch
