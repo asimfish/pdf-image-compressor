@@ -102,6 +102,7 @@
     </svg>
     <p class="text-gray-500 text-lg" x-text="search.trim() || filterTab !== 'All' ? 'No matching PDFs' : 'No PDFs yet'"></p>
     <p class="text-gray-400 text-sm mt-1" x-text="search.trim() || filterTab !== 'All' ? 'Try a different search or filter' : 'Upload your first PDF to get started'"></p>
+    <button x-show="!search.trim() && filterTab === 'All'" @click="showUpload = true" class="mt-4 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">+ Upload PDF</button>
   </div>
   <div class="grid gap-4" x-show="filteredPdfs.length > 0">
     <template x-for="pdf in filteredPdfs" :key="pdf.id">
