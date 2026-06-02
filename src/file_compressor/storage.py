@@ -111,11 +111,15 @@ class Storage:
         file_path = self._originals / stored_name
         file_path.write_bytes(file_data)
         now = _now_iso()
-        self._conn.execute(
-            "INSERT INTO pdfs (id, filename, file_path, file_size, page_count, upload_time, notes) VALUES (?,?,?,?,?,?,?)",
-            (pdf_id, filename, str(file_path), len(file_data), page_count, now, notes),
-        )
-        self._conn.commit()
+        try:
+            self._conn.execute(
+                "INSERT INTO pdfs (id, filename, file_path, file_size, page_count, upload_time, notes) VALUES (?,?,?,?,?,?,?)",
+                (pdf_id, filename, str(file_path), len(file_data), page_count, now, notes),
+            )
+            self._conn.commit()
+        except Exception:
+            file_path.unlink(missing_ok=True)
+            raise
         return PdfRecord(id=pdf_id, filename=filename, file_size=len(file_data), page_count=page_count, upload_time=now, notes=notes)
 
     def get_pdf(self, pdf_id: str) -> Optional[PdfRecord]:
@@ -212,11 +216,15 @@ class Storage:
         file_path = self._versions / f"{ver_id}.pdf"
         file_path.write_bytes(file_data)
         now = _now_iso()
-        self._conn.execute(
-            "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
-        )
-        self._conn.commit()
+        try:
+            self._conn.execute(
+                "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
+            )
+            self._conn.commit()
+        except Exception:
+            file_path.unlink(missing_ok=True)
+            raise
         return VersionRecord(
             id=ver_id, pdf_id=pdf_id, label=label, file_size=len(file_data),
             quality=quality, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi, pdf_grayscale=bool(pdf_grayscale),
