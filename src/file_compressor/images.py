@@ -96,6 +96,8 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
             colors = max(16, min(256, int(quality / 95 * 256)))
             image = image.quantize(colors=colors)
         image.save(buffer, format="PNG", optimize=True, compress_level=9)
+    else:
+        raise ValueError(f"Unsupported image format: {suffix}")
 
 
 def _quality_candidates(start: int) -> list[int]:

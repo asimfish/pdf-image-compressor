@@ -296,3 +296,14 @@ def test_compress_path_preserves_exif_when_disabled(tmp_path: Path):
     assert out_path is not None
     with Image.open(out_path) as img:
         assert len(img.getexif()) > 0
+
+
+def test_save_unsupported_suffix_raises():
+    from io import BytesIO
+    from file_compressor.images import _save
+    import pytest
+
+    img = Image.new("RGB", (100, 100), "red")
+    buf = BytesIO()
+    with pytest.raises(ValueError, match="Unsupported image format"):
+        _save(img, buf, ".bmp", 80)
