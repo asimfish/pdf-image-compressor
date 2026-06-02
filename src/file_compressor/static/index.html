@@ -681,7 +681,7 @@ function app() {
     compressPdf(pdf) {
       this.compressTarget = pdf;
       const halfMB = pdf.file_size ? Math.round(pdf.file_size / 2) : 500000;
-      this.compressForm = { quality: 82, target_size: this.fmtSize(halfMB), pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, label: '' };
+      this.compressForm = { quality: 82, target_size: this.fmtSize(halfMB), pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' };
       this.showCompress = true;
     },
     reuseSettings(pdf, version) {
