@@ -236,6 +236,10 @@ class Storage:
         rows = self._conn.execute("SELECT * FROM versions WHERE pdf_id=? ORDER BY created_at DESC", (pdf_id,)).fetchall()
         return [_row_to_version(r) for r in rows]
 
+    def get_version(self, version_id: str) -> Optional[VersionRecord]:
+        row = self._conn.execute("SELECT * FROM versions WHERE id=?", (version_id,)).fetchone()
+        return _row_to_version(row) if row else None
+
     def get_version_path(self, version_id: str) -> Optional[Path]:
         row = self._conn.execute("SELECT file_path FROM versions WHERE id=?", (version_id,)).fetchone()
         return Path(row["file_path"]) if row else None

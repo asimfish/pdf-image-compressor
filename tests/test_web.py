@@ -475,6 +475,22 @@ def test_download_version(tmp_path: Path):
     resp = client.get(f"/api/versions/{ver_id}/download")
     assert resp.status_code == 200
     assert len(resp.content) > 0
+    cd = resp.headers.get("content-disposition", "")
+    assert "dv" in cd  # original filename stem in download name
+
+
+def test_download_version_filename_with_label(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "report.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("report.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "label": "Email version"})
+    ver_id = resp.json()["id"]
+    dl = client.get(f"/api/versions/{ver_id}/download")
+    assert dl.status_code == 200
+    cd = dl.headers.get("content-disposition", "")
+    assert "report_Email" in cd
 
 
 def test_delete_version(tmp_path: Path):

@@ -279,10 +279,17 @@ def api_batch_delete(body: BatchDeleteRequest) -> dict:
 @app.get("/api/versions/{version_id}/download")
 def api_download_version(version_id: str) -> FileResponse:
     storage = _get_storage()
+    ver = storage.get_version(version_id)
+    if not ver:
+        raise HTTPException(404, detail="Version not found")
     path = storage.get_version_path(version_id)
     if not path or not path.exists():
-        raise HTTPException(404, detail="Version not found")
-    return FileResponse(path, filename=path.name, media_type="application/pdf")
+        raise HTTPException(404, detail="Version file not found")
+    pdf = storage.get_pdf(ver.pdf_id)
+    stem = Path(pdf.filename).stem if pdf else "version"
+    label = ver.label.replace("/", "-").replace("\\", "-") if ver.label else ""
+    download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
+    return FileResponse(path, filename=download_name, media_type="application/pdf")
 
 
 @app.delete("/api/versions/{version_id}")
