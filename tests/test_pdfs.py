@@ -70,6 +70,16 @@ def test_rasterize_pdf_grayscale(tmp_path: Path):
     assert output.stat().st_size > 0
 
 
+def test_rasterize_pdf_keep_metadata(tmp_path: Path):
+    source = _make_pdf(tmp_path / "meta_in.pdf")
+    output = tmp_path / "meta_out.pdf"
+
+    rasterize_pdf(source, output, dpi=100, quality=70, grayscale=False, strip_metadata=False)
+
+    assert output.exists()
+    assert output.stat().st_size > 0
+
+
 def test_compress_pdf_auto_mode(tmp_path: Path):
     source = _make_pdf(tmp_path / "auto.pdf", pages=3)
     output = tmp_path / "auto_out.pdf"

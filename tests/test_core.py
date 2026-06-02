@@ -294,3 +294,27 @@ def test_archive_attempt_config_dpi_decreases():
     d0 = _archive_attempt_config(config, 82, 0).pdf_dpi
     d1 = _archive_attempt_config(config, 82, 1).pdf_dpi
     assert d0 > d1
+
+
+def test_create_zip_empty_dir(tmp_path: Path):
+    from file_compressor.archive import create_zip
+
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    output = tmp_path / "out.zip"
+    result = create_zip(empty_dir, output)
+    assert result.exists()
+    assert output.stat().st_size > 0
+
+
+def test_create_zip_skips_subdirectories(tmp_path: Path):
+    from file_compressor.archive import create_zip
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "file.txt").write_text("hello")
+    (src / "subdir").mkdir()
+    (src / "subdir" / "nested.txt").write_text("world")
+    output = tmp_path / "out.zip"
+    result = create_zip(src, output)
+    assert result.exists()
