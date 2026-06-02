@@ -368,6 +368,31 @@ def test_update_notes_accepts_max_length(tmp_path: Path):
     assert resp.status_code == 200
 
 
+def test_update_notes_clear(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "cl.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cl.pdf", f, "application/pdf")}, data={"notes": "initial"})
+    pdf_id = upload.json()["id"]
+    resp = client.put(f"/api/pdfs/{pdf_id}/notes", json={"notes": ""})
+    assert resp.status_code == 200
+    pdfs = client.get("/api/pdfs").json()
+    assert pdfs[0]["notes"] == ""
+
+
+def test_upload_multiple_files(tmp_path: Path):
+    client = _client(tmp_path)
+    _make_test_pdf(tmp_path / "a.pdf")
+    _make_test_pdf(tmp_path / "b.pdf")
+    with open(tmp_path / "a.pdf", "rb") as fa, open(tmp_path / "b.pdf", "rb") as fb:
+        resp_a = client.post("/api/pdfs/upload", files={"file": ("a.pdf", fa, "application/pdf")})
+        resp_b = client.post("/api/pdfs/upload", files={"file": ("b.pdf", fb, "application/pdf")})
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
+    pdfs = client.get("/api/pdfs").json()
+    assert len(pdfs) == 2
+
+
 def test_update_notes_rejects_too_long(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "nl.pdf")
