@@ -151,6 +151,17 @@ def test_compress_path_zip_with_target(tmp_path: Path):
     assert summary.archive is not None
 
 
+def test_compress_path_zip_fallback_best(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _make_pdf(docs / "a.pdf")
+    _make_image(docs / "b.jpg")
+    config = CompressionConfig(archive="zip", target_bytes=1, output_dir=tmp_path)
+    summary = compress_path(docs, config)
+    assert summary.archive is not None
+    assert summary.archive.status == "best_over_target"
+
+
 def test_compress_unsupported_file_type(tmp_path: Path):
     source = tmp_path / "file.xyz"
     source.write_text("hello")
