@@ -93,6 +93,8 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int) -> Non
 
 def _quality_candidates(start: int) -> list[int]:
     start = max(1, min(95, start))
+    if start <= 15:
+        return [start]
     values = list(range(start, 14, -5))
     if values[-1] != 15:
         values.append(15)

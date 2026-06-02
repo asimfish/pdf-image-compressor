@@ -146,6 +146,25 @@ def test_edge_candidates_with_max_edge():
     assert len(result) == 5
 
 
+def test_quality_candidates_low_quality():
+    from file_compressor.images import _quality_candidates
+    result = _quality_candidates(1)
+    assert result == [1]
+
+
+def test_quality_candidates_boundary_15():
+    from file_compressor.images import _quality_candidates
+    result = _quality_candidates(15)
+    assert result == [15]
+
+
+def test_quality_candidates_just_above_15():
+    from file_compressor.images import _quality_candidates
+    result = _quality_candidates(16)
+    assert result[0] == 16
+    assert 15 in result
+
+
 def test_edge_candidates_without_max_edge():
     from file_compressor.images import _edge_candidates
     result = _edge_candidates(None)
@@ -161,4 +180,15 @@ def test_compress_fallback_format(tmp_path: Path):
 
     config = CompressionConfig(output_dir=tmp_path)
     compress_image(source, output, config)
+    assert output.exists()
+
+
+def test_compress_image_low_quality_with_target(tmp_path: Path):
+    source = tmp_path / "big.jpg"
+    Image.new("RGB", (2000, 1500), "green").save(source, quality=95)
+    output = tmp_path / "small.jpg"
+
+    config = CompressionConfig(target_bytes=50_000, quality=1, output_dir=tmp_path)
+    compress_image(source, output, config)
+
     assert output.exists()
