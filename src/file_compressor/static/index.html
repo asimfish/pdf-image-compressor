@@ -18,7 +18,7 @@
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
 
-<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" class="max-w-6xl mx-auto px-4 py-8">
+<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" class="max-w-6xl mx-auto px-4 py-8">
 
   <!-- Connection Error Banner -->
   <div x-show="apiError" x-cloak class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
