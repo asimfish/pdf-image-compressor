@@ -142,3 +142,31 @@ def test_compress_pdf_auto_with_target_falls_back_to_raster(tmp_path: Path):
     compress_pdf(source, output, config)
 
     assert output.exists()
+
+
+def test_compress_pdf_grayscale_with_target(tmp_path: Path):
+    source = _make_pdf(tmp_path / "gray.pdf", pages=3, with_images=True)
+    output = tmp_path / "gray_out.pdf"
+
+    config = CompressionConfig(
+        target_bytes=50_000,
+        pdf_mode="raster",
+        pdf_dpi=80,
+        quality=40,
+        pdf_grayscale=True,
+        output_dir=tmp_path,
+    )
+    compress_pdf(source, output, config)
+
+    assert output.exists()
+    assert output.stat().st_size <= 60_000
+
+
+def test_compress_pdf_keep_metadata(tmp_path: Path):
+    source = _make_pdf(tmp_path / "meta.pdf")
+    output = tmp_path / "meta_out.pdf"
+
+    config = CompressionConfig(pdf_mode="optimize", strip_metadata=False, output_dir=tmp_path)
+    compress_pdf(source, output, config)
+
+    assert output.exists()
