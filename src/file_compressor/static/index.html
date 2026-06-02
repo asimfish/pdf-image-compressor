@@ -605,13 +605,12 @@ function app() {
         return;
       }
       if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
-      const oversized = pdfs.filter(f => f.size > MAX_SIZE);
-      if (oversized.length > 0) {
-        this.showToast(`File too large (max 500MB): ${oversized.map(f => f.name).join(', ')}`, 'error');
-        this.uploadFiles = pdfs.filter(f => f.size <= MAX_SIZE);
-        return;
+      const valid = pdfs.filter(f => f.size <= MAX_SIZE);
+      const oversized = pdfs.length - valid.length;
+      if (oversized > 0) {
+        this.showToast(`${oversized} file(s) too large (max 500MB)${valid.length === 0 ? ' — no files to upload' : ''}`, 'error');
       }
-      this.uploadFiles = pdfs;
+      this.uploadFiles = valid;
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
@@ -678,8 +677,8 @@ function app() {
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;
-      const halfMB = pdf.file_size ? Math.round(pdf.file_size / 2) : 500000;
-      this.compressForm = { quality: 82, target_size: this.fmtSize(halfMB), pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' };
+      const halfSize = pdf.file_size ? Math.max(50000, Math.round(pdf.file_size / 2)) : 500000;
+      this.compressForm = { quality: 82, target_size: this.fmtSize(halfSize), pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' };
       this.showCompress = true;
     },
     reuseSettings(pdf, version) {
