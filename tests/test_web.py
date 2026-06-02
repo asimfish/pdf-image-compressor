@@ -1134,3 +1134,18 @@ def test_version_list_includes_strip_metadata(tmp_path: Path):
     # Find the version with strip_metadata=false
     sm_false = [v for v in versions if v["strip_metadata"] is False]
     assert len(sm_false) >= 1
+
+
+def test_get_storage_lazy_init(tmp_path: Path):
+    from unittest.mock import patch
+    import file_compressor.web as web_module
+
+    saved = web_module._storage
+    try:
+        web_module._storage = None
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            storage = web_module._get_storage()
+            assert storage is not None
+            assert (tmp_path / ".pdf-manager" / "library.db").exists()
+    finally:
+        web_module._storage = saved
