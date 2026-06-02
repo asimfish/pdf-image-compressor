@@ -331,8 +331,10 @@ async def compress_upload(
         if result is None or result.output is None:
             raise HTTPException(500, detail="Compression produced no output")
     except HTTPException:
+        shutil.rmtree(temp_path, True)
         raise
     except Exception as exc:
+        shutil.rmtree(temp_path, True)
         logger.error("Legacy compress failed: %s", exc)
         raise HTTPException(500, detail=f"Compression failed: {exc}")
     response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
