@@ -460,6 +460,7 @@ function app() {
       fd.append('pdf_dpi', form.pdf_dpi);
       fd.append('pdf_grayscale', form.pdf_grayscale);
       fd.append('strip_metadata', form.strip_metadata);
+      if (form.label != null) fd.append('label', form.label);
       if (extras) Object.entries(extras).forEach(([k, v]) => fd.append(k, v));
       return fd;
     },
@@ -690,7 +691,7 @@ function app() {
       if (!this.compressTarget) return;
       this.compressing = true;
       try {
-        const fd = this._buildCompressFd(this.compressForm, { label: this.compressForm.label });
+        const fd = this._buildCompressFd(this.compressForm);
         const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
