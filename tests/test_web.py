@@ -853,6 +853,19 @@ def test_legacy_compress_rejects_bad_target_size(tmp_path: Path):
     assert resp.status_code == 422
 
 
+def test_legacy_compress_strip_metadata_false(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "lsm.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("lsm.pdf", f, "application/pdf"))],
+            data={"strip_metadata": "false"},
+        )
+    assert resp.status_code == 200
+    assert len(resp.content) > 0
+
+
 # ── Integration test ──
 
 def test_full_upload_compress_download_flow(tmp_path: Path):
