@@ -99,7 +99,7 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     if config.target_bytes is None:
         return [(config.pdf_dpi, config.quality)]
     start_dpi = max(36, config.pdf_dpi)
-    start_quality = max(1, min(95, config.quality))
+    start_quality = clamp_quality(config.quality)
     base = [
         (start_dpi, start_quality),
         (min(start_dpi, 140), min(start_quality, 78)),
@@ -122,7 +122,7 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     seen: set[tuple[int, int]] = set()
     values: list[tuple[int, int]] = []
     for dpi, quality in base:
-        item = (max(36, int(dpi)), max(1, min(95, int(quality))))
+        item = (max(36, int(dpi)), clamp_quality(int(quality)))
         if item not in seen:
             seen.add(item)
             values.append(item)
