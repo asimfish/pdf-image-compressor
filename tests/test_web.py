@@ -1004,3 +1004,119 @@ def test_download_version_file_missing(tmp_path: Path):
 
     resp = client.get(f"/api/versions/{ver_id}/download")
     assert resp.status_code == 404
+
+
+# ── strip_metadata tests ──
+
+def test_upload_strip_metadata_true(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "sm.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("sm.pdf", f, "application/pdf")},
+            data={"strip_metadata": "true"},
+        )
+    assert resp.status_code == 200
+
+
+def test_upload_strip_metadata_false(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "smf.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("smf.pdf", f, "application/pdf")},
+            data={"strip_metadata": "false"},
+        )
+    assert resp.status_code == 200
+
+
+def test_compress_strip_metadata_false(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "csm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("csm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(
+        f"/api/pdfs/{pdf_id}/compress",
+        data={"quality": "50", "strip_metadata": "false"},
+    )
+    assert resp.status_code == 200
+
+
+def test_compress_strip_metadata_true(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "csmt.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("csmt.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(
+        f"/api/pdfs/{pdf_id}/compress",
+        data={"quality": "50", "strip_metadata": "true"},
+    )
+    assert resp.status_code == 200
+
+
+def test_batch_compress_strip_metadata_false(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "bsm.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("bsm.pdf", f, "application/pdf")})
+    resp = client.post(
+        "/api/pdfs/batch-compress",
+        data={"quality": "50", "strip_metadata": "false"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["compressed"] == 1
+
+
+def test_compress_passes_strip_metadata_to_config(tmp_path: Path):
+    from unittest.mock import patch
+    from file_compressor.models import CompressionConfig
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "cfg.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cfg.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    captured_configs = []
+    original_compress_path = None
+
+    def mock_compress(src, config, output=None):
+        captured_configs.append(config)
+        from file_compressor.core import compress_path as real_compress
+        return real_compress(src, config, output)
+
+    with patch("file_compressor.web.compress_path", side_effect=mock_compress):
+        resp = client.post(
+            f"/api/pdfs/{pdf_id}/compress",
+            data={"quality": "50", "strip_metadata": "false"},
+        )
+    assert resp.status_code == 200
+    assert len(captured_configs) == 1
+    assert captured_configs[0].strip_metadata is False
+
+
+def test_compress_strip_metadata_default_true(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "def.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("def.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    captured_configs = []
+
+    def mock_compress(src, config, output=None):
+        captured_configs.append(config)
+        from file_compressor.core import compress_path as real_compress
+        return real_compress(src, config, output)
+
+    with patch("file_compressor.web.compress_path", side_effect=mock_compress):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    assert len(captured_configs) == 1
+    assert captured_configs[0].strip_metadata is True

@@ -270,3 +270,31 @@ def test_delete_pdf_cleans_version_files(tmp_path: Path):
     assert storage.get_pdf(pdf.id) is None
     assert storage.list_versions(pdf.id) == []
     storage.close()
+
+
+def test_batch_delete_rollback_on_error(tmp_path: Path):
+    from unittest.mock import patch
+
+    storage = Storage(tmp_path)
+    p1 = storage.add_pdf("a.pdf", b"%PDF", 1)
+    p2 = storage.add_pdf("b.pdf", b"%PDF", 1)
+
+    call_count = 0
+    original_delete = storage._delete_pdf_no_commit
+
+    def failing_delete(pdf_id):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise RuntimeError("simulated disk error")
+        return original_delete(pdf_id)
+
+    with patch.object(storage, "_delete_pdf_no_commit", side_effect=failing_delete):
+        import pytest
+        with pytest.raises(RuntimeError, match="simulated disk error"):
+            storage.batch_delete_pdfs([p1.id, p2.id])
+
+    # After rollback, both PDFs should still exist
+    assert storage.get_pdf(p1.id) is not None
+    assert storage.get_pdf(p2.id) is not None
+    storage.close()
