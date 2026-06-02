@@ -84,10 +84,9 @@
   </div>
   <div class="mb-6 flex gap-2">
     <template x-for="tab in ['All', 'Uncompressed', 'Compressed']" :key="tab">
-      <button @click="filterTab = tab"
-        class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
+      <button @click="filterTab = tab" class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
         :class="filterTab === tab ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
-        x-text="tab + (tab === 'All' ? '' : tab === 'Uncompressed' ? ' (' + uncompressedCount + ')' : ' (' + compressedCount + ')')"></button>
+        x-text="tab + (tab === 'Uncompressed' ? ' (' + uncompressedCount + ')' : tab === 'Compressed' ? ' (' + compressedCount + ')' : '')"></button>
     </template>
   </div>
   <div x-show="loading" class="text-center py-20">
@@ -101,18 +100,8 @@
     <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
     </svg>
-    <template x-if="search.trim() || filterTab !== 'All'">
-      <div>
-        <p class="text-gray-500 text-lg">No matching PDFs</p>
-        <p class="text-gray-400 text-sm mt-1">Try a different search or filter</p>
-      </div>
-    </template>
-    <template x-if="!search.trim() && filterTab === 'All'">
-      <div>
-        <p class="text-gray-500 text-lg">No PDFs yet</p>
-        <p class="text-gray-400 text-sm mt-1">Upload your first PDF to get started</p>
-      </div>
-    </template>
+    <p class="text-gray-500 text-lg" x-text="search.trim() || filterTab !== 'All' ? 'No matching PDFs' : 'No PDFs yet'"></p>
+    <p class="text-gray-400 text-sm mt-1" x-text="search.trim() || filterTab !== 'All' ? 'Try a different search or filter' : 'Upload your first PDF to get started'"></p>
   </div>
   <div class="grid gap-4" x-show="filteredPdfs.length > 0">
     <template x-for="pdf in filteredPdfs" :key="pdf.id">
@@ -615,28 +604,41 @@ function app() {
     async doUpload() {
       if (!this.uploadFiles.length) return;
       this.uploading = true;
-      this.uploadProgress = 10;
+      this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
       let succeeded = 0;
       const errors = [];
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
-        this.uploadProgress = Math.round(((i + 0.5) / this.uploadFiles.length) * 100);
-        this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
+        this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
         try {
-          const res = await fetch('/api/pdfs/upload', { method: 'POST', body: fd });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: res.statusText }));
-            throw new Error(err.detail || 'Upload failed');
-          }
-          const data = await res.json();
+          const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/pdfs/upload');
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const filePct = e.loaded / e.total;
+                this.uploadProgress = Math.round(((i + filePct) / this.uploadFiles.length) * 100);
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
+              } else {
+                try { reject(new Error(JSON.parse(xhr.responseText).detail || xhr.statusText)); }
+                catch { reject(new Error(xhr.statusText)); }
+              }
+            };
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send(fd);
+          });
           if (data.warning) errors.push(data.warning);
           succeeded++;
         } catch (e) {
           errors.push(`${this.uploadFiles[i].name}: ${e.message}`);
         }
-        this.uploadProgress = Math.round(((i + 1) / this.uploadFiles.length) * 100);
       }
+      this.uploadProgress = 100;
       this.uploading = false;
       this.showUpload = false;
       this.uploadFiles = [];
