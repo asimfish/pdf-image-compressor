@@ -202,11 +202,15 @@
                       <span x-text="v.label"></span>
                       <span x-show="bestVersion(pdf)?.file_size === v.file_size && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
                     </div>
-                    <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                    <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
                       <span x-text="fmtSize(v.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
-                      <span x-show="v.compression_ratio > 0" class="text-green-600" x-text="'-' + (v.compression_ratio * 100).toFixed(1) + '%'"></span>
+                      <span x-show="v.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (v.compression_ratio * 100).toFixed(1) + '% (' + fmtSize(pdf.file_size - v.file_size) + ' saved)'"></span>
                       <span x-show="v.compression_ratio !== null && v.compression_ratio <= 0" class="text-amber-500" x-text="v.compression_ratio !== null ? 'optimized' : ''"></span>
-                      <span x-text="'Q' + v.quality + ' · ' + v.pdf_mode + ' · ' + v.pdf_dpi + 'dpi'"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="'Q' + v.quality"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="v.pdf_mode"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="v.pdf_dpi + 'dpi'"></span>
+                      <span x-show="v.pdf_grayscale" class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">grayscale</span>
+                      <span x-show="v.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="'target ' + fmtSize(v.target_bytes)"></span>
                       <span x-text="fmtDate(v.created_at)"></span>
                     </div>
                   </div>
