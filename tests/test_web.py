@@ -660,6 +660,65 @@ def test_compress_with_relative_target_size(tmp_path: Path):
     assert resp.status_code == 200
 
 
+def test_compress_with_target_size_generates_label(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "al.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("al.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"target_size": "50KB", "quality": "60", "pdf_mode": "raster"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "50" in data["label"]
+    assert "Q60" in data["label"]
+    assert "raster" in data["label"]
+
+
+def test_compress_auto_label_no_target(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "nl2.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("nl2.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "70", "pdf_mode": "optimize"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "Q70" in data["label"]
+    assert "optimize" in data["label"]
+
+
+def test_upload_with_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "ts.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/api/pdfs/upload",
+            files={"file": ("ts.pdf", f, "application/pdf")},
+            data={"target_size": "100KB"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["filename"] == "ts.pdf"
+
+
+def test_compress_minimal_quality(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "mq.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("mq.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "1", "pdf_mode": "raster"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["quality"] == 1
+
+
+def test_batch_compress_rejects_invalid_params(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "0"})
+    assert resp.status_code == 422
+
+
 def test_upload_rejects_file_too_large(tmp_path: Path):
     client = _client(tmp_path)
     from unittest.mock import patch
@@ -843,3 +902,58 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     data = resp.json()
     errors = [r for r in data["results"] if r["status"] == "error"]
     assert any("exploded" in e["error"] for e in errors)
+
+
+def test_batch_compress_with_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    for name in ["a.pdf", "b.pdf"]:
+        pdf_path = _make_test_pdf(tmp_path / name)
+        with open(pdf_path, "rb") as f:
+            client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "50", "target_size": "50KB"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 2
+    assert all(r["status"] == "ok" for r in data["results"])
+
+
+def test_batch_compress_with_raster_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "r.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("r.pdf", f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "40", "pdf_mode": "raster", "pdf_dpi": "80"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 1
+    assert data["results"][0]["status"] == "ok"
+
+
+def test_batch_compress_with_grayscale(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "g.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("g.pdf", f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"pdf_mode": "raster", "pdf_grayscale": "true"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 1
+
+
+def test_download_version_file_missing(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "missv.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("missv.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    ver_id = versions[0]["id"]
+
+    # Delete the version file from disk
+    from file_compressor.web import _get_storage
+    storage = _get_storage()
+    vpath = storage.get_version_path(ver_id)
+    vpath.unlink()
+
+    resp = client.get(f"/api/versions/{ver_id}/download")
+    assert resp.status_code == 404

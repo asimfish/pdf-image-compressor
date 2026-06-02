@@ -89,8 +89,6 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int) -> Non
             colors = max(16, min(256, int(quality / 95 * 256)))
             image = image.quantize(colors=colors)
         image.save(buffer, format="PNG", optimize=True, compress_level=9)
-    else:
-        image.save(buffer, format="JPEG", quality=quality, optimize=True, progressive=True)
 
 
 def _quality_candidates(start: int) -> list[int]:
