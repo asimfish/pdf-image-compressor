@@ -24,6 +24,8 @@ app = FastAPI(title="PDF Manager")
 
 _VALID_MODES = {"auto", "optimize", "raster"}
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
+_MAX_NOTES_LEN = 5000
+_MAX_LABEL_LEN = 500
 
 
 def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_size: Optional[str] = None) -> None:
@@ -62,8 +64,8 @@ class NotesUpdate(BaseModel):
     @field_validator("notes")
     @classmethod
     def notes_not_too_long(cls, v: str) -> str:
-        if len(v) > 5000:
-            raise ValueError("notes must be 5000 characters or fewer")
+        if len(v) > _MAX_NOTES_LEN:
+            raise ValueError(f"notes must be {_MAX_NOTES_LEN} characters or fewer")
         return v
 
 
@@ -109,8 +111,8 @@ async def api_upload_pdf(
     notes: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
-    if len(notes) > 5000:
-        raise HTTPException(422, detail="notes must be 5000 characters or fewer")
+    if len(notes) > _MAX_NOTES_LEN:
+        raise HTTPException(422, detail=f"notes must be {_MAX_NOTES_LEN} characters or fewer")
     storage = _get_storage()
     filename = Path(file.filename or "upload.pdf").name
     if not filename.lower().endswith(".pdf"):
@@ -174,8 +176,8 @@ async def api_compress_pdf(
     label: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
-    if len(label) > 500:
-        raise HTTPException(422, detail="label must be 500 characters or fewer")
+    if len(label) > _MAX_LABEL_LEN:
+        raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
     pdf = storage.get_pdf(pdf_id)
     if not pdf:
