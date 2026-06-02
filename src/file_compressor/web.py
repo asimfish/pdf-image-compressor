@@ -150,10 +150,10 @@ def api_download_pdf(pdf_id: str) -> FileResponse:
     storage = _get_storage()
     pdf = storage.get_pdf(pdf_id)
     if not pdf:
-        raise HTTPException(404, "PDF not found")
+        raise HTTPException(404, detail="PDF not found")
     path = storage.get_pdf_path(pdf_id)
     if not path or not path.exists():
-        raise HTTPException(404, "File not found")
+        raise HTTPException(404, detail="File not found")
     return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
 
 
@@ -161,7 +161,7 @@ def api_download_pdf(pdf_id: str) -> FileResponse:
 def api_list_versions(pdf_id: str) -> list:
     storage = _get_storage()
     if not storage.get_pdf(pdf_id):
-        raise HTTPException(404, "PDF not found")
+        raise HTTPException(404, detail="PDF not found")
     return [asdict(v) for v in storage.list_versions(pdf_id)]
 
 
@@ -237,7 +237,7 @@ async def api_batch_compress(
 def api_update_notes(pdf_id: str, body: NotesUpdate) -> dict:
     storage = _get_storage()
     if not storage.update_notes(pdf_id, body.notes):
-        raise HTTPException(404, "PDF not found")
+        raise HTTPException(404, detail="PDF not found")
     return {"ok": True}
 
 
@@ -245,7 +245,7 @@ def api_update_notes(pdf_id: str, body: NotesUpdate) -> dict:
 def api_delete_pdf(pdf_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_pdf(pdf_id):
-        raise HTTPException(404, "PDF not found")
+        raise HTTPException(404, detail="PDF not found")
     logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
@@ -268,7 +268,7 @@ def api_download_version(version_id: str) -> FileResponse:
     storage = _get_storage()
     path = storage.get_version_path(version_id)
     if not path or not path.exists():
-        raise HTTPException(404, "Version not found")
+        raise HTTPException(404, detail="Version not found")
     return FileResponse(path, filename=path.name, media_type="application/pdf")
 
 
@@ -276,7 +276,7 @@ def api_download_version(version_id: str) -> FileResponse:
 def api_delete_version(version_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_version(version_id):
-        raise HTTPException(404, "Version not found")
+        raise HTTPException(404, detail="Version not found")
     return {"ok": True}
 
 
