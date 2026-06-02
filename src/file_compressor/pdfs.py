@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -23,7 +24,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         optimize_pdf(source, optimized, config)
         if config.target_bytes is None or optimized.stat().st_size <= config.target_bytes:
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_bytes(optimized.read_bytes())
+            shutil.copy2(optimized, output)
             return output
     return rasterize_pdf_to_target(source, output, config)
 
@@ -59,12 +60,12 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
                 best_size = size
             if config.target_bytes is None or size <= config.target_bytes:
                 output.parent.mkdir(parents=True, exist_ok=True)
-                output.write_bytes(candidate.read_bytes())
+                shutil.copy2(candidate, output)
                 return output
         if best_path is None:
             raise RuntimeError("PDF compression produced no output")
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(best_path.read_bytes())
+        shutil.copy2(best_path, output)
         return output
 
 
