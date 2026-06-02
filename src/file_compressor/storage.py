@@ -89,12 +89,18 @@ class Storage:
     def close(self) -> None:
         self._conn.close()
 
+    _EXPECTED_COLUMNS: list[tuple[str, str]] = [
+        ("versions", "strip_metadata INTEGER NOT NULL DEFAULT 1"),
+    ]
+
     def _migrate(self) -> None:
         """Add missing columns for backward compatibility with older databases."""
-        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(versions)").fetchall()}
-        if "strip_metadata" not in cols:
-            self._conn.execute("ALTER TABLE versions ADD COLUMN strip_metadata INTEGER NOT NULL DEFAULT 1")
-            self._conn.commit()
+        for table, col_def in self._EXPECTED_COLUMNS:
+            col_name = col_def.split()[0]
+            cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if col_name not in cols:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+                self._conn.commit()
 
     # ── PDF CRUD ──
 
