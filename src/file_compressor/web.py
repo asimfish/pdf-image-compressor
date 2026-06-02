@@ -370,9 +370,6 @@ def _compress_and_store(
     compressed_size = len(compressed_data)
     ratio = 1.0 - (compressed_size / original_size) if original_size > 0 else None
 
-    if not label:
-        label = _auto_label(target_bytes, quality, pdf_mode)
-
     return storage.add_version(
         pdf_id=pdf_id,
         label=label,
