@@ -151,17 +151,8 @@ class Storage:
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
         deleted = 0
         for pdf_id in pdf_ids:
-            pdf_path = self.get_pdf_path(pdf_id)
-            versions = self.list_versions(pdf_id)
-            for v in versions:
-                vpath = self.get_version_path(v.id)
-                if vpath and vpath.exists():
-                    vpath.unlink()
-            if pdf_path and pdf_path.exists():
-                pdf_path.unlink()
-            cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
-            deleted += cur.rowcount
-        self._conn.commit()
+            if self.delete_pdf(pdf_id):
+                deleted += 1
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:

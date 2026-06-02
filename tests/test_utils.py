@@ -35,6 +35,14 @@ def test_parse_size_empty():
     assert parse_size("") is None
 
 
+def test_parse_size_zero():
+    assert parse_size("0") is None
+
+
+def test_parse_size_zero_mb():
+    assert parse_size("0MB") is None
+
+
 def test_parse_size_gb():
     assert parse_size("2GB") == 2_000_000_000
 
