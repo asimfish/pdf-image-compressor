@@ -77,6 +77,12 @@ class Storage:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
 
+    def __enter__(self) -> "Storage":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def close(self) -> None:
         self._conn.close()
 
