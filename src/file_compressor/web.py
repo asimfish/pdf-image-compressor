@@ -12,7 +12,7 @@ logger = logging.getLogger("pdf_manager")
 import fitz
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from starlette.background import BackgroundTask
 
 from .core import compress_path
@@ -58,6 +58,13 @@ def init_storage(data_dir: Path) -> None:
 
 class NotesUpdate(BaseModel):
     notes: str = ""
+
+    @field_validator("notes")
+    @classmethod
+    def notes_not_too_long(cls, v: str) -> str:
+        if len(v) > 5000:
+            raise ValueError("notes must be 5000 characters or fewer")
+        return v
 
 
 # ── Frontend ──
@@ -226,8 +233,6 @@ async def api_batch_compress(
 
 @app.put("/api/pdfs/{pdf_id}/notes")
 def api_update_notes(pdf_id: str, body: NotesUpdate) -> dict:
-    if len(body.notes) > 5000:
-        raise HTTPException(422, detail="notes must be 5000 characters or fewer")
     storage = _get_storage()
     if not storage.update_notes(pdf_id, body.notes):
         raise HTTPException(404, "PDF not found")
