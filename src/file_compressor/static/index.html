@@ -18,7 +18,6 @@
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
 <div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" class="max-w-6xl mx-auto px-4 py-8">
-  <!-- Connection Error Banner -->
   <div x-show="apiError" x-cloak class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
     <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/>
@@ -223,7 +222,6 @@
       </div>
     </template>
   </div>
-
   <!-- Upload Modal -->
   <div x-show="showUpload" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showUpload = false; uploadFiles = []" @keydown.escape.window="if (showUpload) { showUpload = false; uploadFiles = [] }"
@@ -302,7 +300,6 @@
       </div>
     </div>
   </div>
-
   <!-- Compress Modal -->
   <div x-show="showCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showCompress = false; compressTarget = null" @keydown.escape.window="if (showCompress) { showCompress = false; compressTarget = null }"
@@ -358,7 +355,6 @@
       </div>
     </div>
   </div>
-
   <!-- Batch Compress Modal -->
   <div x-show="showBatchCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showBatchCompress = false" @keydown.escape.window="if (showBatchCompress) { showBatchCompress = false }"
@@ -472,26 +468,30 @@ function app() {
     // Toast
     toast: '',
     toastType: 'success',
+    _validTargetSize(v) {
+      if (!v || !v.trim()) return '';
+      return /^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 2MB)';
+    },
     get uploadValidation() {
       const q = this.uploadForm.quality;
       if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
       const d = this.uploadForm.pdf_dpi;
       if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return '';
+      return this._validTargetSize(this.uploadForm.target_size);
     },
     get compressValidation() {
       const q = this.compressForm.quality;
       if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
       const d = this.compressForm.pdf_dpi;
       if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return '';
+      return this._validTargetSize(this.compressForm.target_size);
     },
     get batchCompressValidation() {
       const q = this.batchForm.quality;
       if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
       const d = this.batchForm.pdf_dpi;
       if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return '';
+      return this._validTargetSize(this.batchForm.target_size);
     },
     get filteredPdfs() {
       let list = this.pdfs;
