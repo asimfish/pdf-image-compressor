@@ -763,7 +763,7 @@ function app() {
       return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
     },
     fmtSize(bytes) {
-      if (!bytes) return '-';
+      if (bytes == null) return '-';
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       let v = bytes, u = 0;
       while (v >= 1000 && u < 4) { v /= 1000; u++; }
