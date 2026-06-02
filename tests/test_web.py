@@ -323,7 +323,10 @@ def test_batch_compress(tmp_path: Path):
 def test_batch_compress_empty_library(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 0
+    assert data["results"] == []
 
 
 def test_update_notes(tmp_path: Path):

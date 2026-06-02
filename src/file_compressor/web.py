@@ -201,7 +201,7 @@ async def api_batch_compress(
     storage = _get_storage()
     pdfs = storage.list_pdfs()
     if not pdfs:
-        raise HTTPException(404, detail="No PDFs in library")
+        return {"compressed": 0, "results": []}
 
     target_bytes = parse_size(target_size)
     label = _auto_label(target_bytes, quality, pdf_mode)
