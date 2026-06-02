@@ -693,6 +693,18 @@ def test_legacy_compress_with_pdf_mode(tmp_path: Path):
     assert resp.status_code == 200
 
 
+def test_legacy_compress_handles_compression_failure(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    with patch("file_compressor.web.compress_path", side_effect=RuntimeError("legacy boom")):
+        with open(pdf_path, "rb") as f:
+            resp = client.post("/compress", files=[("files", ("fail.pdf", f, "application/pdf"))])
+    assert resp.status_code == 500
+    assert "legacy boom" in resp.json()["detail"]
+
+
 # ── Integration test ──
 
 def test_full_upload_compress_download_flow(tmp_path: Path):
