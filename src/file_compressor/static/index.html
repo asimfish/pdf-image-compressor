@@ -471,27 +471,14 @@ function app() {
       if (!v || !v.trim()) return '';
       return /^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 2MB)';
     },
-    get uploadValidation() {
-      const q = this.uploadForm.quality;
-      if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
-      const d = this.uploadForm.pdf_dpi;
-      if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return this._validTargetSize(this.uploadForm.target_size);
+    _validateForm(form) {
+      if (form.quality < 1 || form.quality > 95) return 'Quality must be between 1 and 95';
+      if (form.pdf_dpi < 36 || form.pdf_dpi > 300) return 'DPI must be between 36 and 300';
+      return this._validTargetSize(form.target_size);
     },
-    get compressValidation() {
-      const q = this.compressForm.quality;
-      if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
-      const d = this.compressForm.pdf_dpi;
-      if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return this._validTargetSize(this.compressForm.target_size);
-    },
-    get batchCompressValidation() {
-      const q = this.batchForm.quality;
-      if (q < 1 || q > 95) return 'Quality must be between 1 and 95';
-      const d = this.batchForm.pdf_dpi;
-      if (d < 36 || d > 300) return 'DPI must be between 36 and 300';
-      return this._validTargetSize(this.batchForm.target_size);
-    },
+    get uploadValidation() { return this._validateForm(this.uploadForm); },
+    get compressValidation() { return this._validateForm(this.compressForm); },
+    get batchCompressValidation() { return this._validateForm(this.batchForm); },
     get filteredPdfs() {
       let list = this.pdfs;
       if (this.search.trim()) {
