@@ -365,3 +365,61 @@ def test_main_web(tmp_path):
         with patch("sys.argv", ["file-compressor", "web", "--data-dir", str(tmp_path / "webdata"), "--port", "8888"]):
             main()
     mock_uvicorn.run.assert_called_once()
+
+
+# ── CLI input validation ──
+
+def test_run_compress_rejects_quality_below_1(tmp_path):
+    src = tmp_path / "in.pdf"
+    _make_pdf(src)
+    args = Namespace(
+        input=src, output=None, output_dir=tmp_path, quality=0,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
+        json_report=False,
+    )
+    with pytest.raises(SystemExit, match="quality"):
+        run_compress(args)
+
+
+def test_run_compress_rejects_quality_above_95(tmp_path):
+    src = tmp_path / "in.pdf"
+    _make_pdf(src)
+    args = Namespace(
+        input=src, output=None, output_dir=tmp_path, quality=100,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
+        json_report=False,
+    )
+    with pytest.raises(SystemExit, match="quality"):
+        run_compress(args)
+
+
+def test_run_compress_rejects_dpi_below_36(tmp_path):
+    src = tmp_path / "in.pdf"
+    _make_pdf(src)
+    args = Namespace(
+        input=src, output=None, output_dir=tmp_path, quality=82,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=10, pdf_grayscale=False, keep_metadata=False,
+        json_report=False,
+    )
+    with pytest.raises(SystemExit, match="pdf_dpi"):
+        run_compress(args)
+
+
+def test_run_compress_rejects_dpi_above_300(tmp_path):
+    src = tmp_path / "in.pdf"
+    _make_pdf(src)
+    args = Namespace(
+        input=src, output=None, output_dir=tmp_path, quality=82,
+        max_edge=None, to_webp=False, target_size=None,
+        overwrite=False, archive=None, pdf_mode="auto",
+        pdf_dpi=500, pdf_grayscale=False, keep_metadata=False,
+        json_report=False,
+    )
+    with pytest.raises(SystemExit, match="pdf_dpi"):
+        run_compress(args)
