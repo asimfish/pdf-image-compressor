@@ -367,6 +367,18 @@ def test_batch_compress_empty_library(tmp_path: Path):
     assert data["results"] == []
 
 
+def test_batch_compress_with_nonexistent_pdf_ids(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "a.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("a.pdf", f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "60", "pdf_ids": "nonexistent1,nonexistent2"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 0
+    assert data["results"] == []
+
+
 def test_update_notes(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = make_test_pdf(tmp_path / "n.pdf")
