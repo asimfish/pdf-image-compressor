@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from file_compressor.utils import (
+    clamp_quality,
     format_size,
     is_image,
     is_pdf,
@@ -162,3 +163,24 @@ def test_iter_supported_files_unsupported_single(tmp_path: Path):
     txt.write_bytes(b"data")
     result = list(iter_supported_files(txt))
     assert result == []
+
+
+# ── clamp_quality ──
+
+def test_clamp_quality_normal():
+    assert clamp_quality(50) == 50
+
+
+def test_clamp_quality_clamps_low():
+    assert clamp_quality(0) == 1
+    assert clamp_quality(-5) == 1
+
+
+def test_clamp_quality_clamps_high():
+    assert clamp_quality(96) == 95
+    assert clamp_quality(100) == 95
+
+
+def test_clamp_quality_boundaries():
+    assert clamp_quality(1) == 1
+    assert clamp_quality(95) == 95

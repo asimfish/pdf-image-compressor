@@ -9,6 +9,7 @@ from typing import Optional
 from PIL import Image
 
 from .models import CompressionConfig
+from .utils import clamp_quality
 
 
 def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
@@ -80,7 +81,7 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
             mode = "L" if grayscale else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             data = BytesIO()
-            image.save(data, format="JPEG", quality=max(1, min(95, quality)), optimize=True, progressive=True)
+            image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
             rect = page.rect
             new_page = dst.new_page(width=rect.width, height=rect.height)
             new_page.insert_image(new_page.rect, stream=data.getvalue())

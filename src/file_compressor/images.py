@@ -7,6 +7,7 @@ from typing import Optional
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .models import CompressionConfig
+from .utils import clamp_quality
 
 
 def output_suffix_for_image(source: Path, config: CompressionConfig) -> str:
@@ -79,7 +80,7 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
 
 
 def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int) -> None:
-    quality = max(1, min(95, quality))
+    quality = clamp_quality(quality)
     if suffix in {".jpg", ".jpeg"}:
         image.save(buffer, format="JPEG", quality=quality, optimize=True, progressive=True)
     elif suffix == ".webp":
@@ -92,7 +93,7 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int) -> Non
 
 
 def _quality_candidates(start: int) -> list[int]:
-    start = max(1, min(95, start))
+    start = clamp_quality(start)
     if start <= 15:
         return [start]
     values = list(range(start, 14, -5))

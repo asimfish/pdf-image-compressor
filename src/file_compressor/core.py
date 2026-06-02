@@ -10,7 +10,7 @@ from .archive import create_zip
 from .images import compress_image, output_suffix_for_image
 from .models import CompressionConfig, CompressionResult, CompressionSummary
 from .pdfs import compress_pdf
-from .utils import is_image, is_pdf, iter_supported_files, relative_output_path, unique_path
+from .utils import clamp_quality, is_image, is_pdf, iter_supported_files, relative_output_path, unique_path
 
 
 def compress_path(source: Union[Path, str], config: CompressionConfig, output: Optional[Union[Path, str]] = None) -> CompressionSummary:
@@ -135,7 +135,7 @@ def _output_for_file(source: Path, root: Path, output_dir: Path, explicit_output
 
 
 def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list[int]:
-    start = max(1, min(95, start))
+    start = clamp_quality(start)
     if target_bytes is None:
         return [start]
     if start <= 20:
@@ -151,10 +151,8 @@ def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: in
     fallback_edges = [None, 1800, 1600, 1400, 1200, 1000, 800, 640]
     dpi = dpi_values[min(attempt, len(dpi_values) - 1)] or config.pdf_dpi
     fallback_edge = fallback_edges[min(attempt, len(fallback_edges) - 1)]
-    if config.max_edge is not None and fallback_edge is not None:
-        edge = min(config.max_edge, fallback_edge)
-    elif config.max_edge is not None:
-        edge = config.max_edge
+    if config.max_edge is not None:
+        edge = min(config.max_edge, fallback_edge) if fallback_edge is not None else config.max_edge
     else:
         edge = fallback_edge
     pdf_mode = config.pdf_mode

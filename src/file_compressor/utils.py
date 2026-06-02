@@ -78,6 +78,10 @@ def unique_path(path: Path, overwrite: bool) -> Path:
     raise RuntimeError(f"Could not find free output path for {path}")
 
 
+def clamp_quality(quality: int) -> int:
+    return max(1, min(95, quality))
+
+
 def relative_output_path(source: Path, root: Path, output_dir: Path, suffix: Optional[str], overwrite: bool) -> Path:
     rel = source.relative_to(root) if source != root else source.name
     target = output_dir / rel
