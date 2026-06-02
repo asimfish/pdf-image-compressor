@@ -193,6 +193,23 @@ def test_upload_rejects_invalid_pdf_content(tmp_path: Path):
     assert resp.status_code == 400
 
 
+def test_upload_rejects_zero_page_pdf(tmp_path: Path):
+    client = _client(tmp_path)
+    zero_page_pdf = (
+        b"%PDF-1.0\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+        b"xref\n0 3\n0000000000 65535 f \n0000000009 00000 n \n"
+        b"0000000058 00000 n \ntrailer<</Size 3/Root 1 0 R>>\n"
+        b"startxref\n109\n%%EOF"
+    )
+    resp = client.post(
+        "/api/pdfs/upload",
+        files={"file": ("empty.pdf", zero_page_pdf, "application/pdf")},
+    )
+    assert resp.status_code == 400
+    assert "no pages" in resp.json()["detail"].lower()
+
+
 def test_upload_quality_95_creates_version(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "q95.pdf")

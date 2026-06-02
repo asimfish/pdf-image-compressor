@@ -118,6 +118,8 @@ async def api_upload_pdf(
         doc.close()
     except Exception:
         raise HTTPException(400, detail="Invalid PDF file")
+    if page_count == 0:
+        raise HTTPException(400, detail="PDF has no pages")
 
     pdf = storage.add_pdf(filename, data, page_count, notes)
     logger.info("Uploaded PDF %s (%s, %d pages)", filename, format_size(len(data)), page_count)
