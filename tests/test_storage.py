@@ -166,3 +166,34 @@ def test_batch_delete_pdfs_empty(tmp_path: Path):
     storage = Storage(tmp_path)
     assert storage.batch_delete_pdfs([]) == 0
     storage.close()
+
+
+def test_list_pdfs_with_stats(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("stats.pdf", b"%PDF" * 100, 5)
+    storage.add_version(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+    result = storage.list_pdfs_with_stats()
+    assert len(result) == 1
+    assert result[0]["version_count"] == 1
+    assert result[0]["best_compression_ratio"] == 0.5
+    assert result[0]["best_compressed_size"] == len(b"compressed")
+    storage.close()
+
+
+def test_list_pdfs_with_stats_empty(tmp_path: Path):
+    storage = Storage(tmp_path)
+    assert storage.list_pdfs_with_stats() == []
+    storage.close()
+
+
+def test_batch_delete_with_nonexistent(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("real.pdf", b"%PDF", 1)
+    deleted = storage.batch_delete_pdfs([pdf.id, "nonexistent"])
+    assert deleted == 1
+    assert storage.get_pdf(pdf.id) is None
+    storage.close()
