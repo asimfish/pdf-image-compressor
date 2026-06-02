@@ -213,6 +213,23 @@ def test_compress_path_zip_relative_output(tmp_path: Path):
         os.chdir(old_cwd)
 
 
+def test_compress_path_zip_relative_output_dir_no_explicit_output(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _make_pdf(docs / "a.pdf")
+    import os
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        config = CompressionConfig(archive="zip", output_dir=Path("rel_out"))
+        summary = compress_path(docs, config)
+        assert summary.archive is not None
+        assert summary.archive.output.exists()
+        assert summary.archive.output.is_absolute()
+    finally:
+        os.chdir(old_cwd)
+
+
 def test_compress_path_output_as_directory(tmp_path: Path):
     source = _make_pdf(tmp_path / "input.pdf")
     out_dir = tmp_path / "output"
