@@ -165,6 +165,8 @@ async def api_compress_pdf(
     label: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    if len(label) > 500:
+        raise HTTPException(422, detail="label must be 500 characters or fewer")
     storage = _get_storage()
     pdf = storage.get_pdf(pdf_id)
     if not pdf:

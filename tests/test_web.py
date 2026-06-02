@@ -567,6 +567,17 @@ def test_compress_rejects_bad_mode(tmp_path: Path):
     assert resp.status_code == 422
 
 
+def test_compress_rejects_label_too_long(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "lbl.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("lbl.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"label": "x" * 501})
+    assert resp.status_code == 422
+    assert "label" in resp.json()["detail"].lower()
+
+
 def test_upload_accepts_boundary_quality(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "bq1.pdf")

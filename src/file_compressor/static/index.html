@@ -435,7 +435,6 @@
     <span x-text="toast"></span>
   </div>
 </div>
-
 <script>
 function app() {
   return {
@@ -589,12 +588,19 @@ function app() {
       this._selectFiles([...files]);
     },
     _selectFiles(all) {
+      const MAX_SIZE = 500 * 1024 * 1024;
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (pdfs.length === 0) {
         this.showToast('Only PDF files are supported', 'error');
         return;
       }
       if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
+      const oversized = pdfs.filter(f => f.size > MAX_SIZE);
+      if (oversized.length > 0) {
+        this.showToast(`File too large (max 500MB): ${oversized.map(f => f.name).join(', ')}`, 'error');
+        this.uploadFiles = pdfs.filter(f => f.size <= MAX_SIZE);
+        return;
+      }
       this.uploadFiles = pdfs;
     },
     async doUpload() {
@@ -604,7 +610,6 @@ function app() {
       this.uploadStatus = 'Uploading...';
       let succeeded = 0;
       let failed = 0;
-
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = new FormData();
         fd.append('file', this.uploadFiles[i]);
@@ -616,7 +621,6 @@ function app() {
         fd.append('notes', this.uploadForm.notes);
         this.uploadProgress = Math.round(((i + 0.5) / this.uploadFiles.length) * 100);
         this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
-
         try {
           const res = await fetch('/api/pdfs/upload', { method: 'POST', body: fd });
           if (!res.ok) {
@@ -632,7 +636,6 @@ function app() {
         }
         this.uploadProgress = Math.round(((i + 1) / this.uploadFiles.length) * 100);
       }
-
       this.uploading = false;
       this.showUpload = false;
       this.uploadFiles = [];
@@ -693,7 +696,6 @@ function app() {
       };
       this.showCompress = true;
     },
-
     async doCompress() {
       if (!this.compressTarget) return;
       this.compressing = true;
@@ -719,7 +721,6 @@ function app() {
       this.compressing = false;
       this.showCompress = false;
     },
-
     editNotes(pdf) {
       this.notesTarget = pdf;
       this.notesText = pdf.notes || '';
