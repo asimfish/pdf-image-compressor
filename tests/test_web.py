@@ -819,6 +819,30 @@ def test_legacy_compress_handles_compression_failure(tmp_path: Path):
     assert "legacy boom" in resp.json()["detail"]
 
 
+def test_legacy_compress_rejects_bad_quality(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "lq.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files=[("files", ("lq.pdf", f, "application/pdf"))], data={"quality": "0"})
+    assert resp.status_code == 422
+
+
+def test_legacy_compress_rejects_bad_mode(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "lm.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files=[("files", ("lm.pdf", f, "application/pdf"))], data={"pdf_mode": "invalid"})
+    assert resp.status_code == 422
+
+
+def test_legacy_compress_rejects_bad_target_size(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "lt.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files=[("files", ("lt.pdf", f, "application/pdf"))], data={"target_size": "abc"})
+    assert resp.status_code == 422
+
+
 # ── Integration test ──
 
 def test_full_upload_compress_download_flow(tmp_path: Path):

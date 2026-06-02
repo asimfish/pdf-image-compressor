@@ -292,6 +292,7 @@ async def compress_upload(
     pdf_grayscale: bool = Form(False),
     archive: Optional[str] = Form(None),
 ) -> FileResponse:
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     temp = tempfile.mkdtemp(prefix="file_compressor_web_")
     temp_path = Path(temp)
     upload_dir = temp_path / "uploads"
