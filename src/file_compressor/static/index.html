@@ -97,7 +97,6 @@
     </svg>
     <p class="text-gray-400">Loading library...</p>
   </div>
-  <!-- Empty State -->
   <div x-show="filteredPdfs.length === 0 && !loading" class="text-center py-20">
     <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
@@ -115,7 +114,6 @@
       </div>
     </template>
   </div>
-  <!-- PDF Grid -->
   <div class="grid gap-4" x-show="filteredPdfs.length > 0">
     <template x-for="pdf in filteredPdfs" :key="pdf.id">
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition fade-in">
@@ -439,7 +437,6 @@
       </div>
     </div>
   </div>
-  <!-- Toast -->
   <div x-show="toast" x-cloak x-transition
     class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium cursor-pointer"
     :class="toastType === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'"
@@ -710,7 +707,10 @@ function app() {
           const err = await res.json().catch(() => ({ detail: res.statusText }));
           throw new Error(err.detail || 'Compression failed');
         }
-        this.showToast('Compression complete');
+        const ver = await res.json();
+        const ratio = ver.compression_ratio;
+        const msg = ratio > 0 ? `Compressed: -${(ratio * 100).toFixed(1)}% (${this.fmtSize(ver.file_size)})` : 'Compression complete (optimized)';
+        this.showToast(msg);
         this.loadVersions(this.compressTarget.id);
         this.loadLibrary();
       } catch (e) {
