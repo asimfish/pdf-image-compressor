@@ -213,6 +213,17 @@ def test_compress_path_zip_relative_output(tmp_path: Path):
         os.chdir(old_cwd)
 
 
+def test_compress_path_output_as_directory(tmp_path: Path):
+    source = _make_pdf(tmp_path / "input.pdf")
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    config = CompressionConfig(output_dir=tmp_path)
+    summary = compress_path(source, config, out_dir)
+    assert summary.results[0].status == "ok"
+    assert summary.results[0].output.exists()
+    assert summary.results[0].output.parent == out_dir
+
+
 def test_compress_path_overwrite(tmp_path: Path):
     source = _make_pdf(tmp_path / "in.pdf")
     output = tmp_path / "out.pdf"
