@@ -17,7 +17,7 @@
     integrity="sha384-fzmr1kBM865vGJHBkGJ0vOM1KJfriPAsEDejc3s3M69V6LY0F84V1/3M03+YpeT" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
-<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" class="max-w-6xl mx-auto px-4 py-8">
+<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" @keydown.ctrl.b.window.prevent="if (pdfs.length > 0) batchCompress()" class="max-w-6xl mx-auto px-4 py-8">
   <div x-show="apiError" x-cloak class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
     <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/>
@@ -44,11 +44,11 @@
           <span class="ml-2 text-green-600 font-medium" x-text="'saved ' + fmtSize(stats.total_saved_bytes)"></span>
         </template>
       </div>
-      <button @click="showUpload = true"
+      <button @click="showUpload = true" title="Ctrl+U"
         class="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">
         + Upload PDF
       </button>
-      <button @click="batchCompress()" :disabled="batchCompressing || filteredPdfs.length === 0"
+      <button @click="batchCompress()" :disabled="batchCompressing || filteredPdfs.length === 0" title="Ctrl+B"
         class="px-4 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
         <span x-show="!batchCompressing" x-text="filteredPdfs.length < pdfs.length ? 'Compress Filtered (' + filteredPdfs.length + ')' : 'Compress All'"></span>
         <span x-show="batchCompressing">Compressing...</span>
