@@ -69,7 +69,6 @@
       </button>
     </div>
   </header>
-
   <!-- Search / Filter / Sort -->
   <div class="mb-6 flex gap-3">
     <div class="flex-1 relative">
@@ -746,6 +745,7 @@ function app() {
       try {
         const res = await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
+        if (this.expanded === pdf.id) this.expanded = null;
         this.showToast('Deleted');
         this.loadLibrary();
       } catch (e) {
