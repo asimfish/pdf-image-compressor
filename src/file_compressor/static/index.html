@@ -410,10 +410,9 @@
       </div>
     </div>
   </div>
-
   <!-- Notes Modal -->
   <div x-show="showNotes" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showNotes = false; notesTarget = null" @keydown.escape.window="if (showNotes) { showNotes = false; notesTarget = null }"
+    @click.self="showNotes = false; notesTarget = null" @keydown.escape.window="if (showNotes) { showNotes = false; notesTarget = null }">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
       <textarea x-model="notesText" rows="4" maxlength="5000" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm resize-none"></textarea>
@@ -572,6 +571,7 @@ function app() {
         if (!res.ok) throw new Error('Batch delete failed');
         const data = await res.json();
         this.showToast(`Deleted ${data.deleted} PDFs`);
+        if (ids.includes(this.expanded)) this.expanded = null;
         this.selectedPdfs = {};
         this.selectMode = false;
         this.loadLibrary();
