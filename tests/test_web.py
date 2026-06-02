@@ -1100,6 +1100,22 @@ def test_batch_compress_strip_metadata_false(tmp_path: Path):
     assert resp.json()["compressed"] == 1
 
 
+def test_batch_compress_with_label(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "bl.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("bl.pdf", f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "50", "label": "Batch v1"})
+    assert resp.status_code == 200
+    assert resp.json()["compressed"] == 1
+
+
+def test_batch_compress_rejects_long_label(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post("/api/pdfs/batch-compress", data={"label": "x" * 501})
+    assert resp.status_code == 422
+
+
 def test_compress_passes_strip_metadata_to_config(tmp_path: Path):
     from unittest.mock import patch
     from file_compressor.models import CompressionConfig

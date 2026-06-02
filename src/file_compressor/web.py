@@ -211,8 +211,11 @@ async def api_batch_compress(
     pdf_grayscale: bool = Form(False),
     strip_metadata: bool = Form(True),
     pdf_ids: Optional[str] = Form(None),
+    label: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    if len(label) > _MAX_LABEL_LEN:
+        raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
     all_pdfs = storage.list_pdfs()
     if pdf_ids:
@@ -224,7 +227,8 @@ async def api_batch_compress(
         return {"compressed": 0, "results": []}
 
     target_bytes = parse_size(target_size)
-    label = _auto_label(target_bytes, quality, pdf_mode)
+    if not label:
+        label = _auto_label(target_bytes, quality, pdf_mode)
     logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), quality, pdf_mode)
     results = []
     for pdf in pdfs:
