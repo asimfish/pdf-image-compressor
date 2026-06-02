@@ -73,7 +73,11 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
 def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale: bool, strip_metadata: bool) -> Path:
     fitz = _fitz()
     src = fitz.open(source)
-    dst = fitz.open()
+    try:
+        dst = fitz.open()
+    except Exception:
+        src.close()
+        raise
     try:
         for page in src:
             colorspace = fitz.csGRAY if grayscale else fitz.csRGB
