@@ -148,9 +148,15 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
 
 def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: int) -> CompressionConfig:
     dpi_values = [config.pdf_dpi, 140, 120, 110, 100, 90, 80, 72, 65]
-    edge_values = [config.max_edge, 2400, 2000, 1800, 1600, 1400, 1200, 1000]
+    fallback_edges = [None, 1800, 1600, 1400, 1200, 1000, 800, 640]
     dpi = dpi_values[min(attempt, len(dpi_values) - 1)] or config.pdf_dpi
-    edge = edge_values[min(attempt, len(edge_values) - 1)]
+    fallback_edge = fallback_edges[min(attempt, len(fallback_edges) - 1)]
+    if config.max_edge is not None and fallback_edge is not None:
+        edge = min(config.max_edge, fallback_edge)
+    elif config.max_edge is not None:
+        edge = config.max_edge
+    else:
+        edge = fallback_edge
     pdf_mode = config.pdf_mode
     if config.target_bytes is not None and attempt > 0 and pdf_mode == "auto":
         pdf_mode = "raster"

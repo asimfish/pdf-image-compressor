@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from file_compressor.core import compress_path, _archive_quality_candidates
+from file_compressor.core import compress_path, _archive_quality_candidates, _archive_attempt_config
 from file_compressor.models import CompressionConfig
 
 from conftest import make_test_pdf
@@ -232,3 +232,37 @@ def test_compress_path_no_overwrite_creates_unique(tmp_path: Path):
     assert summary.results[0].status == "ok"
     assert summary.results[0].output != output
     assert summary.results[0].output.name == "out_1.pdf"
+
+
+# ── _archive_attempt_config ──
+
+def test_archive_attempt_config_edge_decreases_without_user_edge():
+    config = CompressionConfig(target_bytes=50_000)
+    e0 = _archive_attempt_config(config, 82, 0).max_edge
+    e1 = _archive_attempt_config(config, 82, 1).max_edge
+    e2 = _archive_attempt_config(config, 82, 2).max_edge
+    assert e0 is None
+    assert e1 is not None and e2 is not None
+    assert e1 > e2
+
+
+def test_archive_attempt_config_respects_user_max_edge():
+    config = CompressionConfig(max_edge=500, target_bytes=50_000)
+    for attempt in range(4):
+        result = _archive_attempt_config(config, 82, attempt)
+        assert result.max_edge == 500
+
+
+def test_archive_attempt_config_large_user_edge_decreases():
+    config = CompressionConfig(max_edge=3000, target_bytes=50_000)
+    e0 = _archive_attempt_config(config, 82, 0).max_edge
+    e1 = _archive_attempt_config(config, 82, 1).max_edge
+    assert e0 == 3000
+    assert e1 < 3000
+
+
+def test_archive_attempt_config_dpi_decreases():
+    config = CompressionConfig(pdf_dpi=200, target_bytes=50_000)
+    d0 = _archive_attempt_config(config, 82, 0).pdf_dpi
+    d1 = _archive_attempt_config(config, 82, 1).pdf_dpi
+    assert d0 > d1
