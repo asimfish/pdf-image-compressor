@@ -87,6 +87,14 @@ def test_format_size_none():
     assert format_size(None) == "-"
 
 
+def test_format_size_edge_promotes_unit():
+    assert format_size(999999) == "1.0 MB"
+
+
+def test_format_size_zero():
+    assert format_size(0) == "0 B"
+
+
 # ── unique_path ──
 
 def test_unique_path_no_conflict(tmp_path: Path):
