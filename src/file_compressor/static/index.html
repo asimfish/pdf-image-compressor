@@ -777,9 +777,9 @@ function app() {
     },
     fmtSize(bytes) {
       if (!bytes) return '-';
-      const units = ['B', 'KB', 'MB', 'GB'];
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       let v = bytes, u = 0;
-      while (v >= 1000 && u < 3) { v /= 1000; u++; }
+      while (v >= 1000 && u < 4) { v /= 1000; u++; }
       return v.toFixed(u === 0 ? 0 : 1) + ' ' + units[u];
     },
     fmtDate(iso) {
