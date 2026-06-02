@@ -30,10 +30,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
         raw = ImageOps.exif_transpose(Image.open(source))
     except UnidentifiedImageError as exc:
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
+    exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
 
     for edge in edges:
         for quality in qualities:
-            data = _render_loaded(raw, suffix, quality, edge)
+            data = _render_loaded(raw, suffix, quality, edge, exif_bytes)
             size = len(data)
             if best_size is None or size < best_size:
                 best_data = data
@@ -51,11 +52,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
 
 
 
-def _render_loaded(image: Image.Image, suffix: str, quality: int, max_edge: Optional[int]) -> bytes:
+def _render_loaded(image: Image.Image, suffix: str, quality: int, max_edge: Optional[int], exif_bytes: Optional[bytes] = None) -> bytes:
     image = _resize(image, max_edge)
     image = _normalize_mode(image, suffix)
     buffer = BytesIO()
-    _save(image, buffer, suffix, quality)
+    _save(image, buffer, suffix, quality, exif_bytes)
     return buffer.getvalue()
 
 
@@ -81,10 +82,13 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
     return image.copy()
 
 
-def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int) -> None:
+def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_bytes: Optional[bytes] = None) -> None:
     quality = clamp_quality(quality)
     if suffix in {".jpg", ".jpeg"}:
-        image.save(buffer, format="JPEG", quality=quality, optimize=True, progressive=True)
+        kwargs: dict = {"quality": quality, "optimize": True, "progressive": True}
+        if exif_bytes:
+            kwargs["exif"] = exif_bytes
+        image.save(buffer, format="JPEG", **kwargs)
     elif suffix == ".webp":
         image.save(buffer, format="WEBP", quality=quality, method=6)
     elif suffix == ".png":

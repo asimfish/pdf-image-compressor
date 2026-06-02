@@ -231,3 +231,40 @@ def test_compress_image_zero_edge_ignores_resize(tmp_path: Path):
     assert output.exists()
     with Image.open(output) as img:
         assert img.size == (200, 200)
+
+
+def _make_jpeg_with_exif(path: Path) -> None:
+    from PIL.ExifTags import Base as ExifBase
+
+    img = Image.new("RGB", (200, 200), "red")
+    exif = img.getexif()
+    exif[ExifBase.Make] = "TestCamera"
+    exif[ExifBase.Model] = "TestModel"
+    exif[ExifBase.Software] = "TestSoftware"
+    img.save(path, quality=95, exif=exif.tobytes())
+
+
+def test_compress_image_strips_exif_by_default(tmp_path: Path):
+    source = tmp_path / "exif.jpg"
+    _make_jpeg_with_exif(source)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path, strip_metadata=True)
+    compress_image(source, output, config)
+
+    with Image.open(output) as img:
+        exif = img.getexif()
+        assert len(exif) == 0
+
+
+def test_compress_image_preserves_exif_when_disabled(tmp_path: Path):
+    source = tmp_path / "exif.jpg"
+    _make_jpeg_with_exif(source)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(output_dir=tmp_path, strip_metadata=False)
+    compress_image(source, output, config)
+
+    with Image.open(output) as img:
+        exif = img.getexif()
+        assert len(exif) > 0
