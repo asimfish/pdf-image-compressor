@@ -248,6 +248,20 @@ def test_list_pdfs_includes_version_count(tmp_path: Path):
     assert pdfs[0]["version_count"] >= 2
 
 
+def test_list_pdfs_no_duplicates_with_same_size_versions(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "dup.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("dup.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    # Compress twice with identical settings to produce same file size
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "pdf_mode": "optimize"})
+    client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "pdf_mode": "optimize"})
+    pdfs = client.get("/api/pdfs").json()
+    assert len(pdfs) == 1
+    assert pdfs[0]["version_count"] >= 3
+
+
 def test_download_pdf(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = _make_test_pdf(tmp_path / "dl.pdf")

@@ -112,10 +112,11 @@ class Storage:
             FROM pdfs p
             LEFT JOIN (SELECT pdf_id, COUNT(*) AS cnt FROM versions GROUP BY pdf_id) vc ON p.id = vc.pdf_id
             LEFT JOIN (
-                SELECT v.pdf_id, v.id AS best_id, v.file_size AS best_size, v.compression_ratio AS best_ratio
-                FROM versions v
-                INNER JOIN (SELECT pdf_id, MIN(file_size) AS min_size FROM versions GROUP BY pdf_id) m
-                ON v.pdf_id = m.pdf_id AND v.file_size = m.min_size
+                SELECT pdf_id, id AS best_id, file_size AS best_size, compression_ratio AS best_ratio
+                FROM (
+                    SELECT *, ROW_NUMBER() OVER (PARTITION BY pdf_id ORDER BY file_size, created_at DESC) AS rn
+                    FROM versions
+                ) ranked WHERE rn = 1
             ) bv ON p.id = bv.pdf_id
             ORDER BY p.upload_time DESC
         """).fetchall()
