@@ -50,14 +50,6 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     return output
 
 
-def _render_image(source: Path, suffix: str, quality: int, max_edge: Optional[int]) -> bytes:
-    try:
-        with Image.open(source) as raw:
-            image = ImageOps.exif_transpose(raw)
-            return _render_loaded(image, suffix, quality, max_edge)
-    except UnidentifiedImageError as exc:
-        raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
-
 
 def _render_loaded(image: Image.Image, suffix: str, quality: int, max_edge: Optional[int]) -> bytes:
     image = _resize(image, max_edge)
