@@ -574,18 +574,12 @@ function app() {
       this._selectFiles([...files]);
     },
     _selectFiles(all) {
-      const MAX_SIZE = 500 * 1024 * 1024;
+      const MAX = 500 * 1024 * 1024;
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (pdfs.length === 0) {
-        this.showToast('Only PDF files are supported', 'error');
-        return;
-      }
-      if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
-      const valid = pdfs.filter(f => f.size <= MAX_SIZE);
-      const oversized = pdfs.length - valid.length;
-      if (oversized > 0) {
-        this.showToast(`${oversized} file(s) too large (max 500MB)${valid.length === 0 ? ' — no files to upload' : ''}`, 'error');
-      }
+      if (!pdfs.length) { this.showToast('Only PDF files are supported', 'error'); return; }
+      const valid = pdfs.filter(f => f.size <= MAX);
+      const bad = [all.length - pdfs.length && 'non-PDF', pdfs.length - valid.length && 'too large'].filter(Boolean);
+      if (bad.length) this.showToast(`Skipped ${bad.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
       this.uploadFiles = valid;
     },
     async doUpload() {
