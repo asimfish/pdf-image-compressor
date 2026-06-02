@@ -145,6 +145,39 @@ def test_upload_returns_warning_field(tmp_path: Path):
     assert "warning" in data
 
 
+def test_upload_warns_on_compression_failure(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    with patch("file_compressor.web.compress_path", side_effect=RuntimeError("boom")):
+        with open(pdf_path, "rb") as f:
+            resp = client.post("/api/pdfs/upload", files={"file": ("fail.pdf", f, "application/pdf")})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["warning"] is not None
+    assert "boom" in data["warning"]
+
+
+def test_compress_and_store_raises_on_no_output(tmp_path: Path):
+    from unittest.mock import patch
+    from file_compressor.models import CompressionResult, CompressionSummary
+
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "nope.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("nope.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    fake_summary = CompressionSummary(results=[
+        CompressionResult(source=pdf_path, output=None, original_size=100, compressed_size=None, status="failed", error="kaboom")
+    ])
+    with patch("file_compressor.web.compress_path", return_value=fake_summary):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 500
+    assert "kaboom" in resp.json()["detail"]
+
+
 def test_upload_rejects_non_pdf(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/upload", files={"file": ("test.txt", b"not a pdf", "text/plain")})
@@ -724,5 +757,5 @@ def test_batch_compress_handles_individual_errors(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     assert data["compressed"] >= 0
-    statuses = {r["status"] for r in data["results"]}
-    assert "error" in statuses or "ok" in statuses
+    errors = [r for r in data["results"] if r["status"] == "error"]
+    assert any("missing" in e["error"].lower() for e in errors)

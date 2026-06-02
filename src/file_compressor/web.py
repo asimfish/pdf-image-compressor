@@ -208,6 +208,7 @@ async def api_batch_compress(
     for pdf in pdfs:
         path = storage.get_pdf_path(pdf.id)
         if not path or not path.exists():
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
             continue
         try:
             data = path.read_bytes()
