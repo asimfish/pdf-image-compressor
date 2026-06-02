@@ -239,7 +239,8 @@ async def api_batch_compress(
         try:
             data = path.read_bytes()
             ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok"})
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
+                            "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": str(exc)})
 

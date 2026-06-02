@@ -1126,6 +1126,22 @@ def test_batch_compress_with_label(tmp_path: Path):
     assert resp.json()["compressed"] == 1
 
 
+def test_batch_compress_includes_savings(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "sav.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("sav.pdf", f, "application/pdf")})
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    data = resp.json()
+    ok = data["results"][0]
+    assert ok["status"] == "ok"
+    assert "original_size" in ok
+    assert "compressed_size" in ok
+    assert "compression_ratio" in ok
+    assert ok["original_size"] > 0
+
+
 def test_batch_compress_rejects_long_label(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/batch-compress", data={"label": "x" * 501})
