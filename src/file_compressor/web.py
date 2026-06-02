@@ -108,6 +108,7 @@ async def api_upload_pdf(
     pdf_mode: str = Form("auto"),
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
+    strip_metadata: bool = Form(True),
     notes: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
@@ -137,7 +138,7 @@ async def api_upload_pdf(
 
     target_bytes = parse_size(target_size)
     try:
-        _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label="Initial compression")
+        _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label="Initial compression")
     except Exception as exc:
         logger.warning("Initial compression failed for %s: %s", filename, exc)
         result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
@@ -173,6 +174,7 @@ async def api_compress_pdf(
     pdf_mode: str = Form("auto"),
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
+    strip_metadata: bool = Form(True),
     label: str = Form(""),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
@@ -192,7 +194,7 @@ async def api_compress_pdf(
         label = _auto_label(target_bytes, quality, pdf_mode)
 
     try:
-        ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+        ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail=f"Compression failed: {exc}")
@@ -207,6 +209,7 @@ async def api_batch_compress(
     pdf_mode: str = Form("auto"),
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
+    strip_metadata: bool = Form(True),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     storage = _get_storage()
@@ -225,7 +228,7 @@ async def api_batch_compress(
             continue
         try:
             data = path.read_bytes()
-            ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, label)
+            ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok"})
         except Exception as exc:
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": str(exc)})
@@ -346,6 +349,7 @@ def _compress_and_store(
     pdf_mode: str,
     pdf_dpi: int,
     pdf_grayscale: bool,
+    strip_metadata: bool,
     label: str,
 ) -> VersionRecord:
     with tempfile.TemporaryDirectory(prefix="pdf_compress_") as td:
@@ -360,6 +364,7 @@ def _compress_and_store(
             pdf_mode=pdf_mode,
             pdf_dpi=pdf_dpi,
             pdf_grayscale=pdf_grayscale,
+            strip_metadata=strip_metadata,
         )
         summary = compress_path(src, config, out)
         if not out.exists():
