@@ -773,3 +773,19 @@ def test_batch_compress_handles_individual_errors(tmp_path: Path):
     assert data["compressed"] >= 0
     errors = [r for r in data["results"] if r["status"] == "error"]
     assert any("missing" in e["error"].lower() for e in errors)
+
+
+def test_batch_compress_reports_compression_errors(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("fail.pdf", f, "application/pdf")})
+
+    with patch("file_compressor.web.compress_path", side_effect=RuntimeError("compression exploded")):
+        resp = client.post("/api/pdfs/batch-compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    data = resp.json()
+    errors = [r for r in data["results"] if r["status"] == "error"]
+    assert any("exploded" in e["error"] for e in errors)
