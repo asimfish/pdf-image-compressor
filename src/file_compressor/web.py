@@ -18,7 +18,7 @@ from starlette.background import BackgroundTask
 from .core import compress_path
 from .models import CompressionConfig
 from .storage import Storage, VersionRecord
-from .utils import format_size, parse_size
+from .utils import clamp_quality, format_size, parse_size
 
 app = FastAPI(title="PDF Manager")
 
@@ -29,7 +29,7 @@ _MAX_LABEL_LEN = 500
 
 
 def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_size: Optional[str] = None) -> None:
-    if not 1 <= quality <= 95:
+    if clamp_quality(quality) != quality:
         raise HTTPException(422, detail="quality must be between 1 and 95")
     if pdf_mode not in _VALID_MODES:
         raise HTTPException(422, detail=f"pdf_mode must be one of {sorted(_VALID_MODES)}")
