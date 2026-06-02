@@ -397,16 +397,13 @@
         </label>
       </div>
       <div x-show="batchCompressing" class="mt-4">
-        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div class="h-full bg-green-600 rounded-full animate-pulse w-full"></div>
-        </div>
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-green-600 rounded-full animate-pulse w-full"></div></div>
         <p class="text-sm text-gray-500 mt-1 text-center">Compressing all PDFs...</p>
       </div>
       <div x-show="batchCompressValidation" class="mt-3 text-sm text-red-600" x-text="batchCompressValidation"></div>
       <div class="flex gap-3 mt-5">
         <button @click="showBatchCompress = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
-        <button @click="doBatchCompress()" :disabled="batchCompressing || batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40">Compress All</button>
-      </div>
+        <button @click="doBatchCompress()" :disabled="batchCompressing || batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed">Compress All</button>
     </div>
   </div>
   <!-- Notes Modal -->
@@ -640,15 +637,17 @@ function app() {
       }
       this.uploadProgress = 100;
       this.uploading = false;
+      if (succeeded === 0 && errors.length > 0) {
+        this.showToast(`Upload failed: ${errors.join('; ')}`, 'error');
+        return;
+      }
       this.showUpload = false;
       this.uploadFiles = [];
       this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, notes: '' };
       if (errors.length === 0) {
         this.showToast(`Uploaded ${succeeded} PDF(s)`);
-      } else if (succeeded > 0) {
-        this.showToast(`Uploaded ${succeeded}, ${errors.length} error(s): ${errors.join('; ')}`, 'error');
       } else {
-        this.showToast(`Upload failed: ${errors.join('; ')}`, 'error');
+        this.showToast(`Uploaded ${succeeded}, ${errors.length} error(s): ${errors.join('; ')}`, 'error');
       }
       this.loadLibrary();
     },
