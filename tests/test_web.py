@@ -342,6 +342,22 @@ def test_batch_compress(tmp_path: Path):
     assert all(r["status"] == "ok" for r in data["results"])
 
 
+def test_batch_compress_with_pdf_ids(tmp_path: Path):
+    client = _client(tmp_path)
+    ids = []
+    for name in ["a.pdf", "b.pdf"]:
+        pdf_path = make_test_pdf(tmp_path / name)
+        with open(pdf_path, "rb") as f:
+            resp = client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
+        ids.append(resp.json()["id"])
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "60", "pdf_ids": ids[0]})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 1
+    assert len(data["results"]) == 1
+    assert data["results"][0]["pdf_id"] == ids[0]
+
+
 def test_batch_compress_empty_library(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})

@@ -210,10 +210,16 @@ async def api_batch_compress(
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
     strip_metadata: bool = Form(True),
+    pdf_ids: Optional[str] = Form(None),
 ):
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     storage = _get_storage()
-    pdfs = storage.list_pdfs()
+    all_pdfs = storage.list_pdfs()
+    if pdf_ids:
+        id_set = {s.strip() for s in pdf_ids.split(",") if s.strip()}
+        pdfs = [p for p in all_pdfs if p.id in id_set]
+    else:
+        pdfs = all_pdfs
     if not pdfs:
         return {"compressed": 0, "results": []}
 
