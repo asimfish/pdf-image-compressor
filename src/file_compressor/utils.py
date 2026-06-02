@@ -37,8 +37,8 @@ def format_size(size: Optional[int]) -> str:
     if size is None:
         return "-"
     value = float(size)
-    for unit in ["B", "KB", "MB", "GB"]:
-        if value < 1000 or unit == "GB":
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if value < 1000 or unit == "TB":
             return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
         value /= 1000
 

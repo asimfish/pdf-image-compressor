@@ -47,6 +47,10 @@ def test_parse_size_gb():
     assert parse_size("2GB") == 2_000_000_000
 
 
+def test_parse_size_tb():
+    assert parse_size("1TB") == 1_000_000_000_000
+
+
 def test_parse_size_with_spaces():
     assert parse_size(" 500 KB ") == 500_000
 
@@ -72,6 +76,10 @@ def test_format_size_mb():
 
 def test_format_size_gb():
     assert format_size(2_000_000_000) == "2.0 GB"
+
+
+def test_format_size_tb():
+    assert format_size(1_000_000_000_000) == "1.0 TB"
 
 
 def test_format_size_none():
