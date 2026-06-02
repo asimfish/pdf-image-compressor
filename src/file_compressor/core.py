@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -101,12 +102,12 @@ def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[P
                 best_size = size
             if config.target_bytes is None or size <= config.target_bytes:
                 archive_output.parent.mkdir(parents=True, exist_ok=True)
-                archive_output.write_bytes(candidate.read_bytes())
+                shutil.copy2(candidate, archive_output)
                 return summary
         if best_summary is None or best_archive is None:
             raise RuntimeError("Archive compression produced no output")
         archive_output.parent.mkdir(parents=True, exist_ok=True)
-        archive_output.write_bytes(best_archive.read_bytes())
+        shutil.copy2(best_archive, archive_output)
         best_summary.archive = CompressionResult(
             source=source,
             output=archive_output,
