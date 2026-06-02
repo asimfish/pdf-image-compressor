@@ -670,11 +670,11 @@ function app() {
           this.showToast(`Compressed ${data.compressed} PDFs`);
         }
         this.loadLibrary();
+        this.showBatchCompress = false;
       } catch (e) {
         this.showToast('Batch compress failed: ' + e.message, 'error');
       }
       this.batchCompressing = false;
-      this.showBatchCompress = false;
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;
@@ -711,11 +711,11 @@ function app() {
         this.showToast(msg);
         this.loadVersions(this.compressTarget.id);
         this.loadLibrary();
+        this.showCompress = false;
       } catch (e) {
         this.showToast('Compression failed: ' + e.message, 'error');
       }
       this.compressing = false;
-      this.showCompress = false;
     },
     editNotes(pdf) {
       this.notesTarget = pdf;
