@@ -342,3 +342,26 @@ def test_main_no_command(capsys):
         main()
     captured = capsys.readouterr()
     assert "usage:" in captured.out.lower() or "file-compressor" in captured.out.lower()
+
+
+def test_run_web(tmp_path):
+    from unittest.mock import MagicMock
+    from file_compressor.cli import run_web
+
+    mock_uvicorn = MagicMock()
+    args = Namespace(host="127.0.0.1", port=9999, data_dir=tmp_path / "webdata")
+    with patch.dict("sys.modules", {"uvicorn": mock_uvicorn}):
+        run_web(args)
+    mock_uvicorn.run.assert_called_once_with(
+        "file_compressor.web:app", host="127.0.0.1", port=9999, reload=False,
+    )
+
+
+def test_main_web(tmp_path):
+    from unittest.mock import MagicMock
+
+    mock_uvicorn = MagicMock()
+    with patch.dict("sys.modules", {"uvicorn": mock_uvicorn}):
+        with patch("sys.argv", ["file-compressor", "web", "--data-dir", str(tmp_path / "webdata"), "--port", "8888"]):
+            main()
+    mock_uvicorn.run.assert_called_once()
