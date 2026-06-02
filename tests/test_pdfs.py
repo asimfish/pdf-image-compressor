@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import fitz
+import pytest
 
 from file_compressor.models import CompressionConfig
 from file_compressor.pdfs import compress_pdf, optimize_pdf, rasterize_pdf
@@ -104,11 +105,8 @@ def test_compress_pdf_invalid_mode(tmp_path: Path):
     output = tmp_path / "bad_out.pdf"
 
     config = CompressionConfig(pdf_mode="invalid", output_dir=tmp_path)
-    try:
+    with pytest.raises(ValueError, match="pdf_mode"):
         compress_pdf(source, output, config)
-        assert False, "Should have raised ValueError"
-    except ValueError:
-        pass
 
 
 def test_compress_pdf_with_target_size(tmp_path: Path):
