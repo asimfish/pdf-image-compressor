@@ -22,12 +22,18 @@ def output_suffix_for_image(source: Path, config: CompressionConfig) -> str:
 def compress_image(source: Path, output: Path, config: CompressionConfig) -> Path:
     qualities = _quality_candidates(config.quality) if config.target_bytes else [config.quality]
     edges = _edge_candidates(config.max_edge) if config.target_bytes else [config.max_edge]
+    suffix = output.suffix.lower()
     best_data: Optional[bytes] = None
     best_size: Optional[int] = None
 
+    try:
+        raw = ImageOps.exif_transpose(Image.open(source))
+    except UnidentifiedImageError as exc:
+        raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
+
     for edge in edges:
         for quality in qualities:
-            data = _render_image(source, output.suffix.lower(), quality, edge)
+            data = _render_loaded(raw, suffix, quality, edge)
             size = len(data)
             if best_size is None or size < best_size:
                 best_data = data
@@ -46,15 +52,19 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
 
 def _render_image(source: Path, suffix: str, quality: int, max_edge: Optional[int]) -> bytes:
     try:
-        with Image.open(source) as image:
-            image = ImageOps.exif_transpose(image)
-            image = _resize(image, max_edge)
-            image = _normalize_mode(image, suffix)
-            buffer = BytesIO()
-            _save(image, buffer, suffix, quality)
-            return buffer.getvalue()
+        with Image.open(source) as raw:
+            image = ImageOps.exif_transpose(raw)
+            return _render_loaded(image, suffix, quality, max_edge)
     except UnidentifiedImageError as exc:
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
+
+
+def _render_loaded(image: Image.Image, suffix: str, quality: int, max_edge: Optional[int]) -> bytes:
+    image = _resize(image, max_edge)
+    image = _normalize_mode(image, suffix)
+    buffer = BytesIO()
+    _save(image, buffer, suffix, quality)
+    return buffer.getvalue()
 
 
 def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
