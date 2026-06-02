@@ -62,6 +62,8 @@
         class="px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition shadow-sm">
         Delete (<span x-text="Object.keys(selectedPdfs).length"></span>)
       </button>
+      <button x-show="selectMode" @click="selectAll()" class="text-sm text-blue-600 hover:text-blue-800 font-medium"
+        x-text="Object.keys(selectedPdfs).length === filteredPdfs.length ? 'Deselect All' : 'Select All (' + filteredPdfs.length + ')'"></button>
     </div>
   </header>
   <div class="mb-6 flex gap-3">
@@ -536,12 +538,12 @@ function app() {
     },
     toggleSelect(pdfId) {
       const next = { ...this.selectedPdfs };
-      if (next[pdfId]) {
-        delete next[pdfId];
-      } else {
-        next[pdfId] = true;
-      }
+      if (next[pdfId]) { delete next[pdfId]; } else { next[pdfId] = true; }
       this.selectedPdfs = next;
+    },
+    selectAll() {
+      const all = Object.fromEntries(this.filteredPdfs.map(p => [p.id, true]));
+      this.selectedPdfs = Object.keys(this.selectedPdfs).length === this.filteredPdfs.length ? {} : all;
     },
     async batchDelete() {
       const ids = Object.keys(this.selectedPdfs);
