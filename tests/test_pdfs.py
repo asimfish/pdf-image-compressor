@@ -168,3 +168,26 @@ def test_compress_pdf_keep_metadata(tmp_path: Path):
     compress_pdf(source, output, config)
 
     assert output.exists()
+
+
+def test_fitz_import_error(tmp_path: Path):
+    import builtins
+    import sys
+    from unittest.mock import patch
+    from file_compressor.pdfs import _fitz
+
+    real_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if name == "fitz":
+            raise ImportError("No module named 'fitz'")
+        return real_import(name, *args, **kwargs)
+
+    saved = sys.modules.pop("fitz", None)
+    try:
+        with patch.object(builtins, "__import__", side_effect=mock_import):
+            with pytest.raises(RuntimeError, match="PyMuPDF"):
+                _fitz()
+    finally:
+        if saved is not None:
+            sys.modules["fitz"] = saved
