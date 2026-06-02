@@ -17,9 +17,7 @@
     integrity="sha384-fzmr1kBM865vGJHBkGJ0vOM1KJfriPAsEDejc3s3M69V6LY0F84V1/3M03+YpeT" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
-
 <div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" class="max-w-6xl mx-auto px-4 py-8">
-
   <!-- Connection Error Banner -->
   <div x-show="apiError" x-cloak class="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
     <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -31,7 +29,6 @@
     </div>
     <button @click="loadLibrary()" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 transition">Retry</button>
   </div>
-
   <!-- Header -->
   <header class="flex items-center justify-between mb-8">
     <div>
@@ -203,7 +200,10 @@
               <template x-for="v in (versionCache[pdf.id] || [])" :key="v.id">
                 <div class="flex items-center gap-4 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
                   <div class="flex-1 min-w-0">
-                    <div class="font-medium text-sm text-gray-800" x-text="v.label"></div>
+                    <div class="font-medium text-sm text-gray-800">
+                      <span x-text="v.label"></span>
+                      <span x-show="v.file_size === Math.min(...(versionCache[pdf.id] || []).map(x => x.file_size)) && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
+                    </div>
                     <div class="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
                       <span x-text="fmtSize(v.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
                       <span x-show="v.compression_ratio > 0" class="text-green-600" x-text="'-' + (v.compression_ratio * 100).toFixed(1) + '%'"></span>
