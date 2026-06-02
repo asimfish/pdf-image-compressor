@@ -562,7 +562,6 @@ function app() {
       }
       this.selectedPdfs = next;
     },
-
     async batchDelete() {
       const ids = Object.keys(this.selectedPdfs);
       if (!confirm(`Delete ${ids.length} PDF(s) and all their versions?`)) return;
@@ -582,16 +581,13 @@ function app() {
         this.showToast('Delete failed: ' + e.message, 'error');
       }
     },
-
     handleDrop(e) {
       this.dragOver = false;
       this._selectFiles([...e.dataTransfer.files]);
     },
-
     handleFiles(files) {
       this._selectFiles([...files]);
     },
-
     _selectFiles(all) {
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (pdfs.length === 0) {
@@ -601,7 +597,6 @@ function app() {
       if (pdfs.length < all.length) this.showToast(`Skipped ${all.length - pdfs.length} non-PDF file(s)`);
       this.uploadFiles = pdfs;
     },
-
     async doUpload() {
       if (!this.uploadFiles.length) return;
       this.uploading = true;
@@ -667,7 +662,12 @@ function app() {
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Batch compress failed');
         const data = await res.json();
-        this.showToast(`Compressed ${data.compressed} PDFs`);
+        const errors = (data.results || []).filter(r => r.status === 'error');
+        if (errors.length > 0) {
+          this.showToast(`Compressed ${data.compressed}, ${errors.length} failed: ${errors.map(e => e.filename).join(', ')}`, 'error');
+        } else {
+          this.showToast(`Compressed ${data.compressed} PDFs`);
+        }
         this.loadLibrary();
       } catch (e) {
         this.showToast('Batch compress failed: ' + e.message, 'error');
