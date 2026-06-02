@@ -152,6 +152,12 @@ def test_archive_quality_candidates_just_above_20():
     assert 20 in candidates
 
 
+def test_archive_quality_candidates_range_ends_on_20():
+    """start=28 → range(28,19,-8)=[28,20] — no append needed (branch 144->146)."""
+    candidates = _archive_quality_candidates(28, 50_000)
+    assert candidates == [28, 20]
+
+
 def test_compress_path_zip_with_target(tmp_path: Path):
     docs = tmp_path / "docs"
     docs.mkdir()

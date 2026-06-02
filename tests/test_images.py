@@ -307,3 +307,16 @@ def test_save_unsupported_suffix_raises():
     buf = BytesIO()
     with pytest.raises(ValueError, match="Unsupported image format"):
         _save(img, buf, ".bmp", 80)
+
+
+def test_compress_image_fallback_best_when_all_over_target(tmp_path: Path):
+    """All quality/edge combos exceed the tiny target — uses best result (lines 47-51)."""
+    source = tmp_path / "big.jpg"
+    Image.new("RGB", (2000, 1500), "green").save(source, quality=95)
+    output = tmp_path / "out.jpg"
+
+    config = CompressionConfig(target_bytes=100, quality=82, output_dir=tmp_path)
+    compress_image(source, output, config)
+
+    assert output.exists()
+    assert output.stat().st_size > 100  # can't hit 100 bytes
