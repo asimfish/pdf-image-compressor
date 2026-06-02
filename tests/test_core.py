@@ -184,3 +184,40 @@ def test_compress_relative_output_dir(tmp_path: Path):
         assert summary.results[0].output.exists()
     finally:
         os.chdir(old_cwd)
+
+
+def test_compress_path_zip_relative_output(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _make_pdf(docs / "a.pdf")
+    import os
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        config = CompressionConfig(archive="zip", output_dir=Path("."))
+        summary = compress_path(docs, config, Path("rel_archive.zip"))
+        assert summary.archive is not None
+        assert summary.archive.output.exists()
+    finally:
+        os.chdir(old_cwd)
+
+
+def test_compress_path_overwrite(tmp_path: Path):
+    source = _make_pdf(tmp_path / "in.pdf")
+    output = tmp_path / "out.pdf"
+    output.write_bytes(b"existing")
+    config = CompressionConfig(output_dir=tmp_path, overwrite=True)
+    summary = compress_path(source, config, output)
+    assert summary.results[0].status == "ok"
+    assert summary.results[0].output.exists()
+
+
+def test_compress_path_no_overwrite_creates_unique(tmp_path: Path):
+    source = _make_pdf(tmp_path / "in.pdf")
+    output = tmp_path / "out.pdf"
+    output.write_bytes(b"existing")
+    config = CompressionConfig(output_dir=tmp_path, overwrite=False)
+    summary = compress_path(source, config, output)
+    assert summary.results[0].status == "ok"
+    assert summary.results[0].output != output
+    assert summary.results[0].output.name == "out_1.pdf"
