@@ -98,3 +98,10 @@ def test_all_results_with_archive():
     summary = CompressionSummary(results=[r1], archive=archive)
     assert len(summary.all_results) == 2
     assert summary.all_results[1] is archive
+
+
+def test_result_immutable():
+    import pytest
+    result = CompressionResult(source=Path("a.pdf"), output=Path("b.pdf"), original_size=100, compressed_size=50, status="ok")
+    with pytest.raises(AttributeError):
+        result.status = "failed"

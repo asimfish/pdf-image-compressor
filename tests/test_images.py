@@ -192,3 +192,42 @@ def test_compress_image_low_quality_with_target(tmp_path: Path):
     compress_image(source, output, config)
 
     assert output.exists()
+
+
+def test_edge_candidates_small_edge_collapses_to_floor():
+    from file_compressor.images import _edge_candidates
+    result = _edge_candidates(200)
+    assert result == [320]
+
+
+def test_edge_candidates_near_floor_deduplicates():
+    from file_compressor.images import _edge_candidates
+    result = _edge_candidates(350)
+    assert result[0] == 350
+    assert 320 in result
+    assert len(result) == 2
+
+
+def test_quality_candidates_at_max():
+    from file_compressor.images import _quality_candidates
+    result = _quality_candidates(95)
+    assert result[0] == 95
+    assert result[-1] == 15
+
+
+def test_quality_candidates_boundary_20():
+    from file_compressor.images import _quality_candidates
+    result = _quality_candidates(20)
+    assert result[0] == 20
+    assert 15 in result
+
+
+def test_compress_image_zero_edge_ignores_resize(tmp_path: Path):
+    source = tmp_path / "in.jpg"
+    Image.new("RGB", (200, 200), "blue").save(source)
+    output = tmp_path / "out.jpg"
+    config = CompressionConfig(max_edge=0, output_dir=tmp_path)
+    compress_image(source, output, config)
+    assert output.exists()
+    with Image.open(output) as img:
+        assert img.size == (200, 200)

@@ -30,7 +30,7 @@ class CompressionConfig:
         return replace(self, target_bytes=target_bytes)
 
 
-@dataclass
+@dataclass(frozen=True)
 class CompressionResult:
     source: Path
     output: Optional[Path]

@@ -197,3 +197,42 @@ def test_batch_delete_with_nonexistent(tmp_path: Path):
     assert deleted == 1
     assert storage.get_pdf(pdf.id) is None
     storage.close()
+
+
+def test_get_pdf_path_nonexistent(tmp_path: Path):
+    storage = Storage(tmp_path)
+    assert storage.get_pdf_path("nonexistent") is None
+    storage.close()
+
+
+def test_get_version_path_nonexistent(tmp_path: Path):
+    storage = Storage(tmp_path)
+    assert storage.get_version_path("nonexistent") is None
+    storage.close()
+
+
+def test_delete_version_nonexistent(tmp_path: Path):
+    storage = Storage(tmp_path)
+    assert not storage.delete_version("nonexistent")
+    storage.close()
+
+
+def test_list_pdfs_with_stats_multiple(tmp_path: Path):
+    storage = Storage(tmp_path)
+    p1 = storage.add_pdf("a.pdf", b"A" * 100, 3)
+    p2 = storage.add_pdf("b.pdf", b"B" * 200, 5)
+    storage.add_version(
+        pdf_id=p1.id, label="v1", file_data=b"compressed1",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+    result = storage.list_pdfs_with_stats()
+    assert len(result) == 2
+    ids = {r["id"] for r in result}
+    assert p1.id in ids
+    assert p2.id in ids
+    p1_stats = next(r for r in result if r["id"] == p1.id)
+    p2_stats = next(r for r in result if r["id"] == p2.id)
+    assert p1_stats["version_count"] == 1
+    assert p2_stats["version_count"] == 0
+    storage.close()

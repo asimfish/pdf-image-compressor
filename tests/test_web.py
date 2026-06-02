@@ -7,10 +7,6 @@ from file_compressor.web import app, init_storage
 from conftest import make_test_pdf
 
 
-def _make_test_pdf(path: Path, pages: int = 3) -> Path:
-    return make_test_pdf(path, pages)
-
-
 def _client(tmp_path: Path) -> TestClient:
     init_storage(tmp_path)
     return TestClient(app)
@@ -34,7 +30,7 @@ def test_stats_empty(tmp_path: Path):
 
 def test_stats_with_data(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "st.pdf")
+    pdf_path = make_test_pdf(tmp_path / "st.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("st.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -61,7 +57,7 @@ def test_health(tmp_path: Path):
 
 def test_health_with_versions(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "hv.pdf")
+    pdf_path = make_test_pdf(tmp_path / "hv.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("hv.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -75,7 +71,7 @@ def test_health_with_versions(tmp_path: Path):
 
 def test_health_with_data(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "test.pdf")
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
     resp = client.get("/api/health")
@@ -87,7 +83,7 @@ def test_health_with_data(tmp_path: Path):
 
 def test_upload_pdf(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "test.pdf")
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
     assert resp.status_code == 200
@@ -99,7 +95,7 @@ def test_upload_pdf(tmp_path: Path):
 
 def test_upload_with_notes(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "notes.pdf")
+    pdf_path = make_test_pdf(tmp_path / "notes.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -113,7 +109,7 @@ def test_upload_with_notes(tmp_path: Path):
 
 def test_upload_rejects_notes_too_long(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "longnotes.pdf")
+    pdf_path = make_test_pdf(tmp_path / "longnotes.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -132,7 +128,7 @@ def test_list_pdfs_empty(tmp_path: Path):
 
 def test_upload_returns_warning_field(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "warn.pdf")
+    pdf_path = make_test_pdf(tmp_path / "warn.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post("/api/pdfs/upload", files={"file": ("warn.pdf", f, "application/pdf")})
     assert resp.status_code == 200
@@ -144,7 +140,7 @@ def test_upload_warns_on_compression_failure(tmp_path: Path):
     from unittest.mock import patch
 
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    pdf_path = make_test_pdf(tmp_path / "fail.pdf")
     with patch("file_compressor.web.compress_path", side_effect=RuntimeError("boom")):
         with open(pdf_path, "rb") as f:
             resp = client.post("/api/pdfs/upload", files={"file": ("fail.pdf", f, "application/pdf")})
@@ -159,7 +155,7 @@ def test_compress_and_store_raises_on_no_output(tmp_path: Path):
     from file_compressor.models import CompressionResult, CompressionSummary
 
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "nope.pdf")
+    pdf_path = make_test_pdf(tmp_path / "nope.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("nope.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -207,7 +203,7 @@ def test_upload_rejects_zero_page_pdf(tmp_path: Path):
 
 def test_upload_quality_95_creates_version(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "q95.pdf")
+    pdf_path = make_test_pdf(tmp_path / "q95.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post(
             "/api/pdfs/upload",
@@ -223,7 +219,7 @@ def test_upload_quality_95_creates_version(tmp_path: Path):
 
 def test_list_pdfs(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "a.pdf")
+    pdf_path = make_test_pdf(tmp_path / "a.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("a.pdf", f, "application/pdf")})
     resp = client.get("/api/pdfs")
@@ -233,7 +229,7 @@ def test_list_pdfs(tmp_path: Path):
 
 def test_list_pdfs_includes_version_count(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "vc.pdf")
+    pdf_path = make_test_pdf(tmp_path / "vc.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("vc.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -250,7 +246,7 @@ def test_list_pdfs_includes_version_count(tmp_path: Path):
 
 def test_list_pdfs_no_duplicates_with_same_size_versions(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "dup.pdf")
+    pdf_path = make_test_pdf(tmp_path / "dup.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("dup.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -264,7 +260,7 @@ def test_list_pdfs_no_duplicates_with_same_size_versions(tmp_path: Path):
 
 def test_download_pdf(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "dl.pdf")
+    pdf_path = make_test_pdf(tmp_path / "dl.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("dl.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -281,7 +277,7 @@ def test_download_nonexistent(tmp_path: Path):
 
 def test_list_versions(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "v.pdf")
+    pdf_path = make_test_pdf(tmp_path / "v.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post(
             "/api/pdfs/upload",
@@ -297,7 +293,7 @@ def test_list_versions(tmp_path: Path):
 
 def test_compress_creates_version(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "c.pdf")
+    pdf_path = make_test_pdf(tmp_path / "c.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("c.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -313,7 +309,7 @@ def test_compress_creates_version(tmp_path: Path):
 
 def test_compress_with_grayscale(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "gr.pdf")
+    pdf_path = make_test_pdf(tmp_path / "gr.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("gr.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -335,7 +331,7 @@ def test_compress_nonexistent(tmp_path: Path):
 def test_batch_compress(tmp_path: Path):
     client = _client(tmp_path)
     for name in ["a.pdf", "b.pdf"]:
-        pdf_path = _make_test_pdf(tmp_path / name)
+        pdf_path = make_test_pdf(tmp_path / name)
         with open(pdf_path, "rb") as f:
             client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
     resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})
@@ -357,7 +353,7 @@ def test_batch_compress_empty_library(tmp_path: Path):
 
 def test_update_notes(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "n.pdf")
+    pdf_path = make_test_pdf(tmp_path / "n.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("n.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -369,7 +365,7 @@ def test_update_notes(tmp_path: Path):
 
 def test_update_notes_accepts_max_length(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "ml.pdf")
+    pdf_path = make_test_pdf(tmp_path / "ml.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("ml.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -379,7 +375,7 @@ def test_update_notes_accepts_max_length(tmp_path: Path):
 
 def test_update_notes_clear(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "cl.pdf")
+    pdf_path = make_test_pdf(tmp_path / "cl.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("cl.pdf", f, "application/pdf")}, data={"notes": "initial"})
     pdf_id = upload.json()["id"]
@@ -391,8 +387,8 @@ def test_update_notes_clear(tmp_path: Path):
 
 def test_upload_multiple_files(tmp_path: Path):
     client = _client(tmp_path)
-    _make_test_pdf(tmp_path / "a.pdf")
-    _make_test_pdf(tmp_path / "b.pdf")
+    make_test_pdf(tmp_path / "a.pdf")
+    make_test_pdf(tmp_path / "b.pdf")
     with open(tmp_path / "a.pdf", "rb") as fa, open(tmp_path / "b.pdf", "rb") as fb:
         resp_a = client.post("/api/pdfs/upload", files={"file": ("a.pdf", fa, "application/pdf")})
         resp_b = client.post("/api/pdfs/upload", files={"file": ("b.pdf", fb, "application/pdf")})
@@ -404,7 +400,7 @@ def test_upload_multiple_files(tmp_path: Path):
 
 def test_update_notes_rejects_too_long(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "nl.pdf")
+    pdf_path = make_test_pdf(tmp_path / "nl.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("nl.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -420,7 +416,7 @@ def test_update_notes_nonexistent_pdf(tmp_path: Path):
 
 def test_delete_pdf(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "d.pdf")
+    pdf_path = make_test_pdf(tmp_path / "d.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("d.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -439,7 +435,7 @@ def test_batch_delete(tmp_path: Path):
     client = _client(tmp_path)
     ids = []
     for name in ["x.pdf", "y.pdf", "z.pdf"]:
-        pdf_path = _make_test_pdf(tmp_path / name)
+        pdf_path = make_test_pdf(tmp_path / name)
         with open(pdf_path, "rb") as f:
             upload = client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
         ids.append(upload.json()["id"])
@@ -453,7 +449,7 @@ def test_batch_delete(tmp_path: Path):
 
 def test_download_version(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "dv.pdf")
+    pdf_path = make_test_pdf(tmp_path / "dv.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("dv.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -467,7 +463,7 @@ def test_download_version(tmp_path: Path):
 
 def test_delete_version(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "delv.pdf")
+    pdf_path = make_test_pdf(tmp_path / "delv.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("delv.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -507,7 +503,7 @@ def test_batch_delete_empty(tmp_path: Path):
 
 def test_upload_rejects_bad_quality(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bq.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bq.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -520,7 +516,7 @@ def test_upload_rejects_bad_quality(tmp_path: Path):
 
 def test_upload_rejects_bad_mode(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bm.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bm.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -533,7 +529,7 @@ def test_upload_rejects_bad_mode(tmp_path: Path):
 
 def test_upload_rejects_bad_dpi(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bd.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bd.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -546,7 +542,7 @@ def test_upload_rejects_bad_dpi(tmp_path: Path):
 
 def test_compress_rejects_bad_quality(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "cbq.pdf")
+    pdf_path = make_test_pdf(tmp_path / "cbq.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("cbq.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -556,7 +552,7 @@ def test_compress_rejects_bad_quality(tmp_path: Path):
 
 def test_upload_rejects_bad_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bts.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bts.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -569,7 +565,7 @@ def test_upload_rejects_bad_target_size(tmp_path: Path):
 
 def test_compress_rejects_bad_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "cbts.pdf")
+    pdf_path = make_test_pdf(tmp_path / "cbts.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("cbts.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -579,7 +575,7 @@ def test_compress_rejects_bad_target_size(tmp_path: Path):
 
 def test_upload_rejects_quality_above_95(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "hq.pdf")
+    pdf_path = make_test_pdf(tmp_path / "hq.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -591,7 +587,7 @@ def test_upload_rejects_quality_above_95(tmp_path: Path):
 
 def test_upload_rejects_dpi_above_300(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "hd.pdf")
+    pdf_path = make_test_pdf(tmp_path / "hd.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -603,7 +599,7 @@ def test_upload_rejects_dpi_above_300(tmp_path: Path):
 
 def test_compress_rejects_bad_dpi(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "cbd.pdf")
+    pdf_path = make_test_pdf(tmp_path / "cbd.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("cbd.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -613,7 +609,7 @@ def test_compress_rejects_bad_dpi(tmp_path: Path):
 
 def test_compress_rejects_bad_mode(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "cbm.pdf")
+    pdf_path = make_test_pdf(tmp_path / "cbm.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("cbm.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -623,7 +619,7 @@ def test_compress_rejects_bad_mode(tmp_path: Path):
 
 def test_compress_rejects_label_too_long(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "lbl.pdf")
+    pdf_path = make_test_pdf(tmp_path / "lbl.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("lbl.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -634,7 +630,7 @@ def test_compress_rejects_label_too_long(tmp_path: Path):
 
 def test_upload_accepts_boundary_quality(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bq1.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bq1.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -646,7 +642,7 @@ def test_upload_accepts_boundary_quality(tmp_path: Path):
 
 def test_upload_accepts_boundary_dpi(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "bd36.pdf")
+    pdf_path = make_test_pdf(tmp_path / "bd36.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -658,7 +654,7 @@ def test_upload_accepts_boundary_dpi(tmp_path: Path):
 
 def test_compress_with_relative_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "rel.pdf")
+    pdf_path = make_test_pdf(tmp_path / "rel.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("rel.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -671,7 +667,7 @@ def test_compress_with_relative_target_size(tmp_path: Path):
 
 def test_compress_with_target_size_generates_label(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "al.pdf")
+    pdf_path = make_test_pdf(tmp_path / "al.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("al.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -685,7 +681,7 @@ def test_compress_with_target_size_generates_label(tmp_path: Path):
 
 def test_compress_auto_label_no_target(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "nl2.pdf")
+    pdf_path = make_test_pdf(tmp_path / "nl2.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("nl2.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -698,7 +694,7 @@ def test_compress_auto_label_no_target(tmp_path: Path):
 
 def test_upload_with_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "ts.pdf")
+    pdf_path = make_test_pdf(tmp_path / "ts.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/api/pdfs/upload",
@@ -712,7 +708,7 @@ def test_upload_with_target_size(tmp_path: Path):
 
 def test_compress_minimal_quality(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "mq.pdf")
+    pdf_path = make_test_pdf(tmp_path / "mq.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("mq.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -764,7 +760,7 @@ def test_upload_rejects_file_too_large(tmp_path: Path):
 
 def test_legacy_compress_single_file(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "legacy.pdf")
+    pdf_path = make_test_pdf(tmp_path / "legacy.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/compress",
@@ -777,7 +773,7 @@ def test_legacy_compress_single_file(tmp_path: Path):
 
 def test_legacy_compress_with_grayscale(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "gray.pdf")
+    pdf_path = make_test_pdf(tmp_path / "gray.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/compress",
@@ -799,7 +795,7 @@ def test_legacy_compress_rejects_non_pdf(tmp_path: Path):
 
 def test_legacy_compress_with_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "ts.pdf")
+    pdf_path = make_test_pdf(tmp_path / "ts.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/compress",
@@ -811,7 +807,7 @@ def test_legacy_compress_with_target_size(tmp_path: Path):
 
 def test_legacy_compress_with_pdf_mode(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "mode.pdf")
+    pdf_path = make_test_pdf(tmp_path / "mode.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post(
             "/compress",
@@ -825,7 +821,7 @@ def test_legacy_compress_handles_compression_failure(tmp_path: Path):
     from unittest.mock import patch
 
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    pdf_path = make_test_pdf(tmp_path / "fail.pdf")
     with patch("file_compressor.web.compress_path", side_effect=RuntimeError("legacy boom")):
         with open(pdf_path, "rb") as f:
             resp = client.post("/compress", files=[("files", ("fail.pdf", f, "application/pdf"))])
@@ -835,7 +831,7 @@ def test_legacy_compress_handles_compression_failure(tmp_path: Path):
 
 def test_legacy_compress_rejects_bad_quality(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "lq.pdf")
+    pdf_path = make_test_pdf(tmp_path / "lq.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post("/compress", files=[("files", ("lq.pdf", f, "application/pdf"))], data={"quality": "0"})
     assert resp.status_code == 422
@@ -843,7 +839,7 @@ def test_legacy_compress_rejects_bad_quality(tmp_path: Path):
 
 def test_legacy_compress_rejects_bad_mode(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "lm.pdf")
+    pdf_path = make_test_pdf(tmp_path / "lm.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post("/compress", files=[("files", ("lm.pdf", f, "application/pdf"))], data={"pdf_mode": "invalid"})
     assert resp.status_code == 422
@@ -851,7 +847,7 @@ def test_legacy_compress_rejects_bad_mode(tmp_path: Path):
 
 def test_legacy_compress_rejects_bad_target_size(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "lt.pdf")
+    pdf_path = make_test_pdf(tmp_path / "lt.pdf")
     with open(pdf_path, "rb") as f:
         resp = client.post("/compress", files=[("files", ("lt.pdf", f, "application/pdf"))], data={"target_size": "abc"})
     assert resp.status_code == 422
@@ -861,7 +857,7 @@ def test_legacy_compress_rejects_bad_target_size(tmp_path: Path):
 
 def test_full_upload_compress_download_flow(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "flow.pdf")
+    pdf_path = make_test_pdf(tmp_path / "flow.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("flow.pdf", f, "application/pdf")})
     assert upload.status_code == 200
@@ -890,7 +886,7 @@ def test_full_upload_compress_download_flow(tmp_path: Path):
 
 def test_download_pdf_file_missing_on_disk(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "miss.pdf")
+    pdf_path = make_test_pdf(tmp_path / "miss.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("miss.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -905,7 +901,7 @@ def test_download_pdf_file_missing_on_disk(tmp_path: Path):
 
 def test_compress_pdf_original_missing(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "miss2.pdf")
+    pdf_path = make_test_pdf(tmp_path / "miss2.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("miss2.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
@@ -919,11 +915,11 @@ def test_compress_pdf_original_missing(tmp_path: Path):
 
 def test_batch_compress_handles_individual_errors(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "ok.pdf")
+    pdf_path = make_test_pdf(tmp_path / "ok.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("ok.pdf", f, "application/pdf")})
     # Upload a second PDF then delete its file to cause compression error
-    pdf_path2 = _make_test_pdf(tmp_path / "bad.pdf")
+    pdf_path2 = make_test_pdf(tmp_path / "bad.pdf")
     with open(pdf_path2, "rb") as f:
         upload2 = client.post("/api/pdfs/upload", files={"file": ("bad.pdf", f, "application/pdf")})
     bad_id = upload2.json()["id"]
@@ -943,7 +939,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     from unittest.mock import patch
 
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "fail.pdf")
+    pdf_path = make_test_pdf(tmp_path / "fail.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("fail.pdf", f, "application/pdf")})
 
@@ -958,7 +954,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
 def test_batch_compress_with_target_size(tmp_path: Path):
     client = _client(tmp_path)
     for name in ["a.pdf", "b.pdf"]:
-        pdf_path = _make_test_pdf(tmp_path / name)
+        pdf_path = make_test_pdf(tmp_path / name)
         with open(pdf_path, "rb") as f:
             client.post("/api/pdfs/upload", files={"file": (name, f, "application/pdf")})
     resp = client.post("/api/pdfs/batch-compress", data={"quality": "50", "target_size": "50KB"})
@@ -970,7 +966,7 @@ def test_batch_compress_with_target_size(tmp_path: Path):
 
 def test_batch_compress_with_raster_mode(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "r.pdf")
+    pdf_path = make_test_pdf(tmp_path / "r.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("r.pdf", f, "application/pdf")})
     resp = client.post("/api/pdfs/batch-compress", data={"quality": "40", "pdf_mode": "raster", "pdf_dpi": "80"})
@@ -982,7 +978,7 @@ def test_batch_compress_with_raster_mode(tmp_path: Path):
 
 def test_batch_compress_with_grayscale(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "g.pdf")
+    pdf_path = make_test_pdf(tmp_path / "g.pdf")
     with open(pdf_path, "rb") as f:
         client.post("/api/pdfs/upload", files={"file": ("g.pdf", f, "application/pdf")})
     resp = client.post("/api/pdfs/batch-compress", data={"pdf_mode": "raster", "pdf_grayscale": "true"})
@@ -993,7 +989,7 @@ def test_batch_compress_with_grayscale(tmp_path: Path):
 
 def test_download_version_file_missing(tmp_path: Path):
     client = _client(tmp_path)
-    pdf_path = _make_test_pdf(tmp_path / "missv.pdf")
+    pdf_path = make_test_pdf(tmp_path / "missv.pdf")
     with open(pdf_path, "rb") as f:
         upload = client.post("/api/pdfs/upload", files={"file": ("missv.pdf", f, "application/pdf")})
     pdf_id = upload.json()["id"]
