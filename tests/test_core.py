@@ -2,21 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import fitz
 import pytest
 
 from file_compressor.core import compress_path, _archive_quality_candidates
 from file_compressor.models import CompressionConfig
 
+from conftest import make_test_pdf
+
 
 def _make_pdf(path: Path, pages: int = 2) -> Path:
-    doc = fitz.open()
-    for i in range(pages):
-        page = doc.new_page()
-        page.insert_text((72, 72), f"Page {i + 1}", fontsize=24)
-    doc.save(path)
-    doc.close()
-    return path
+    return make_test_pdf(path, pages)
 
 
 def _make_image(path: Path, size: tuple[int, int] = (200, 200)) -> Path:

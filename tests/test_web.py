@@ -1,19 +1,14 @@
 from pathlib import Path
 
-import fitz
 from fastapi.testclient import TestClient
 
 from file_compressor.web import app, init_storage
 
+from conftest import make_test_pdf
+
 
 def _make_test_pdf(path: Path, pages: int = 3) -> Path:
-    doc = fitz.open()
-    for i in range(pages):
-        page = doc.new_page()
-        page.insert_text((72, 72), f"Page {i + 1} content for testing.", fontsize=24)
-    doc.save(path)
-    doc.close()
-    return path
+    return make_test_pdf(path, pages)
 
 
 def _client(tmp_path: Path) -> TestClient:
