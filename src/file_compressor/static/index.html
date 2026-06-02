@@ -593,8 +593,7 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
-      let succeeded = 0;
-      const errors = [];
+      let succeeded = 0; const errors = []; const warnings = [];
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
         this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
@@ -619,7 +618,7 @@ function app() {
             xhr.onerror = () => reject(new Error('Network error'));
             xhr.send(fd);
           });
-          if (data.warning) errors.push(data.warning);
+          if (data.warning) warnings.push(data.warning);
           succeeded++;
         } catch (e) {
           errors.push(`${this.uploadFiles[i].name}: ${e.message}`);
@@ -636,11 +635,10 @@ function app() {
       }
       this.showUpload = false; this.uploadFiles = [];
       this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, notes: '' };
-      if (errors.length === 0) {
-        this.showToast(`Uploaded ${succeeded} PDF(s)`);
-      } else {
-        this.showToast(`Uploaded ${succeeded}, ${errors.length} error(s): ${errors.join('; ')}`, 'error');
-      }
+      const parts = [`Uploaded ${succeeded} PDF(s)`];
+      if (warnings.length) parts.push(`${warnings.length} warning(s): ${warnings.join('; ')}`);
+      if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
+      this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
       this.loadLibrary();
     },
     cancelUpload() { this.uploading = false; },
