@@ -426,3 +426,30 @@ def test_add_version_cleans_file_on_db_error(tmp_path: Path):
         pass
     remaining = list(versions.iterdir())
     assert len(remaining) == 0
+
+
+def test_batch_delete_succeeds_when_file_unlink_fails(tmp_path: Path):
+    from unittest.mock import patch
+
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
+    storage.add_version(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+
+    real_unlink = Path.unlink
+
+    def failing_unlink(self, *args, **kwargs):
+        raise OSError("Permission denied")
+
+    with patch.object(Path, "unlink", failing_unlink):
+        deleted = storage.batch_delete_pdfs([pdf.id])
+
+    assert deleted == 1
+    # DB record deleted even though file unlink failed
+    assert storage.get_pdf(pdf.id) is None
+    # Version records also deleted (cascade)
+    assert storage.list_versions(pdf.id) == []
+    storage.close()
