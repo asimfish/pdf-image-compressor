@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PDF Manager</title>
-  <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+  <script src="/static/vendor/tailwind.js"></script>
   <style>
     [x-cloak] { display: none !important; }
     .drop-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
@@ -13,8 +13,7 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   </style>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"
-    integrity="sha384-fzmr1kBM865vGJHBkGJ0vOM1KJfriPAsEDejc3s3M69V6LY0F84V1/3M03+YpeT" crossorigin="anonymous"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
 <div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" @keydown.ctrl.b.window.prevent="if (pdfs.length > 0) batchCompress()" class="max-w-6xl mx-auto px-4 py-8">

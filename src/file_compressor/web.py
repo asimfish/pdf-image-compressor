@@ -12,6 +12,7 @@ logger = logging.getLogger("pdf_manager")
 import fitz
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from starlette.background import BackgroundTask
 
@@ -21,6 +22,7 @@ from .storage import Storage, VersionRecord
 from .utils import clamp_quality, format_size, parse_size
 
 app = FastAPI(title="PDF Manager")
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 _VALID_MODES = {"auto", "optimize", "raster"}
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
