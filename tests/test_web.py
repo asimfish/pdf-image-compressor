@@ -736,6 +736,19 @@ def test_compress_auto_label_no_target(tmp_path: Path):
     assert "optimize" in data["label"]
 
 
+def test_compress_auto_label_with_target(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "nl3.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("nl3.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "82", "target_size": "500KB"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "500" in data["label"]
+    assert "Q82" in data["label"]
+
+
 def test_upload_with_target_size(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = make_test_pdf(tmp_path / "ts.pdf")
