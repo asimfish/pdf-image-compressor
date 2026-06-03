@@ -91,10 +91,7 @@
     </template>
   </div>
   <div x-show="loading" class="text-center py-20">
-    <svg class="w-10 h-10 mx-auto text-blue-500 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-    </svg>
+    <svg class="w-10 h-10 mx-auto text-blue-500 animate-spin mb-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
     <p class="text-gray-400">Loading library...</p>
   </div>
   <div x-show="filteredPdfs.length === 0 && !loading" class="text-center py-20">
@@ -165,14 +162,12 @@
         <!-- Expanded Panel -->
         <div x-show="expanded === pdf.id" x-collapse class="border-t border-gray-100">
           <div class="p-5">
-            <!-- Actions Bar -->
             <div class="flex items-center gap-2 mb-4">
               <button @click="compressPdf(pdf)" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition">+ New Compression</button>
               <a :href="'/api/pdfs/' + pdf.id + '/download'" target="_blank" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition">Download Original</a>
               <button @click="editNotes(pdf)" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition">Edit Notes</button>
               <button @click="deletePdf(pdf)" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition ml-auto">Delete</button>
             </div>
-            <!-- Version List -->
             <div x-show="versionLoading[pdf.id]" class="text-sm text-gray-400 py-4 text-center">
               <svg class="w-5 h-5 mx-auto text-gray-300 animate-spin mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
               Loading versions...
@@ -270,6 +265,11 @@
         <textarea x-model="uploadForm.notes" maxlength="5000" rows="2" placeholder="Add a note..." class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm resize-none"></textarea>
         <span class="text-xs mt-0.5 block" :class="uploadForm.notes.length > 4500 ? 'text-amber-500' : 'text-gray-400'" x-text="uploadForm.notes.length > 0 ? uploadForm.notes.length + ' / 5000' : ''"></span>
       </div>
+      <!-- Validation Errors -->
+      <div x-show="uploadValidation" class="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+        <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <span x-text="uploadValidation"></span>
+      </div>
       <div x-show="uploading" class="mt-4">
         <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div class="h-full bg-blue-600 rounded-full transition-all" :style="'width:' + uploadProgress + '%'"></div>
@@ -277,8 +277,6 @@
         <p class="text-sm text-gray-500 mt-1 text-center" x-text="uploadStatus"></p>
         <button @click.stop="cancelUpload()" class="mt-2 text-sm text-gray-500 hover:text-red-600 transition mx-auto block">Cancel</button>
       </div>
-      <!-- Validation Errors -->
-      <div x-show="uploadValidation" class="mt-3 text-sm text-red-600" x-text="uploadValidation"></div>
       <!-- Actions -->
       <div class="flex gap-3 mt-5">
         <button @click="showUpload = false; uploadFiles = []" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
@@ -578,7 +576,9 @@ function app() {
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (!pdfs.length) { this.showToast('Only PDF files are supported', 'error'); return; }
       const valid = pdfs.filter(f => f.size <= MAX);
-      const bad = [all.length - pdfs.length && 'non-PDF', pdfs.length - valid.length && 'too large'].filter(Boolean);
+      const nonPdfCount = all.length - pdfs.length;
+      const tooLargeCount = pdfs.length - valid.length;
+      const bad = [nonPdfCount > 0 && 'non-PDF', tooLargeCount > 0 && 'too large'].filter(Boolean);
       if (bad.length) this.showToast(`Skipped ${bad.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
       this.uploadFiles = valid;
     },
@@ -587,21 +587,24 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
-      let succeeded = 0; const errors = []; const warnings = [];
+      let succeeded = 0; const errors = []; const warnings = []; let uploadedPdf = null;
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
         this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
         try {
           const data = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
+            this._currentXhr = xhr;
             xhr.open('POST', '/api/pdfs/upload');
             xhr.upload.onprogress = (e) => {
               if (e.lengthComputable) {
                 const filePct = e.loaded / e.total;
                 this.uploadProgress = Math.round(((i + filePct) / this.uploadFiles.length) * 100);
+                if (filePct >= 1) this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
               }
             };
             xhr.onload = () => {
+              this._currentXhr = null;
               if (xhr.status >= 200 && xhr.status < 300) {
                 try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
               } else {
@@ -609,12 +612,14 @@ function app() {
                 catch { reject(new Error(xhr.statusText)); }
               }
             };
-            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.onerror = () => { this._currentXhr = null; reject(new Error('Network error')); };
+            xhr.onabort = () => { this._currentXhr = null; reject(new Error('Upload cancelled')); };
             xhr.send(fd);
           });
           if (data.warning) warnings.push(data.warning);
-          succeeded++;
+          uploadedPdf = data; succeeded++;
         } catch (e) {
+          if (!this.uploading) break;
           errors.push(`${this.uploadFiles[i].name}: ${e.message}`);
         }
         if (!this.uploading) break;
@@ -634,8 +639,12 @@ function app() {
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
       this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
       this.loadLibrary();
+      this.compressPdf(uploadedPdf);
     },
-    cancelUpload() { this.uploading = false; },
+    cancelUpload() {
+      this.uploading = false;
+      if (this._currentXhr) { this._currentXhr.abort(); this._currentXhr = null; }
+    },
     batchCompress() {
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
@@ -771,8 +780,7 @@ function app() {
       let v = bytes, u = 0;
       while (v >= 1000 && u < 4) { v /= 1000; u++; }
       const fixed = v.toFixed(u === 0 ? 0 : 1);
-      if (fixed === '1000.0' && u < 4) return '1.0 ' + units[u + 1];
-      return fixed + ' ' + units[u];
+      return fixed === '1000.0' && u < 4 ? '1.0 ' + units[u + 1] : fixed + ' ' + units[u];
     },
     fmtDate(iso) {
       if (!iso) return '';
