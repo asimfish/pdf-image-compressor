@@ -187,6 +187,10 @@ def test_batch_delete_pdfs(tmp_path: Path):
     assert storage.get_pdf(ids[1]) is None
     assert storage.get_pdf(ids[2]) is not None
     assert len(storage.list_pdfs()) == 1
+    # Verify files cleaned up from disk
+    for pdf_id in ids[:2]:
+        assert not (tmp_path / "originals").joinpath(f"{pdf_id}.pdf").exists()
+    assert len(list((tmp_path / "versions").iterdir())) == 1
     storage.close()
 
 
@@ -294,30 +298,34 @@ def test_delete_pdf_cleans_version_files(tmp_path: Path):
 
 
 def test_batch_delete_rollback_on_error(tmp_path: Path):
-    from unittest.mock import patch
+    import pytest
 
     storage = Storage(tmp_path)
     p1 = storage.add_pdf("a.pdf", b"%PDF", 1)
     p2 = storage.add_pdf("b.pdf", b"%PDF", 1)
 
+    real_conn = storage._conn
     call_count = 0
-    original_delete = storage._delete_pdf_no_commit
 
-    def failing_delete(pdf_id):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 2:
-            raise RuntimeError("simulated disk error")
-        return original_delete(pdf_id)
+    class FailingCommitConn:
+        def __getattr__(self, name):
+            if name == "commit":
+                def fail():
+                    raise RuntimeError("simulated db error")
+                return fail
+            return getattr(real_conn, name)
 
-    with patch.object(storage, "_delete_pdf_no_commit", side_effect=failing_delete):
-        import pytest
-        with pytest.raises(RuntimeError, match="simulated disk error"):
-            storage.batch_delete_pdfs([p1.id, p2.id])
+    storage._conn = FailingCommitConn()
+    with pytest.raises(RuntimeError, match="simulated db error"):
+        storage.batch_delete_pdfs([p1.id, p2.id])
 
+    storage._conn = real_conn
     # After rollback, both PDFs should still exist
     assert storage.get_pdf(p1.id) is not None
     assert storage.get_pdf(p2.id) is not None
+    # Files should NOT have been deleted (rollback preserves DB, files deferred)
+    assert (tmp_path / "originals").joinpath(f"{p1.id}.pdf").exists()
+    assert (tmp_path / "originals").joinpath(f"{p2.id}.pdf").exists()
     storage.close()
 
 
