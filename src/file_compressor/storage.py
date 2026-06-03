@@ -258,7 +258,9 @@ class Storage:
                 (SELECT COUNT(*) FROM pdfs) AS pdf_count,
                 (SELECT COUNT(*) FROM versions) AS version_count,
                 (SELECT COALESCE(SUM(file_size), 0) FROM pdfs) AS total_original_bytes,
-                (SELECT COALESCE(SUM(file_size), 0) FROM versions) AS total_compressed_bytes,
+                (SELECT COALESCE(SUM(best.best_size), 0)
+                 FROM (SELECT MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best
+                ) AS total_compressed_bytes,
                 (SELECT COALESCE(SUM(p.file_size - best.best_size), 0)
                  FROM pdfs p
                  JOIN (SELECT pdf_id, MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best

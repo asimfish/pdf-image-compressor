@@ -133,6 +133,27 @@ def test_stats_with_savings(tmp_path: Path):
     storage.close()
 
 
+def test_stats_compressed_bytes_uses_best_version(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("multi.pdf", b"X" * 10000, 5)
+    storage.add_version(
+        pdf_id=pdf.id, label="v1-big", file_data=b"A" * 8000,
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.2,
+    )
+    storage.add_version(
+        pdf_id=pdf.id, label="v2-small", file_data=b"B" * 2000,
+        quality=50, pdf_mode="raster", pdf_dpi=100, pdf_grayscale=True,
+        target_bytes=None, compression_ratio=0.8,
+    )
+    stats = storage.stats()
+    assert stats["version_count"] == 2
+    assert stats["total_original_bytes"] == 10000
+    assert stats["total_compressed_bytes"] == 2000
+    assert stats["total_saved_bytes"] == 8000
+    storage.close()
+
+
 def test_file_on_disk(tmp_path: Path):
     storage = Storage(tmp_path)
     assert (tmp_path / "originals").is_dir()
