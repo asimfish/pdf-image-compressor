@@ -456,6 +456,7 @@ function app() {
     // Toast
     toast: '',
     toastType: 'success',
+    _defaults(extra = {}) { return { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, ...extra }; },
     _buildCompressFd(form, extras) {
       const fd = new FormData();
       fd.append('quality', form.quality);
@@ -628,7 +629,7 @@ function app() {
         return;
       }
       this.showUpload = false; this.uploadFiles = [];
-      this.uploadForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, notes: '' };
+      this.uploadForm = this._defaults({ notes: '' });
       const parts = [`Uploaded ${succeeded} PDF(s)`];
       if (warnings.length) parts.push(`${warnings.length} warning(s): ${warnings.join('; ')}`);
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
@@ -637,7 +638,7 @@ function app() {
     },
     cancelUpload() { this.uploading = false; },
     batchCompress() {
-      this.batchForm = { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' };
+      this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
       this.showBatchCompress = true;
     },
@@ -670,7 +671,7 @@ function app() {
     compressPdf(pdf) {
       this.compressTarget = pdf;
       const halfSize = pdf.file_size ? Math.max(50000, Math.round(pdf.file_size / 2)) : 500000;
-      this.compressForm = { quality: 82, target_size: this.fmtSize(halfSize), pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' };
+      this.compressForm = this._defaults({ target_size: this.fmtSize(halfSize), label: '' });
       this.showCompress = true;
     },
     reuseSettings(pdf, version) {
