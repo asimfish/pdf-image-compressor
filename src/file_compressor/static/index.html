@@ -708,7 +708,7 @@ function app() {
         const ver = await res.json();
         const ratio = ver.compression_ratio;
         const size = this.fmtSize(ver.file_size);
-        const msg = ratio > 0 ? `Compressed: -${(ratio * 100).toFixed(1)}% (${size})` : `Optimized → ${size}`;
+        const msg = ratio > 0 ? `Compressed: -${(ratio * 100).toFixed(1)}% (${size})` : ratio < 0 ? `Larger: +${(Math.abs(ratio) * 100).toFixed(1)}% → ${size}` : `No change → ${size}`;
         this.showToast(msg);
         this.loadVersions(this.compressTarget.id);
         this.loadLibrary();
