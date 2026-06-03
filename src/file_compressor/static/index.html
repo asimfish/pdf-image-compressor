@@ -471,8 +471,8 @@ function app() {
       return /^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 2MB)';
     },
     _validateForm(form) {
-      if (form.quality < 1 || form.quality > 95) return 'Quality must be between 1 and 95';
-      if (form.pdf_dpi < 36 || form.pdf_dpi > 300) return 'DPI must be between 36 and 300';
+      if (!(form.quality >= 1 && form.quality <= 95)) return 'Quality must be between 1 and 95';
+      if (!(form.pdf_dpi >= 36 && form.pdf_dpi <= 300)) return 'DPI must be between 36 and 300';
       return this._validTargetSize(form.target_size);
     },
     get uploadValidation() { return this._validateForm(this.uploadForm); },
