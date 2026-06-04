@@ -329,6 +329,43 @@ def test_batch_delete_rollback_on_error(tmp_path: Path):
     storage.close()
 
 
+def test_delete_pdf_rollback_preserves_files(tmp_path: Path):
+    import pytest
+
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("rollback.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+    pdf_path = storage.get_pdf_path(pdf.id)
+    v_path = storage.get_version_path(v.id)
+    assert pdf_path.exists()
+    assert v_path.exists()
+
+    real_conn = storage._conn
+
+    class FailingCommitConn:
+        def __getattr__(self, name):
+            if name == "commit":
+                def fail():
+                    raise RuntimeError("simulated db error")
+                return fail
+            return getattr(real_conn, name)
+
+    storage._conn = FailingCommitConn()
+    with pytest.raises(RuntimeError, match="simulated db error"):
+        storage.delete_pdf(pdf.id)
+
+    storage._conn = real_conn
+    # After rollback, PDF and files should still exist
+    assert storage.get_pdf(pdf.id) is not None
+    assert pdf_path.exists()
+    assert v_path.exists()
+    storage.close()
+
+
 def test_version_strip_metadata_true(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("sm.pdf", b"%PDF", 1)

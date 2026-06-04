@@ -163,22 +163,30 @@ class Storage:
         return Path(row["file_path"]) if row else None
 
     def delete_pdf(self, pdf_id: str) -> bool:
-        deleted = self._delete_pdf_no_commit(pdf_id)
-        if deleted:
-            self._conn.commit()
-        return deleted
-
-    def _delete_pdf_no_commit(self, pdf_id: str) -> bool:
+        file_paths: list[Path] = []
         pdf_path = self.get_pdf_path(pdf_id)
         versions = self.list_versions(pdf_id)
         for v in versions:
             vpath = self.get_version_path(v.id)
-            if vpath and vpath.exists():
-                vpath.unlink()
-        if pdf_path and pdf_path.exists():
-            pdf_path.unlink()
-        cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
-        return cur.rowcount > 0
+            if vpath:
+                file_paths.append(vpath)
+        if pdf_path:
+            file_paths.append(pdf_path)
+        self._conn.execute("BEGIN")
+        try:
+            cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
+            deleted = cur.rowcount > 0
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        for p in file_paths:
+            try:
+                if p.exists():
+                    p.unlink()
+            except OSError:
+                pass
+        return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
         file_paths: list[Path] = []
