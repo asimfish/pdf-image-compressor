@@ -80,6 +80,40 @@ def test_delete_version(tmp_path: Path):
     storage.close()
 
 
+def test_delete_version_rollback_preserves_file(tmp_path: Path):
+    import pytest
+
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("vd.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="test", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=None,
+    )
+    vpath = storage.get_version_path(v.id)
+    assert vpath.exists()
+
+    real_conn = storage._conn
+
+    class FailingCommitConn:
+        def __getattr__(self, name):
+            if name == "commit":
+                def fail():
+                    raise RuntimeError("simulated db error")
+                return fail
+            return getattr(real_conn, name)
+
+    storage._conn = FailingCommitConn()
+    with pytest.raises(RuntimeError, match="simulated db error"):
+        storage.delete_version(v.id)
+
+    storage._conn = real_conn
+    # After rollback, version record and file should still exist
+    assert storage.get_version(v.id) is not None
+    assert vpath.exists()
+    storage.close()
+
+
 def test_delete_pdf_cascades_versions(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("cascade.pdf", b"%PDF", 1)
@@ -512,4 +546,26 @@ def test_delete_pdf_succeeds_when_file_unlink_fails(tmp_path: Path):
     assert deleted is True
     assert storage.get_pdf(pdf.id) is None
     assert storage.list_versions(pdf.id) == []
+    storage.close()
+
+
+def test_delete_version_succeeds_when_file_unlink_fails(tmp_path: Path):
+    from unittest.mock import patch
+
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
+    v = storage.add_version(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed",
+        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
+        target_bytes=None, compression_ratio=0.5,
+    )
+
+    def failing_unlink(self, *args, **kwargs):
+        raise OSError("Permission denied")
+
+    with patch.object(Path, "unlink", failing_unlink):
+        deleted = storage.delete_version(v.id)
+
+    assert deleted is True
+    assert storage.get_version(v.id) is None
     storage.close()

@@ -270,11 +270,21 @@ class Storage:
 
     def delete_version(self, version_id: str) -> bool:
         vpath = self.get_version_path(version_id)
-        if vpath and vpath.exists():
-            vpath.unlink()
-        cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
-        self._conn.commit()
-        return cur.rowcount > 0
+        self._conn.execute("BEGIN")
+        try:
+            cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
+            deleted = cur.rowcount > 0
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        if vpath:
+            try:
+                if vpath.exists():
+                    vpath.unlink()
+            except OSError:
+                pass
+        return deleted
 
     def stats(self) -> dict:
         row = self._conn.execute("""
