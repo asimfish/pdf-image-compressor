@@ -186,7 +186,7 @@ def test_compress_unsupported_file_type(tmp_path: Path):
     config = CompressionConfig(output_dir=tmp_path)
     summary = compress_path(source, config, output)
     assert summary.results[0].status == "failed"
-    assert "Unsupported" in (summary.results[0].error or "")
+    assert summary.results[0].error == "Compression failed"
 
 
 def test_compress_relative_output_dir(tmp_path: Path):

@@ -66,7 +66,7 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
                     original_size=orig_size,
                     compressed_size=None,
                     status="failed",
-                    error=str(exc),
+                    error="Compression failed",
                 )
             )
     return CompressionSummary(results=results)

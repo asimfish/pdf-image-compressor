@@ -42,7 +42,7 @@ def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_
         try:
             parse_size(target_size)
         except ValueError:
-            raise HTTPException(422, detail=f"Invalid target_size format: {target_size}")
+            raise HTTPException(422, detail="Invalid target_size format")
 
 _STATIC = Path(__file__).parent / "static"
 _storage: Optional[Storage] = None
