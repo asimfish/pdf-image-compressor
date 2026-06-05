@@ -166,7 +166,7 @@ def test_compress_and_store_raises_on_no_output(tmp_path: Path):
     with patch("file_compressor.web.compress_path", return_value=fake_summary):
         resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
     assert resp.status_code == 500
-    assert "kaboom" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Compression failed"
 
 
 def test_upload_rejects_non_pdf(tmp_path: Path):
@@ -883,7 +883,7 @@ def test_legacy_compress_handles_compression_failure(tmp_path: Path):
         with open(pdf_path, "rb") as f:
             resp = client.post("/compress", files=[("files", ("fail.pdf", f, "application/pdf"))])
     assert resp.status_code == 500
-    assert "legacy boom" in resp.json()["detail"]
+    assert resp.json()["detail"] == "Compression failed"
 
 
 def test_legacy_compress_rejects_bad_quality(tmp_path: Path):
@@ -1018,7 +1018,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     errors = [r for r in data["results"] if r["status"] == "error"]
-    assert any("exploded" in e["error"] for e in errors)
+    assert any(e["error"] == "Compression failed" for e in errors)
 
 
 def test_batch_compress_with_target_size(tmp_path: Path):
@@ -1251,3 +1251,52 @@ def test_get_storage_lazy_init(tmp_path: Path):
             assert (tmp_path / ".pdf-manager" / "library.db").exists()
     finally:
         web_module._storage = saved
+
+
+def test_sanitize_label_strips_control_chars():
+    from file_compressor.web import _sanitize_label
+
+    assert _sanitize_label("hello/world") == "hello-world"
+    assert _sanitize_label("a\\b/c") == "a-b-c"
+    assert _sanitize_label('a:b"c<d>e?f*g|h') == "a-b-c-d-e-f-g-h"
+    assert _sanitize_label("label\x00\x1f") == "label"
+    assert _sanitize_label("--already--") == "already"
+    assert _sanitize_label("  trimmed  ") == "trimmed"
+
+
+def test_sanitize_label_truncates_long():
+    from file_compressor.web import _sanitize_label
+
+    long = "x" * 600
+    assert len(_sanitize_label(long)) <= 500
+
+
+def test_download_version_label_sanitized(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "rpt.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("rpt.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50", "label": "v1/beta\\test"})
+    ver_id = resp.json()["id"]
+    dl = client.get(f"/api/versions/{ver_id}/download")
+    assert dl.status_code == 200
+    cd = dl.headers.get("content-disposition", "")
+    assert "v1-beta-test" in cd
+
+
+def test_compress_500_does_not_leak_details(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "secret.pdf")
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("/internal/path/secret")):
+        with open(pdf_path, "rb") as f:
+            resp = client.post("/api/pdfs/upload", files={"file": ("secret.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("/internal/path/secret")):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert "/internal/path" not in detail
+    assert "secret" not in detail

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -34,11 +34,11 @@
     </div>
     <div class="flex items-center gap-3">
       <div class="text-right text-sm text-gray-500" x-show="stats">
-        <span x-text="stats?.pdf_count + ' PDFs'"></span>
-        <span class="mx-1">·</span>
-        <span x-text="stats?.version_count + ' versions'"></span>
-        <span class="mx-1">·</span>
-        <span x-text="fmtSize(stats?.total_original_bytes)"></span>
+        <span x-text="stats ? stats.pdf_count + ' PDFs' : ''"></span>
+        <span class="mx-1" x-show="stats">·</span>
+        <span x-text="stats ? stats.version_count + ' versions' : ''"></span>
+        <span class="mx-1" x-show="stats">·</span>
+        <span x-text="stats ? fmtSize(stats.total_original_bytes) : ''"></span>
         <template x-if="stats?.total_saved_bytes > 0">
           <span class="ml-2 text-green-600 font-medium" x-text="'saved ' + fmtSize(stats.total_saved_bytes)"></span>
         </template>
@@ -127,7 +127,7 @@
               <div class="mt-2 flex items-center gap-2">
                 <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div class="h-full bg-green-400 rounded-full transition-all"
-                    :style="'width:' + Math.min(100, pdfMeta(pdf).bv.file_size / pdf.file_size * 100) + '%'"></div>
+                    :style="'width:' + (pdf.file_size > 0 ? Math.min(100, pdfMeta(pdf).bv.file_size / pdf.file_size * 100) : 0) + '%'"></div>
                 </div>
                 <span class="text-xs text-gray-500 whitespace-nowrap"
                   x-text="fmtSize(pdfMeta(pdf).bv.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>

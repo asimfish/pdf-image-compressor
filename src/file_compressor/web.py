@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 from dataclasses import asdict
@@ -53,6 +54,13 @@ def _get_storage() -> Storage:
         data_dir = Path.home() / ".pdf-manager"
         _storage = Storage(data_dir)
     return _storage
+
+
+def _sanitize_label(label: str) -> str:
+    """Sanitize a label for use in download filenames."""
+    label = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", label)
+    label = re.sub(r"-{2,}", "-", label).strip("- ")
+    return label[:_MAX_LABEL_LEN]
 
 
 def init_storage(data_dir: Path) -> None:
@@ -199,7 +207,7 @@ async def api_compress_pdf(
         ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
-        raise HTTPException(500, detail=f"Compression failed: {exc}")
+        raise HTTPException(500, detail="Compression failed")
     logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(len(data)), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
     return asdict(ver)
 
@@ -244,7 +252,7 @@ async def api_batch_compress(
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": str(exc)})
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "Compression failed"})
 
     return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results}
 
@@ -290,7 +298,7 @@ def api_download_version(version_id: str) -> FileResponse:
         raise HTTPException(404, detail="Version file not found")
     pdf = storage.get_pdf(ver.pdf_id)
     stem = Path(pdf.filename).stem if pdf else "version"
-    label = ver.label.replace("/", "-").replace("\\", "-") if ver.label else ""
+    label = _sanitize_label(ver.label) if ver.label else ""
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
     return FileResponse(path, filename=download_name, media_type="application/pdf")
 
@@ -356,7 +364,7 @@ async def compress_upload(
     except Exception as exc:
         shutil.rmtree(temp_path, True)
         logger.error("Legacy compress failed: %s", exc)
-        raise HTTPException(500, detail=f"Compression failed: {exc}")
+        raise HTTPException(500, detail="Compression failed")
     response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
     response.background = BackgroundTask(shutil.rmtree, temp_path, True)
     return response
