@@ -189,21 +189,23 @@ class Storage:
         return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
-        file_paths: list[Path] = []
-        deleted = 0
+        if not pdf_ids:
+            return 0
+        placeholders = ",".join("?" for _ in pdf_ids)
+        rows = self._conn.execute(
+            f"SELECT file_path FROM versions WHERE pdf_id IN ({placeholders})", pdf_ids
+        ).fetchall()
+        file_paths: list[Path] = [Path(r["file_path"]) for r in rows]
+        pdf_rows = self._conn.execute(
+            f"SELECT file_path FROM pdfs WHERE id IN ({placeholders})", pdf_ids
+        ).fetchall()
+        file_paths.extend(Path(r["file_path"]) for r in pdf_rows)
         self._conn.execute("BEGIN")
         try:
-            for pdf_id in pdf_ids:
-                versions = self.list_versions(pdf_id)
-                for v in versions:
-                    vpath = self.get_version_path(v.id)
-                    if vpath:
-                        file_paths.append(vpath)
-                pdf_path = self.get_pdf_path(pdf_id)
-                if pdf_path:
-                    file_paths.append(pdf_path)
-                cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
-                deleted += cur.rowcount
+            cur = self._conn.execute(
+                f"DELETE FROM pdfs WHERE id IN ({placeholders})", pdf_ids
+            )
+            deleted = cur.rowcount
             self._conn.commit()
         except Exception:
             self._conn.rollback()
