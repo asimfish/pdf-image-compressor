@@ -211,7 +211,7 @@
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
       <div class="drop-zone border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-5 transition" :class="dragOver && 'drag-over'" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop($event)" @click="$refs.fileInput.click()">
-        <input type="file" accept=".pdf" multiple x-ref="fileInput" class="hidden" @change="handleFiles($event.target.files)">
+        <input type="file" accept=".pdf" multiple x-ref="fileInput" class="hidden" @change="handleFiles($event.target.files); $event.target.value = ''">
         <svg class="w-10 h-10 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
