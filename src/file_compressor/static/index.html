@@ -388,6 +388,7 @@
       <div class="flex gap-3 mt-5">
         <button @click="showBatchCompress = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
         <button @click="doBatchCompress()" x-effect="$el.disabled = batchCompressing || !!batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed" x-text="batchTargetPdfs.length < pdfs.length ? 'Compress ' + batchTargetPdfs.length : 'Compress All'"></button>
+      </div>
     </div>
   </div>
   <!-- Notes Modal -->
