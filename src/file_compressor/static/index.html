@@ -786,7 +786,7 @@ function app() {
     },
     fmtDate(iso) {
       if (!iso) return '';
-      return new Date(iso).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     },
     showToast(msg, type = 'success') {
       this.toast = msg; this.toastType = type;

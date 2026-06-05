@@ -151,7 +151,7 @@ async def api_upload_pdf(
         _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label="Initial compression")
     except Exception as exc:
         logger.warning("Initial compression failed for %s: %s", filename, exc)
-        result["warning"] = f"Upload succeeded but initial compression failed: {exc}"
+        result["warning"] = "Upload succeeded but initial compression failed"
 
     return result
 

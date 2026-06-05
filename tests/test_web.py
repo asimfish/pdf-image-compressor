@@ -147,7 +147,7 @@ def test_upload_warns_on_compression_failure(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     assert data["warning"] is not None
-    assert "boom" in data["warning"]
+    assert "compression failed" in data["warning"].lower()
 
 
 def test_compress_and_store_raises_on_no_output(tmp_path: Path):
