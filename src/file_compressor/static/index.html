@@ -150,7 +150,7 @@
               </a>
             </template>
             <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium cursor-pointer"
-              x-text="(pdf.version_count || (versionCache[pdf.id] || []).length) + ' versions'"
+              x-text="pdf.version_count + ' versions'"
               @click="toggleExpand(pdf.id)"></span>
             <svg class="w-5 h-5 text-gray-400 transition-transform cursor-pointer" :class="expanded === pdf.id && 'rotate-180'"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -659,8 +659,8 @@ function app() {
           fd.append('pdf_ids', this.batchTargetPdfs.map(p => p.id).join(','));
         }
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Batch compress failed');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
         const errors = (data.results || []).filter(r => r.status === 'error');
         const ok = (data.results || []).filter(r => r.status === 'ok');
         const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
@@ -702,11 +702,8 @@ function app() {
       try {
         const fd = this._buildCompressFd(this.compressForm);
         const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ detail: res.statusText }));
-          throw new Error(err.detail || 'Compression failed');
-        }
-        const ver = await res.json();
+        const ver = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(ver.detail || 'Compression failed');
         const ratio = ver.compression_ratio;
         const size = this.fmtSize(ver.file_size);
         const msg = ratio > 0 ? `Compressed: -${(ratio * 100).toFixed(1)}% (${size})` : ratio < 0 ? `Larger: +${(Math.abs(ratio) * 100).toFixed(1)}% → ${size}` : `No change → ${size}`;
