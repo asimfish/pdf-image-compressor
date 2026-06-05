@@ -219,15 +219,21 @@
         <p class="text-sm text-gray-400 mt-1" x-show="uploadFiles.length > 0" x-text="uploadFiles.length + ' file(s) selected — ' + fmtSize(uploadFiles.reduce((s, f) => s + f.size, 0))"></p>
       </div>
       <!-- Selected Files -->
-      <div x-show="uploadFiles.length > 0" class="mb-4 space-y-1">
-        <template x-for="(f, i) in uploadFiles" :key="i">
-          <div class="flex items-center gap-2 text-sm text-gray-600">
-            <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
-            <span class="truncate flex-1" x-text="f.name"></span>
-            <span class="text-gray-400" x-text="fmtSize(f.size)"></span>
-            <button @click="uploadFiles.splice(i, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
-          </div>
-        </template>
+      <div x-show="uploadFiles.length > 0" class="mb-4">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs text-gray-400" x-text="uploadFiles.length + ' file(s)'"></span>
+          <button x-show="uploadFiles.length > 1" @click="uploadFiles = []" class="text-xs text-gray-400 hover:text-red-500 transition">Clear all</button>
+        </div>
+        <div class="space-y-1">
+          <template x-for="(f, i) in uploadFiles" :key="i">
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+              <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
+              <span class="truncate flex-1" x-text="f.name"></span>
+              <span class="text-gray-400" x-text="fmtSize(f.size)"></span>
+              <button @click="uploadFiles.splice(i, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
+            </div>
+          </template>
+        </div>
       </div>
       <!-- Compression Settings -->
       <div class="grid grid-cols-2 gap-3 mb-4">
