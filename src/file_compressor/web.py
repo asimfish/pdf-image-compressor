@@ -311,6 +311,14 @@ def api_delete_version(version_id: str) -> dict:
     return {"ok": True}
 
 
+def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
+    for item in files:
+        safe_name = Path(item.filename or "uploaded.bin").name
+        target = dest / safe_name
+        with target.open("wb") as handle:
+            shutil.copyfileobj(item.file, handle)
+
+
 # ── Legacy compress endpoint (backward compat) ──
 
 @app.post("/compress")
@@ -332,12 +340,7 @@ async def compress_upload(
     upload_dir = temp_path / "uploads"
     output_dir = temp_path / "compressed"
     upload_dir.mkdir(parents=True, exist_ok=True)
-
-    for item in files:
-        safe_name = Path(item.filename or "uploaded.bin").name
-        target = upload_dir / safe_name
-        with target.open("wb") as handle:
-            shutil.copyfileobj(item.file, handle)
+    _save_upload_files(files, upload_dir)
 
     config = CompressionConfig(
         quality=quality,
