@@ -10,7 +10,6 @@ from typing import Optional
 
 logger = logging.getLogger("pdf_manager")
 
-import fitz
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -133,6 +132,7 @@ async def api_upload_pdf(
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(413, detail=f"File too large ({format_size(len(data))}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
     try:
+        import fitz
         doc = fitz.open(stream=data, filetype="pdf")
         page_count = len(doc)
         doc.close()

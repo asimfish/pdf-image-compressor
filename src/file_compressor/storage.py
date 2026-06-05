@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -74,6 +75,7 @@ class Storage:
         self._versions.mkdir(parents=True, exist_ok=True)
         db_path = self._data_dir / "library.db"
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._lock = threading.Lock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -111,15 +113,16 @@ class Storage:
         file_path = self._originals / stored_name
         file_path.write_bytes(file_data)
         now = _now_iso()
-        try:
-            self._conn.execute(
-                "INSERT INTO pdfs (id, filename, file_path, file_size, page_count, upload_time, notes) VALUES (?,?,?,?,?,?,?)",
-                (pdf_id, filename, str(file_path), len(file_data), page_count, now, notes),
-            )
-            self._conn.commit()
-        except Exception:
-            file_path.unlink(missing_ok=True)
-            raise
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO pdfs (id, filename, file_path, file_size, page_count, upload_time, notes) VALUES (?,?,?,?,?,?,?)",
+                    (pdf_id, filename, str(file_path), len(file_data), page_count, now, notes),
+                )
+                self._conn.commit()
+            except Exception:
+                file_path.unlink(missing_ok=True)
+                raise
         return PdfRecord(id=pdf_id, filename=filename, file_size=len(file_data), page_count=page_count, upload_time=now, notes=notes)
 
     def get_pdf(self, pdf_id: str) -> Optional[PdfRecord]:
@@ -163,21 +166,22 @@ class Storage:
         return Path(row["file_path"]) if row else None
 
     def delete_pdf(self, pdf_id: str) -> bool:
-        vrows = self._conn.execute(
-            "SELECT file_path FROM versions WHERE pdf_id=?", (pdf_id,)
-        ).fetchall()
-        file_paths: list[Path] = [Path(r["file_path"]) for r in vrows]
-        pdf_path = self.get_pdf_path(pdf_id)
-        if pdf_path:
-            file_paths.append(pdf_path)
-        self._conn.execute("BEGIN")
-        try:
-            cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
-            deleted = cur.rowcount > 0
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        with self._lock:
+            vrows = self._conn.execute(
+                "SELECT file_path FROM versions WHERE pdf_id=?", (pdf_id,)
+            ).fetchall()
+            file_paths: list[Path] = [Path(r["file_path"]) for r in vrows]
+            pdf_path = self.get_pdf_path(pdf_id)
+            if pdf_path:
+                file_paths.append(pdf_path)
+            self._conn.execute("BEGIN")
+            try:
+                cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
+                deleted = cur.rowcount > 0
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
         for p in file_paths:
             try:
                 if p.exists():
@@ -189,25 +193,26 @@ class Storage:
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
         if not pdf_ids:
             return 0
-        placeholders = ",".join("?" for _ in pdf_ids)
-        rows = self._conn.execute(
-            f"SELECT file_path FROM versions WHERE pdf_id IN ({placeholders})", pdf_ids
-        ).fetchall()
-        file_paths: list[Path] = [Path(r["file_path"]) for r in rows]
-        pdf_rows = self._conn.execute(
-            f"SELECT file_path FROM pdfs WHERE id IN ({placeholders})", pdf_ids
-        ).fetchall()
-        file_paths.extend(Path(r["file_path"]) for r in pdf_rows)
-        self._conn.execute("BEGIN")
-        try:
-            cur = self._conn.execute(
-                f"DELETE FROM pdfs WHERE id IN ({placeholders})", pdf_ids
-            )
-            deleted = cur.rowcount
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        with self._lock:
+            placeholders = ",".join("?" for _ in pdf_ids)
+            rows = self._conn.execute(
+                f"SELECT file_path FROM versions WHERE pdf_id IN ({placeholders})", pdf_ids
+            ).fetchall()
+            file_paths: list[Path] = [Path(r["file_path"]) for r in rows]
+            pdf_rows = self._conn.execute(
+                f"SELECT file_path FROM pdfs WHERE id IN ({placeholders})", pdf_ids
+            ).fetchall()
+            file_paths.extend(Path(r["file_path"]) for r in pdf_rows)
+            self._conn.execute("BEGIN")
+            try:
+                cur = self._conn.execute(
+                    f"DELETE FROM pdfs WHERE id IN ({placeholders})", pdf_ids
+                )
+                deleted = cur.rowcount
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
         for p in file_paths:
             try:
                 if p.exists():
@@ -217,9 +222,10 @@ class Storage:
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:
-        cur = self._conn.execute("UPDATE pdfs SET notes=? WHERE id=?", (notes, pdf_id))
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._lock:
+            cur = self._conn.execute("UPDATE pdfs SET notes=? WHERE id=?", (notes, pdf_id))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # ── Version CRUD ──
 
@@ -240,15 +246,16 @@ class Storage:
         file_path = self._versions / f"{ver_id}.pdf"
         file_path.write_bytes(file_data)
         now = _now_iso()
-        try:
-            self._conn.execute(
-                "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
-            )
-            self._conn.commit()
-        except Exception:
-            file_path.unlink(missing_ok=True)
-            raise
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
+                )
+                self._conn.commit()
+            except Exception:
+                file_path.unlink(missing_ok=True)
+                raise
         return VersionRecord(
             id=ver_id, pdf_id=pdf_id, label=label, file_size=len(file_data),
             quality=quality, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi, pdf_grayscale=bool(pdf_grayscale),
@@ -269,15 +276,16 @@ class Storage:
         return Path(row["file_path"]) if row else None
 
     def delete_version(self, version_id: str) -> bool:
-        vpath = self.get_version_path(version_id)
-        self._conn.execute("BEGIN")
-        try:
-            cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
-            deleted = cur.rowcount > 0
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        with self._lock:
+            vpath = self.get_version_path(version_id)
+            self._conn.execute("BEGIN")
+            try:
+                cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
+                deleted = cur.rowcount > 0
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
         if vpath:
             try:
                 if vpath.exists():
