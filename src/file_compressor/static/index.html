@@ -123,25 +123,25 @@
               <span x-text="fmtDate(pdf.upload_time)"></span>
             </div>
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
-            <template x-if="bestVersion(pdf)">
+            <template x-if="pdfMeta(pdf).bv">
               <div class="mt-2 flex items-center gap-2">
                 <div class="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div class="h-full bg-green-400 rounded-full transition-all"
-                    :style="'width:' + Math.min(100, bestVersion(pdf).file_size / pdf.file_size * 100) + '%'"></div>
+                    :style="'width:' + Math.min(100, pdfMeta(pdf).bv.file_size / pdf.file_size * 100) + '%'"></div>
                 </div>
                 <span class="text-xs text-gray-500 whitespace-nowrap"
-                  x-text="fmtSize(bestVersion(pdf).file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
+                  x-text="fmtSize(pdfMeta(pdf).bv.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
               </div>
             </template>
           </div>
           <div class="flex items-center gap-2" @click.stop>
-            <template x-if="bestSaving(pdf) !== 0">
+            <template x-if="pdfMeta(pdf).saving !== 0">
               <span class="text-xs px-2 py-1 rounded-full font-medium"
-                :class="bestSaving(pdf) > 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-600'"
-                x-text="fmtSaving(bestSaving(pdf))"></span>
+                :class="pdfMeta(pdf).saving > 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-600'"
+                x-text="fmtSaving(pdfMeta(pdf).saving)"></span>
             </template>
-            <template x-if="bestVersion(pdf)">
-              <a :href="'/api/versions/' + bestVersion(pdf).id + '/download'" target="_blank"
+            <template x-if="pdfMeta(pdf).bv">
+              <a :href="'/api/versions/' + pdfMeta(pdf).bv.id + '/download'" target="_blank"
                 class="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
                 title="Download best version">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,19 +169,15 @@
               <button @click="deletePdf(pdf)" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition ml-auto">Delete</button>
             </div>
             <div x-show="versionLoading[pdf.id]" class="text-sm text-gray-400 py-4 text-center">
-              <svg class="w-5 h-5 mx-auto text-gray-300 animate-spin mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-              Loading versions...
-            </div>
-            <div x-show="!versionLoading[pdf.id] && versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">
-              No compressed versions yet. Click "New Compression" to create one.
-            </div>
+              <svg class="w-5 h-5 mx-auto text-gray-300 animate-spin mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>Loading versions...</div>
+            <div x-show="!versionLoading[pdf.id] && versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">No compressed versions yet. Click "New Compression" to create one.</div>
             <div class="space-y-2" x-show="(versionCache[pdf.id] || []).length > 0">
               <template x-for="v in (versionCache[pdf.id] || [])" :key="v.id">
                 <div class="flex items-center gap-4 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-sm text-gray-800">
                       <span x-text="v.label"></span>
-                      <span x-show="bestVersion(pdf)?.file_size === v.file_size && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
+                      <span x-show="pdfMeta(pdf).bv?.file_size === v.file_size && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
                     </div>
                     <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
                       <span x-text="fmtSize(v.file_size) + ' / ' + fmtSize(pdf.file_size)"></span>
@@ -224,16 +220,12 @@
           <span class="text-xs text-gray-400" x-text="uploadFiles.length + ' file(s)'"></span>
           <button x-show="uploadFiles.length > 1" @click="uploadFiles = []" class="text-xs text-gray-400 hover:text-red-500 transition">Clear all</button>
         </div>
-        <div class="space-y-1">
-          <template x-for="(f, i) in uploadFiles" :key="i">
-            <div class="flex items-center gap-2 text-sm text-gray-600">
+        <div class="space-y-1"><template x-for="(f, i) in uploadFiles" :key="i"><div class="flex items-center gap-2 text-sm text-gray-600">
               <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
               <span class="truncate flex-1" x-text="f.name"></span>
               <span class="text-gray-400" x-text="fmtSize(f.size)"></span>
               <button @click="uploadFiles.splice(i, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
-            </div>
-          </template>
-        </div>
+            </div></template></div>
       </div>
       <!-- Compression Settings -->
       <div class="grid grid-cols-2 gap-3 mb-4">
@@ -404,9 +396,7 @@
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
       <textarea x-model="notesText" rows="4" maxlength="5000" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm resize-none"></textarea>
-      <div class="flex items-center justify-between mt-1">
-        <span class="text-xs" :class="notesText.length > 5000 ? 'text-red-500' : notesText.length > 4500 ? 'text-amber-500' : 'text-gray-400'" x-text="notesText.length + ' / 5000'"></span>
-      </div>
+      <div class="flex items-center justify-between mt-1"><span class="text-xs" :class="notesText.length > 5000 ? 'text-red-500' : notesText.length > 4500 ? 'text-amber-500' : 'text-gray-400'" x-text="notesText.length + ' / 5000'"></span></div>
       <div class="flex gap-3 mt-4">
         <button @click="showNotes = false; notesTarget = null" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel</button>
         <button @click="saveNotes()" :disabled="notesText.length > 5000" class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">Save</button>
@@ -426,6 +416,7 @@ function app() {
     pdfs: [],
     versionCache: {},
     versionLoading: {},
+    _pdfMeta: {},
     stats: null,
     search: '',
     sortBy: 'date',
@@ -776,6 +767,14 @@ function app() {
         return { id: pdf.best_version_id, file_size: pdf.best_compressed_size };
       }
       return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
+    },
+    pdfMeta(pdf) {
+      const vc = (this.versionCache[pdf.id] || []).length;
+      const cached = this._pdfMeta[pdf.id];
+      if (cached && cached.ts === vc) return cached;
+      const meta = { bv: this.bestVersion(pdf), saving: this.bestSaving(pdf), ts: vc };
+      this._pdfMeta = { ...this._pdfMeta, [pdf.id]: meta };
+      return meta;
     },
     fmtSize(bytes) {
       if (bytes == null) return '-';
