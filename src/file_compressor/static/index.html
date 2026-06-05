@@ -590,7 +590,8 @@ function app() {
       this.uploadStatus = 'Uploading...';
       let succeeded = 0; const errors = []; const warnings = []; let uploadedPdf = null;
       for (let i = 0; i < this.uploadFiles.length; i++) {
-        const fd = this._buildCompressFd(this.uploadForm, { file: this.uploadFiles[i], notes: this.uploadForm.notes });
+        const { notes, ...formFields } = this.uploadForm;
+        const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
         this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
         try {
           const data = await new Promise((resolve, reject) => {
