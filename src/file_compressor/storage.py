@@ -163,13 +163,11 @@ class Storage:
         return Path(row["file_path"]) if row else None
 
     def delete_pdf(self, pdf_id: str) -> bool:
-        file_paths: list[Path] = []
+        vrows = self._conn.execute(
+            "SELECT file_path FROM versions WHERE pdf_id=?", (pdf_id,)
+        ).fetchall()
+        file_paths: list[Path] = [Path(r["file_path"]) for r in vrows]
         pdf_path = self.get_pdf_path(pdf_id)
-        versions = self.list_versions(pdf_id)
-        for v in versions:
-            vpath = self.get_version_path(v.id)
-            if vpath:
-                file_paths.append(vpath)
         if pdf_path:
             file_paths.append(pdf_path)
         self._conn.execute("BEGIN")
