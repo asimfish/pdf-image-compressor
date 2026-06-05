@@ -580,8 +580,8 @@ function app() {
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
       let succeeded = 0; const errors = []; const warnings = []; let uploadedPdf = null;
+      const { notes, ...formFields } = this.uploadForm;
       for (let i = 0; i < this.uploadFiles.length; i++) {
-        const { notes, ...formFields } = this.uploadForm;
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
         this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
         try {
