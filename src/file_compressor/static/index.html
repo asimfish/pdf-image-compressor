@@ -463,13 +463,7 @@ function app() {
     _defaults(extra = {}) { return { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, ...extra }; },
     _buildCompressFd(form, extras) {
       const fd = new FormData();
-      fd.append('quality', form.quality);
-      fd.append('target_size', form.target_size);
-      fd.append('pdf_mode', form.pdf_mode);
-      fd.append('pdf_dpi', form.pdf_dpi);
-      fd.append('pdf_grayscale', form.pdf_grayscale);
-      fd.append('strip_metadata', form.strip_metadata);
-      if (form.label) fd.append('label', form.label);
+      for (const [k, v] of Object.entries(form)) { if (v !== '' && v != null) fd.append(k, v); }
       if (extras) Object.entries(extras).forEach(([k, v]) => fd.append(k, v));
       return fd;
     },
