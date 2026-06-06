@@ -152,6 +152,24 @@ def test_compress_pdf_auto_with_target_falls_back_to_raster(tmp_path: Path):
     assert output.exists()
 
 
+def test_compress_pdf_auto_with_large_target_returns_optimized(tmp_path: Path):
+    """Auto mode returns optimized result when it's within ±10% of target."""
+    source = _make_pdf(tmp_path / "big_target.pdf", pages=3)
+    output = tmp_path / "big_target_out.pdf"
+    opt_size = optimize_pdf(source, tmp_path / "opt.pdf", CompressionConfig(output_dir=tmp_path)).stat().st_size
+
+    config = CompressionConfig(
+        target_bytes=int(opt_size * 1.05),
+        pdf_mode="auto",
+        pdf_dpi=120,
+        quality=82,
+        output_dir=tmp_path,
+    )
+    compress_pdf(source, output, config)
+    assert output.exists()
+    assert output.stat().st_size == opt_size
+
+
 def test_compress_pdf_grayscale_with_target(tmp_path: Path):
     source = _make_pdf(tmp_path / "gray.pdf", pages=3, with_images=True)
     output = tmp_path / "gray_out.pdf"
