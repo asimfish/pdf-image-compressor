@@ -68,7 +68,8 @@ def _sanitize_label(label: str) -> str:
 
 def init_storage(data_dir: Path) -> None:
     global _storage
-    _storage = Storage(data_dir)
+    with _storage_lock:
+        _storage = Storage(data_dir)
 
 
 class NotesUpdate(BaseModel):
@@ -347,7 +348,11 @@ async def compress_upload(
     upload_dir = temp_path / "uploads"
     output_dir = temp_path / "compressed"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    _save_upload_files(files, upload_dir)
+    try:
+        _save_upload_files(files, upload_dir)
+    except HTTPException:
+        shutil.rmtree(temp_path, True)
+        raise
 
     config = CompressionConfig(
         quality=quality,
