@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import tempfile
+import threading
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
@@ -45,13 +46,16 @@ def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_
 
 _STATIC = Path(__file__).parent / "static"
 _storage: Optional[Storage] = None
+_storage_lock = threading.Lock()
 
 
 def _get_storage() -> Storage:
     global _storage
     if _storage is None:
-        data_dir = Path.home() / ".pdf-manager"
-        _storage = Storage(data_dir)
+        with _storage_lock:
+            if _storage is None:
+                data_dir = Path.home() / ".pdf-manager"
+                _storage = Storage(data_dir)
     return _storage
 
 
@@ -316,7 +320,10 @@ def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
         safe_name = Path(item.filename or "uploaded.bin").name
         target = dest / safe_name
         with target.open("wb") as handle:
-            shutil.copyfileobj(item.file, handle)
+            shutil.copyfileobj(item.file, handle, length=_MAX_UPLOAD_BYTES + 1)
+        if target.stat().st_size > _MAX_UPLOAD_BYTES:
+            target.unlink(missing_ok=True)
+            raise HTTPException(413, detail=f"File too large ({safe_name}). Maximum is {_MAX_UPLOAD_BYTES // (1024*1024)} MB.")
 
 
 # ── Legacy compress endpoint (backward compat) ──
