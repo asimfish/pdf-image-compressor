@@ -23,7 +23,14 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     with TemporaryDirectory(prefix="pdf_optimize_") as temp_dir:
         optimized = Path(temp_dir) / "optimized.pdf"
         optimize_pdf(source, optimized, config)
-        if config.target_bytes is None or optimized.stat().st_size <= config.target_bytes:
+        opt_size = optimized.stat().st_size
+        if config.target_bytes is None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(optimized, output)
+            return output
+        lo = int(config.target_bytes * 0.9)
+        hi = int(config.target_bytes * 1.1)
+        if lo <= opt_size <= hi:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
@@ -49,6 +56,7 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     candidates = _pdf_candidates(config)
     best_path: Optional[Path] = None
     best_size: Optional[int] = None
+    best_diff: Optional[int] = None
 
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)
@@ -56,13 +64,22 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
             candidate = temp / f"candidate_{index}_{dpi}_{quality}.pdf"
             rasterize_pdf(source, candidate, dpi=dpi, quality=quality, grayscale=config.pdf_grayscale, strip_metadata=config.strip_metadata)
             size = candidate.stat().st_size
-            if best_size is None or size < best_size:
+            if config.target_bytes is None:
+                if best_size is None or size < best_size:
+                    best_path = candidate
+                    best_size = size
+                continue
+            lo = int(config.target_bytes * 0.9)
+            hi = int(config.target_bytes * 1.1)
+            if lo <= size <= hi:
                 best_path = candidate
                 best_size = size
-            if config.target_bytes is None or size <= config.target_bytes:
-                output.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(candidate, output)
-                return output
+                break
+            diff = abs(size - config.target_bytes)
+            if best_diff is None or diff < best_diff:
+                best_path = candidate
+                best_size = size
+                best_diff = diff
         if best_path is None:
             raise RuntimeError("PDF compression produced no output")
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +122,15 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     start_dpi = max(36, config.pdf_dpi)
     start_quality = clamp_quality(config.quality)
     base = [
+        (300, min(start_quality + 10, 95)),
+        (280, min(start_quality + 8, 94)),
+        (260, min(start_quality + 6, 93)),
+        (240, min(start_quality + 5, 92)),
+        (220, min(start_quality + 3, 90)),
+        (200, start_quality),
+        (180, start_quality),
+        (160, start_quality),
+        (150, start_quality),
         (start_dpi, start_quality),
         (min(start_dpi, 140), min(start_quality, 78)),
         (min(start_dpi, 130), min(start_quality, 72)),
