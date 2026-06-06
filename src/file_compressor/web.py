@@ -353,19 +353,7 @@ async def compress_upload(
     except HTTPException:
         shutil.rmtree(temp_path, True)
         raise
-
-    config = CompressionConfig(
-        quality=quality,
-        max_edge=max_edge,
-        to_webp=to_webp,
-        target_bytes=parse_size(target_size),
-        output_dir=output_dir,
-        archive=archive,
-        pdf_mode=pdf_mode,
-        pdf_dpi=pdf_dpi,
-        pdf_grayscale=pdf_grayscale,
-        strip_metadata=strip_metadata,
-    )
+    config = _build_legacy_config(quality, max_edge, target_size, pdf_mode, pdf_dpi, to_webp, pdf_grayscale, strip_metadata, archive, output_dir)
     try:
         source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
         output = output_dir / "compressed.zip" if archive == "zip" else None
@@ -386,6 +374,32 @@ async def compress_upload(
 
 
 # ── Helpers ──
+
+def _build_legacy_config(
+    quality: int,
+    max_edge: Optional[int],
+    target_size: Optional[str],
+    pdf_mode: str,
+    pdf_dpi: int,
+    to_webp: bool,
+    pdf_grayscale: bool,
+    strip_metadata: bool,
+    archive: Optional[str],
+    output_dir: Path,
+) -> CompressionConfig:
+    return CompressionConfig(
+        quality=quality,
+        max_edge=max_edge,
+        to_webp=to_webp,
+        target_bytes=parse_size(target_size),
+        output_dir=output_dir,
+        archive=archive,
+        pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi,
+        pdf_grayscale=pdf_grayscale,
+        strip_metadata=strip_metadata,
+    )
+
 
 def _compress_and_store(
     storage: Storage,
