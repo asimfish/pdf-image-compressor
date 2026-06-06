@@ -116,43 +116,44 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
         src.close()
 
 
+_MIN_DPI = 36
+_MIN_QUALITY = 16
+
+# Fixed-quality tail entries (dpi, quality) — appended after the dynamic head
+_TAIL_CANDIDATES: list[tuple[int, int]] = [
+    (110, 58), (105, 50), (100, 44), (95, 40), (90, 36),
+    (85, 32), (80, 30), (72, 28), (65, 25), (60, 22),
+    (55, 20), (50, 18), (45, _MIN_QUALITY),
+]
+
+# Quality offsets applied to start_quality for the high-DPI head entries
+_HIGH_DPI_OFFSETS: list[tuple[int, int]] = [
+    (300, 10), (280, 8), (260, 6), (240, 5), (220, 3),
+]
+
+# Fixed-DPI entries that use start_quality (no offset)
+_MID_DPI_ENTRIES: list[int] = [200, 180, 160, 150]
+
+
 def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     if config.target_bytes is None:
         return [(config.pdf_dpi, config.quality)]
-    start_dpi = max(36, config.pdf_dpi)
+    start_dpi = max(_MIN_DPI, config.pdf_dpi)
     start_quality = clamp_quality(config.quality)
-    base = [
-        (300, min(start_quality + 10, 95)),
-        (280, min(start_quality + 8, 94)),
-        (260, min(start_quality + 6, 93)),
-        (240, min(start_quality + 5, 92)),
-        (220, min(start_quality + 3, 90)),
-        (200, start_quality),
-        (180, start_quality),
-        (160, start_quality),
-        (150, start_quality),
-        (start_dpi, start_quality),
-        (min(start_dpi, 140), min(start_quality, 78)),
-        (min(start_dpi, 130), min(start_quality, 72)),
-        (min(start_dpi, 120), min(start_quality, 66)),
-        (110, 58),
-        (105, 50),
-        (100, 44),
-        (95, 40),
-        (90, 36),
-        (85, 32),
-        (80, 30),
-        (72, 28),
-        (65, 25),
-        (60, 22),
-        (55, 20),
-        (50, 18),
-        (45, 16),
-    ]
+    base: list[tuple[int, int]] = []
+    for dpi, offset in _HIGH_DPI_OFFSETS:
+        base.append((dpi, min(start_quality + offset, 95)))
+    for dpi in _MID_DPI_ENTRIES:
+        base.append((dpi, start_quality))
+    base.append((start_dpi, start_quality))
+    base.append((min(start_dpi, 140), min(start_quality, 78)))
+    base.append((min(start_dpi, 130), min(start_quality, 72)))
+    base.append((min(start_dpi, 120), min(start_quality, 66)))
+    base.extend(_TAIL_CANDIDATES)
     seen: set[tuple[int, int]] = set()
     values: list[tuple[int, int]] = []
     for dpi, quality in base:
-        item = (max(36, int(dpi)), clamp_quality(int(quality)))
+        item = (max(_MIN_DPI, int(dpi)), clamp_quality(int(quality)))
         if item not in seen:
             seen.add(item)
             values.append(item)

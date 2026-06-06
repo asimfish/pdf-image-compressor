@@ -82,11 +82,7 @@ class Storage:
         self._conn.executescript(_SCHEMA)
         self._migrate()
 
-    def __enter__(self) -> "Storage":
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
+    _ALLOWED_MIGRATE_TABLES: frozenset[str] = frozenset({"versions"})
 
     def close(self) -> None:
         self._conn.close()
@@ -98,6 +94,8 @@ class Storage:
     def _migrate(self) -> None:
         """Add missing columns for backward compatibility with older databases."""
         for table, col_def in self._EXPECTED_COLUMNS:
+            if table not in self._ALLOWED_MIGRATE_TABLES:
+                raise ValueError(f"Migration table {table!r} not in allowlist")
             col_name = col_def.split()[0]
             cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if col_name not in cols:

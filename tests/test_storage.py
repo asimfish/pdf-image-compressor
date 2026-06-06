@@ -196,11 +196,12 @@ def test_file_on_disk(tmp_path: Path):
     storage.close()
 
 
-def test_storage_context_manager(tmp_path: Path):
-    with Storage(tmp_path) as storage:
-        pdf = storage.add_pdf("ctx.pdf", b"%PDF", 1)
-        assert storage.get_pdf(pdf.id) is not None
-    # Connection should be closed after exiting context
+def test_storage_close(tmp_path: Path):
+    storage = Storage(tmp_path)
+    pdf = storage.add_pdf("ctx.pdf", b"%PDF", 1)
+    assert storage.get_pdf(pdf.id) is not None
+    storage.close()
+    # Connection should be closed after calling close()
 
 
 def test_batch_delete_pdfs(tmp_path: Path):
