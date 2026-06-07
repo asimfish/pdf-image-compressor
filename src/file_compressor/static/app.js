@@ -179,8 +179,8 @@ function app() {
       const valid = pdfs.filter(f => f.size <= MAX);
       const nonPdfCount = all.length - pdfs.length;
       const tooLargeCount = pdfs.length - valid.length;
-      const existing = new Set(this.uploadFiles.map(f => f.name));
-      const newFiles = valid.filter(f => !existing.has(f.name));
+      const existing = new Set(this.uploadFiles.map(f => `${f.name}:${f.size}`));
+      const newFiles = valid.filter(f => !existing.has(`${f.name}:${f.size}`));
       const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
       // Build a single toast message
