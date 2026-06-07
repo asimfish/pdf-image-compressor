@@ -15,7 +15,7 @@ logger = logging.getLogger("pdf_manager")
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from starlette.background import BackgroundTask
 
 from .core import compress_path
@@ -308,7 +308,7 @@ def api_delete_pdf(pdf_id: str) -> dict:
 
 
 class BatchDeleteRequest(BaseModel):
-    pdf_ids: list[str]
+    pdf_ids: list[str] = Field(..., max_length=1000)
 
 
 @app.post("/api/pdfs/batch-delete")

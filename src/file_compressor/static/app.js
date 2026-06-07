@@ -233,7 +233,7 @@ function app() {
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
       this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
       this.loadLibrary();
-      this.compressPdf(uploadedPdf);
+      if (succeeded === 1) this.compressPdf(uploadedPdf);
     },
     cancelUpload() {
       this.uploading = false;
@@ -379,11 +379,16 @@ function app() {
     compareVersionUrl() {
       return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}`;
     },
+    _cleanupCompareListeners() {
+      if (this._onMouseMove) { window.removeEventListener('mousemove', this._onMouseMove); window.removeEventListener('touchmove', this._onMouseMove); this._onMouseMove = null; }
+      if (this._onMouseUp) { window.removeEventListener('mouseup', this._onMouseUp); window.removeEventListener('touchend', this._onMouseUp); this._onMouseUp = null; }
+    },
     _onCompareMouseDown(e) {
+      this._cleanupCompareListeners();
       this._compareDragging = true;
       this._updateCompareSlider(e);
       this._onMouseMove = (ev) => { if (this._compareDragging) this._updateCompareSlider(ev); };
-      this._onMouseUp = () => { this._compareDragging = false; window.removeEventListener('mousemove', this._onMouseMove); window.removeEventListener('mouseup', this._onMouseUp); window.removeEventListener('touchmove', this._onMouseMove); window.removeEventListener('touchend', this._onMouseUp); };
+      this._onMouseUp = () => { this._compareDragging = false; this._cleanupCompareListeners(); };
       window.addEventListener('mousemove', this._onMouseMove);
       window.addEventListener('mouseup', this._onMouseUp);
       window.addEventListener('touchmove', this._onMouseMove, { passive: false });
