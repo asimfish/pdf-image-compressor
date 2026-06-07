@@ -425,9 +425,13 @@ function app() {
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
-    _resetCompareLoading() { this.compareLoading = true; this.compareError = ''; this._compareLoaded = 0; this._compareGen++; },
-    _onCompareLoad(gen) { if (gen !== this._compareGen) return; if (++this._compareLoaded >= 2) this.compareLoading = false; },
-    _onCompareError() { this.compareLoading = false; this.compareError = 'Failed to load preview'; },
+    _resetCompareLoading() {
+      this.compareLoading = true; this.compareError = ''; this._compareLoaded = 0; this._compareGen++;
+      const gen = this._compareGen;
+      setTimeout(() => { if (gen === this._compareGen && this.compareLoading) { this.compareLoading = false; this.compareError = 'Loading timed out — try again'; } }, 15000);
+    },
+    _onCompareLoad(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; this.compareError = ''; if (this._compareLoaded >= 2) this.compareLoading = false; },
+    _onCompareError(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this._compareLoaded >= 2) { this.compareLoading = false; this.compareError = 'Failed to load preview'; } },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
     },

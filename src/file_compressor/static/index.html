@@ -537,10 +537,10 @@
           @keydown.home.prevent="compareSlider = 0"
           @keydown.end.prevent="compareSlider = 100">
           <!-- Original (right side) -->
-          <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad(_compareGen)" @error="_onCompareError()">
+          <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad(_compareGen)" @error="_onCompareError(_compareGen)">
           <!-- Compressed (left side, clipped) -->
           <div class="compare-overlay" :style="'width:' + compareSlider + '%'">
-            <img :src="compareVersionUrl()" alt="Compressed" :style="'width:' + ($refs.compareContainer ? $refs.compareContainer.offsetWidth + 'px' : '100vw')" draggable="false" @load="_onCompareLoad(_compareGen)" @error="_onCompareError()">
+            <img :src="compareVersionUrl()" alt="Compressed" :style="'width:' + ($refs.compareContainer ? $refs.compareContainer.offsetWidth + 'px' : '100vw')" draggable="false" @load="_onCompareLoad(_compareGen)" @error="_onCompareError(_compareGen)">
           </div>
           <!-- Labels -->
           <div x-show="compareSlider > 15" class="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-600 text-white shadow-sm pointer-events-none transition-opacity">Compressed</div>
