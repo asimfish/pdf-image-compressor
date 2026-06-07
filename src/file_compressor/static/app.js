@@ -148,7 +148,7 @@ function app() {
     },
     async batchDelete() {
       const ids = Object.keys(this.selectedPdfs);
-      if (!confirm(`Delete ${ids.length} PDF(s) and all their versions?`)) return;
+      if (!confirm(`Delete ${this._plural(ids.length, 'PDF')} and all their versions?`)) return;
       try {
         const res = await fetch('/api/pdfs/batch-delete', {
           method: 'POST',
@@ -219,8 +219,8 @@ function app() {
       if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
       if (tooLargeCount > 0) skipped.push(`${tooLargeCount} too large`);
       if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
-      if (newFiles.length > 0) parts.push(`Added ${newFiles.length} PDF(s)`);
-      if (dupes > 0) parts.push(`${dupes} duplicate(s)`);
+      if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
+      if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
       if (!parts.length) { this.showToast('No new files to add', 'error'); return; }
       const isError = newFiles.length === 0;
       this.showToast(parts.join(', '), isError ? 'error' : 'success');
@@ -282,9 +282,9 @@ function app() {
       this.showUpload = false; this.uploadFiles = [];
       this.uploadForm = this._defaults({ notes: '' });
       const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
-      const parts = [`Uploaded ${succeeded} PDF(s)`];
+      const parts = [`Uploaded ${this._plural(succeeded, 'PDF')}`];
       if (totalSaved > 0) parts.push(`saved ${this.fmtSize(totalSaved)}`);
-      if (warnings.length) parts.push(`${warnings.length} warning(s)`);
+      if (warnings.length) parts.push(this._plural(warnings.length, 'warning'));
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
       this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
       this.loadLibrary();
@@ -514,6 +514,7 @@ function app() {
       if (days < 7) return `${days}d ago`;
       return this.fmtDate(iso);
     },
+    _plural(n, singular, plural) { return n + ' ' + (n === 1 ? singular : (plural || singular + 's')); },
     showToast(msg, type = 'success') {
       this.toast = msg; this.toastType = type;
       setTimeout(() => { if (this.toast === msg) this.toast = ''; }, type === 'error' ? 8000 : 3000);

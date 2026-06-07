@@ -51,9 +51,9 @@
     </div>
     <div class="flex items-center gap-3">
       <div class="text-right text-sm text-gray-500" x-show="stats">
-        <span x-text="stats ? stats.pdf_count + ' PDFs' : ''"></span>
+        <span x-text="stats ? stats.pdf_count + (stats.pdf_count === 1 ? ' PDF' : ' PDFs') : ''"></span>
         <span class="mx-1" x-show="stats">·</span>
-        <span x-text="stats ? stats.version_count + ' versions' : ''"></span>
+        <span x-text="stats ? stats.version_count + (stats.version_count === 1 ? ' version' : ' versions') : ''"></span>
         <span class="mx-1" x-show="stats">·</span>
         <span x-text="stats ? fmtSize(stats.total_original_bytes) : ''"></span>
         <template x-if="stats?.total_saved_bytes > 0">
@@ -138,7 +138,7 @@
             <h3 class="font-semibold text-gray-800 truncate" x-text="pdf.filename"></h3>
             <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
               <span x-text="fmtSize(pdf.file_size)"></span>
-              <span x-text="pdf.page_count + ' pages'"></span>
+              <span x-text="pdf.page_count + (pdf.page_count === 1 ? ' page' : ' pages')"></span>
               <span x-text="fmtRelative(pdf.upload_time)" :title="fmtDate(pdf.upload_time)"></span>
             </div>
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
@@ -176,9 +176,9 @@
               </svg>
             </a>
             <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium cursor-pointer"
-              x-text="pdf.version_count + ' versions'"
+              x-text="pdf.version_count + (pdf.version_count === 1 ? ' version' : ' versions')"
               @click="toggleExpand(pdf.id)" tabindex="0" role="button"
-              :aria-label="'Show ' + pdf.version_count + ' versions for ' + pdf.filename"
+              :aria-label="'Show ' + pdf.version_count + (pdf.version_count === 1 ? ' version' : ' versions') + ' for ' + pdf.filename"
               @keydown.enter="toggleExpand(pdf.id)" @keydown.space.prevent="toggleExpand(pdf.id)"></span>
             <svg class="w-5 h-5 text-gray-400 transition-transform cursor-pointer" :class="expanded === pdf.id && 'rotate-180'"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -246,7 +246,7 @@
       <!-- Selected Files -->
       <div x-show="uploadFiles.length > 0" class="mb-4">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-400" x-text="uploadFiles.length + ' file(s)'"></span>
+          <span class="text-xs text-gray-400" x-text="uploadFiles.length + (uploadFiles.length === 1 ? ' file' : ' files')"></span>
           <button x-show="uploadFiles.length > 1" @click="uploadFiles = []" class="text-xs text-gray-400 hover:text-red-500 transition">Clear all</button>
         </div>
         <div class="space-y-1"><template x-for="(f, i) in uploadFiles" :key="i"><div class="flex items-center gap-2 text-sm text-gray-600">
@@ -451,7 +451,7 @@
             <svg x-show="batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
           </div>
           <div>
-            <p class="font-medium text-gray-800" x-text="'Compressed ' + (batchResults?.compressed || 0) + ' PDF(s)'"></p>
+            <p class="font-medium text-gray-800" x-text="'Compressed ' + (batchResults?.compressed || 0) + ((batchResults?.compressed || 0) === 1 ? ' PDF' : ' PDFs')"></p>
             <p class="text-xs text-gray-500" x-text="(() => { const ok = (batchResults?.results || []).filter(r => r.status === 'ok'); const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0); return saved > 0 ? 'Saved ' + fmtSize(saved) + ' total' : 'No size reduction'; })()"></p>
           </div>
         </div>
