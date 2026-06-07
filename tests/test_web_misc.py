@@ -343,3 +343,20 @@ def test_compress_rejects_label_too_long(tmp_path: Path):
     resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"label": "x" * 501})
     assert resp.status_code == 422
     assert "label" in resp.json()["detail"].lower()
+
+
+# ── Batch limits ──
+
+
+def test_batch_delete_rejects_too_many_ids(tmp_path: Path):
+    client = _client(tmp_path)
+    ids = [f"id{i}" for i in range(1001)]
+    resp = client.post("/api/pdfs/batch-delete", json={"pdf_ids": ids})
+    assert resp.status_code == 422
+
+
+def test_batch_compress_rejects_too_many_ids(tmp_path: Path):
+    client = _client(tmp_path)
+    ids = ",".join(f"id{i}" for i in range(1001))
+    resp = client.post("/api/pdfs/batch-compress", data={"pdf_ids": ids})
+    assert resp.status_code == 422
