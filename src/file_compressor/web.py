@@ -175,7 +175,10 @@ def api_download_pdf(pdf_id: str) -> FileResponse:
     path = storage.get_pdf_path(pdf_id)
     if not path or not path.exists():
         raise HTTPException(404, detail="File not found")
-    return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
+    try:
+        return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
+    except FileNotFoundError:
+        raise HTTPException(404, detail="File not found")
 
 
 @app.get("/api/pdfs/{pdf_id}/versions")
@@ -317,7 +320,10 @@ def api_download_version(version_id: str) -> FileResponse:
     stem = Path(pdf.filename).stem if pdf else "version"
     label = _sanitize_label(ver.label) if ver.label else ""
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
-    return FileResponse(path, filename=download_name, media_type="application/pdf")
+    try:
+        return FileResponse(path, filename=download_name, media_type="application/pdf")
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Version file not found")
 
 
 @app.delete("/api/versions/{version_id}")
