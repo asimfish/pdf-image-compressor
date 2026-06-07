@@ -325,8 +325,8 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-        if vpath:
-            _cleanup_files([vpath])
+            if vpath:
+                _cleanup_files([vpath])
         return deleted
 
     def stats(self) -> dict:
