@@ -45,6 +45,7 @@ function app() {
     _compareDragging: false,
     compareLoading: false,
     compareError: '',
+    _compareLoaded: 0,
     // Toast
     toast: '',
     toastType: 'success',
@@ -355,13 +356,13 @@ function app() {
       this.comparePage = 0;
       this.compareTotalPages = pdf.page_count || 1;
       this.compareSlider = 50;
-      this.compareLoading = true;
-      this.compareError = '';
+      this._resetCompareLoading();
       this.showCompare = true;
     },
-    comparePrev() { if (this.comparePage > 0) { this.comparePage--; this.compareLoading = true; this.compareError = ''; } },
-    compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this.compareLoading = true; this.compareError = ''; } },
-    _onCompareLoad() { this.compareLoading = false; },
+    comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
+    compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
+    _resetCompareLoading() { this.compareLoading = true; this.compareError = ''; this._compareLoaded = 0; },
+    _onCompareLoad() { this._compareLoaded++; if (this._compareLoaded >= 2) this.compareLoading = false; },
     _onCompareError() { this.compareLoading = false; this.compareError = 'Failed to load preview'; },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
