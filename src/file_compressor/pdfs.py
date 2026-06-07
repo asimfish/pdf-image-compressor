@@ -61,10 +61,16 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     closest_path: Optional[Path] = None
     closest_size: Optional[int] = None
     best_diff: Optional[int] = None
+    # Number of high-DPI entries before quality starts decreasing monotonically
+    _high_dpi_count = len(_HIGH_DPI_OFFSETS) + len(_MID_DPI_ENTRIES) + 1
 
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)
         for index, (dpi, quality) in enumerate(candidates):
+            # Early exit: past the high-DPI zone, if current quality is below
+            # the best we've found, no better candidate can appear.
+            if config.target_bytes is not None and index > _high_dpi_count and best_quality is not None and quality < best_quality:
+                break
             candidate = temp / f"candidate_{index}_{dpi}_{quality}.pdf"
             rasterize_pdf(source, candidate, dpi=dpi, quality=quality, grayscale=config.pdf_grayscale, strip_metadata=config.strip_metadata)
             size = candidate.stat().st_size
