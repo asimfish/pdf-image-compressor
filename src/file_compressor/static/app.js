@@ -18,6 +18,7 @@ function app() {
   return {
     pdfs: [],
     versionCache: {},
+    _versionGen: {},
     versionLoading: {},
     _pdfMeta: {},
     stats: null,
@@ -153,15 +154,23 @@ function app() {
       this.loading = false;
     },
     async loadVersions(pdfId) {
+      const gen = (this._versionGen[pdfId] || 0) + 1;
+      this._versionGen[pdfId] = gen;
       this.versionLoading[pdfId] = true;
       try {
         const res = await fetch(`/api/pdfs/${pdfId}/versions`);
         if (!res.ok) throw new Error('Failed to load versions');
-        this.versionCache[pdfId] = await res.json();
+        if (this._versionGen[pdfId] === gen) {
+          this.versionCache[pdfId] = await res.json();
+        }
       } catch (e) {
-        this.showToast('Failed to load versions: ' + e.message, 'error');
+        if (this._versionGen[pdfId] === gen) {
+          this.showToast('Failed to load versions: ' + e.message, 'error');
+        }
       }
-      this.versionLoading[pdfId] = false;
+      if (this._versionGen[pdfId] === gen) {
+        this.versionLoading[pdfId] = false;
+      }
     },
     toggleExpand(pdfId) {
       this.expanded = this.expanded === pdfId ? null : pdfId;
