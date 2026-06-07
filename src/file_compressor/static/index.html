@@ -442,7 +442,7 @@
       </div>
       <div x-show="batchCompressing" class="mt-4">
         <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-green-600 rounded-full animate-pulse w-full"></div></div>
-        <p class="text-sm text-gray-500 mt-1 text-center" x-text="'Compressing ' + batchTargetPdfs.length + ' PDFs...'"></p>
+        <p class="text-sm text-gray-500 mt-1 text-center" x-text="'Compressing ' + _plural(batchTargetPdfs.length, 'PDF') + '...'"></p>
       </div>
       <div x-show="batchCompressValidation" class="mt-3 text-sm text-red-600" x-text="batchCompressValidation"></div>
       <!-- Batch Results -->
