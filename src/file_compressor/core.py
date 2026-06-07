@@ -54,7 +54,7 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
                     status="ok",
                 )
             )
-        except Exception as exc:
+        except Exception:
             try:
                 orig_size = file_path.stat().st_size
             except OSError:

@@ -316,15 +316,25 @@ def api_delete_version(version_id: str) -> dict:
     return {"ok": True}
 
 
+_COPY_CHUNK = 1024 * 1024  # 1 MB
+
+
 def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
     for item in files:
         safe_name = Path(item.filename or "uploaded.bin").name
         target = dest / safe_name
+        written = 0
         with target.open("wb") as handle:
-            shutil.copyfileobj(item.file, handle, length=_MAX_UPLOAD_BYTES + 1)
-        if target.stat().st_size > _MAX_UPLOAD_BYTES:
-            target.unlink(missing_ok=True)
-            raise HTTPException(413, detail=f"File too large ({safe_name}). Maximum is {_MAX_UPLOAD_BYTES // (1024*1024)} MB.")
+            while True:
+                chunk = item.file.read(_COPY_CHUNK)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > _MAX_UPLOAD_BYTES:
+                    handle.close()
+                    target.unlink(missing_ok=True)
+                    raise HTTPException(413, detail=f"File too large ({safe_name}). Maximum is {_MAX_UPLOAD_BYTES // (1024*1024)} MB.")
+                handle.write(chunk)
 
 
 # ── Legacy compress endpoint (backward compat) ──
