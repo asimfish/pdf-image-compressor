@@ -495,7 +495,7 @@ function app() {
       this._cleanupCompareListeners();
       this._compareDragging = true;
       this._updateCompareSlider(e);
-      this._onMouseMove = (ev) => { if (this._compareDragging) this._updateCompareSlider(ev); };
+      this._onMouseMove = (ev) => { if (this._compareDragging) { if (ev.touches) ev.preventDefault(); this._updateCompareSlider(ev); } };
       this._onMouseUp = () => { this._compareDragging = false; this._cleanupCompareListeners(); };
       window.addEventListener('mousemove', this._onMouseMove);
       window.addEventListener('mouseup', this._onMouseUp);

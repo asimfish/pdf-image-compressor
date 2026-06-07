@@ -218,3 +218,14 @@ def test_preview_version_not_found(tmp_path: Path):
     assert resp.status_code == 404
 
 
+def test_preview_negative_page(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "neg.pdf", pages=3)
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("neg.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+
+    resp = client.get(f"/api/preview/original/{pdf_id}/-1")
+    assert resp.status_code == 422
+
+
