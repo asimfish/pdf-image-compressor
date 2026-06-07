@@ -164,7 +164,9 @@
             </a>
             <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium cursor-pointer"
               x-text="pdf.version_count + ' versions'"
-              @click="toggleExpand(pdf.id)"></span>
+              @click="toggleExpand(pdf.id)" tabindex="0" role="button"
+              :aria-label="'Show ' + pdf.version_count + ' versions for ' + pdf.filename"
+              @keydown.enter="toggleExpand(pdf.id)" @keydown.space.prevent="toggleExpand(pdf.id)"></span>
             <svg class="w-5 h-5 text-gray-400 transition-transform cursor-pointer" :class="expanded === pdf.id && 'rotate-180'"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
               @click="toggleExpand(pdf.id)" role="button" :aria-label="(expanded === pdf.id ? 'Collapse' : 'Expand') + ' versions for ' + pdf.filename">
