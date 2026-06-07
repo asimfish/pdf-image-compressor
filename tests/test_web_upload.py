@@ -344,3 +344,13 @@ def test_upload_strip_metadata_false(tmp_path: Path):
     assert resp.status_code == 200
 
 
+def test_upload_rejects_empty_file(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.post(
+        "/api/pdfs/upload",
+        files={"file": ("empty.pdf", b"", "application/pdf")},
+    )
+    assert resp.status_code == 400
+    assert "Invalid PDF" in resp.json()["detail"]
+
+
