@@ -65,6 +65,19 @@ def test_upload_returns_warning_field(tmp_path: Path):
     assert "warning" in data
 
 
+def test_upload_returns_compression_info(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "comp.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("comp.pdf", f, "application/pdf")})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "best_compressed_size" in data
+    assert "best_compression_ratio" in data
+    assert data["best_compressed_size"] > 0
+    assert isinstance(data["best_compression_ratio"], (int, float))
+
+
 
 
 def test_upload_warns_on_compression_failure(tmp_path: Path):
