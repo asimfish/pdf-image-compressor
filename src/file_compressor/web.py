@@ -5,7 +5,7 @@ import re
 import shutil
 import tempfile
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
@@ -510,16 +510,8 @@ def _compress_and_store(
         src = td_path / "input.pdf"
         src.write_bytes(original_data)
         out = td_path / "output.pdf"
-        config = CompressionConfig(
-            quality=config.quality,
-            target_bytes=config.target_bytes,
-            output_dir=td_path,
-            pdf_mode=config.pdf_mode,
-            pdf_dpi=config.pdf_dpi,
-            pdf_grayscale=config.pdf_grayscale,
-            strip_metadata=config.strip_metadata,
-        )
-        summary = compress_path(src, config, out)
+        run_config = replace(config, output_dir=td_path)
+        summary = compress_path(src, run_config, out)
         if not out.exists():
             failed = [r for r in summary.results if r.status == "failed"]
             detail = failed[0].error if failed else "Compression produced no output"
