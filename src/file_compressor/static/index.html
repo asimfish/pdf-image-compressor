@@ -460,7 +460,7 @@
           <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad()" @error="_onCompareError()">
           <!-- Compressed (left side, clipped) -->
           <div class="compare-overlay" :style="'width:' + compareSlider + '%'">
-            <img :src="compareVersionUrl()" alt="Compressed" :style="'width:' + ($refs.compareContainer ? $refs.compareContainer.offsetWidth + 'px' : '100vw')" draggable="false">
+            <img :src="compareVersionUrl()" alt="Compressed" :style="'width:' + ($refs.compareContainer ? $refs.compareContainer.offsetWidth + 'px' : '100vw')" draggable="false" @error="_onCompareError()">
           </div>
           <!-- Slider line -->
           <div class="compare-slider-line" :style="'left:' + compareSlider + '%'"></div>
