@@ -58,9 +58,12 @@ function app() {
       return fd;
     },
     _evictPdfCache(pdfId) {
-      delete this._pdfMeta[pdfId];
-      delete this.versionCache[pdfId];
-      delete this.versionLoading[pdfId];
+      const { [pdfId]: _pm, ...restMeta } = this._pdfMeta;
+      this._pdfMeta = restMeta;
+      const { [pdfId]: _vc, ...restVersions } = this.versionCache;
+      this.versionCache = restVersions;
+      const { [pdfId]: _vl, ...restLoading } = this.versionLoading;
+      this.versionLoading = restLoading;
     },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
