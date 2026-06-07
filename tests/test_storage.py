@@ -243,9 +243,9 @@ def test_list_pdfs_with_stats(tmp_path: Path):
     storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
     result = storage.list_pdfs_with_stats()
     assert len(result) == 1
-    assert result[0]["version_count"] == 1
-    assert result[0]["best_compression_ratio"] == 0.5
-    assert result[0]["best_compressed_size"] == len(b"compressed")
+    assert result[0].version_count == 1
+    assert result[0].best_compression_ratio == 0.5
+    assert result[0].best_compressed_size == len(b"compressed")
     storage.close()
 
 
@@ -291,13 +291,13 @@ def test_list_pdfs_with_stats_multiple(tmp_path: Path):
     ))
     result = storage.list_pdfs_with_stats()
     assert len(result) == 2
-    ids = {r["id"] for r in result}
+    ids = {r.id for r in result}
     assert p1.id in ids
     assert p2.id in ids
-    p1_stats = next(r for r in result if r["id"] == p1.id)
-    p2_stats = next(r for r in result if r["id"] == p2.id)
-    assert p1_stats["version_count"] == 1
-    assert p2_stats["version_count"] == 0
+    p1_stats = next(r for r in result if r.id == p1.id)
+    p2_stats = next(r for r in result if r.id == p2.id)
+    assert p1_stats.version_count == 1
+    assert p2_stats.version_count == 0
     storage.close()
 
 

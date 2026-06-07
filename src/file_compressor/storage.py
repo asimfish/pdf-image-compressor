@@ -23,6 +23,20 @@ class PdfRecord:
 
 
 @dataclass(frozen=True)
+class PdfWithStats:
+    id: str
+    filename: str
+    file_size: int
+    page_count: int
+    upload_time: str
+    notes: str
+    version_count: int
+    best_compression_ratio: Optional[float]
+    best_compressed_size: Optional[int]
+    best_version_id: Optional[str]
+
+
+@dataclass(frozen=True)
 class VersionParams:
     pdf_id: str
     label: str
@@ -154,7 +168,7 @@ class Storage:
         rows = self._conn.execute("SELECT * FROM pdfs ORDER BY upload_time DESC").fetchall()
         return [_row_to_pdf(r) for r in rows]
 
-    def list_pdfs_with_stats(self) -> list[dict]:
+    def list_pdfs_with_stats(self) -> list[PdfWithStats]:
         rows = self._conn.execute("""
             SELECT p.*,
                    COALESCE(vc.cnt, 0) AS version_count,
@@ -171,14 +185,14 @@ class Storage:
             ORDER BY p.upload_time DESC
         """).fetchall()
         return [
-            {
-                "id": r["id"], "filename": r["filename"], "file_size": r["file_size"],
-                "page_count": r["page_count"], "upload_time": r["upload_time"], "notes": r["notes"],
-                "version_count": r["version_count"],
-                "best_compression_ratio": r["best_ratio"],
-                "best_compressed_size": r["best_size"],
-                "best_version_id": r["best_id"],
-            }
+            PdfWithStats(
+                id=r["id"], filename=r["filename"], file_size=r["file_size"],
+                page_count=r["page_count"], upload_time=r["upload_time"], notes=r["notes"],
+                version_count=r["version_count"],
+                best_compression_ratio=r["best_ratio"],
+                best_compressed_size=r["best_size"],
+                best_version_id=r["best_id"],
+            )
             for r in rows
         ]
 

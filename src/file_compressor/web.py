@@ -116,7 +116,7 @@ def api_stats() -> dict:
 
 @app.get("/api/pdfs")
 def api_list_pdfs() -> list:
-    return _get_storage().list_pdfs_with_stats()
+    return [asdict(p) for p in _get_storage().list_pdfs_with_stats()]
 
 
 @app.post("/api/pdfs/upload")
