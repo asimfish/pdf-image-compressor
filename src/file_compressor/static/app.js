@@ -511,6 +511,12 @@ function app() {
       if (r == null || r === 0) return 'No change';
       return r > 0 ? '-' + (r * 100).toFixed(1) + '%' : '+' + (Math.abs(r) * 100).toFixed(1) + '% larger';
     },
+    fmtSettings(v) {
+      return 'Q' + v.quality + ' ' + v.pdf_mode + ' ' + v.pdf_dpi + 'dpi' + (v.pdf_grayscale ? ' gray' : '');
+    },
+    fmtTarget(bytes) {
+      return 'target ' + this.fmtSize(bytes);
+    },
     batchSavedText() {
       const ok = (this.batchResults?.results || []).filter(r => r.status === 'ok');
       const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
