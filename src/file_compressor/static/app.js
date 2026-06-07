@@ -340,20 +340,31 @@ function app() {
     async doBatchCompress() {
       this.batchCompressing = true;
       this.batchResults = null;
+      this._batchAbort = new AbortController();
       try {
         const fd = this._buildCompressFd(this.batchForm);
         if (this.batchTargetPdfs.length < this.pdfs.length) {
           fd.append('pdf_ids', this.batchTargetPdfs.map(p => p.id).join(','));
         }
-        const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
+        const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd, signal: this._batchAbort.signal });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
         this.batchResults = data;
         this.loadLibrary();
       } catch (e) {
-        this.showToast('Batch compress failed: ' + e.message, 'error');
+        if (e.name === 'AbortError') {
+          this.showToast('Batch compress cancelled', 'error');
+        } else {
+          this.showToast('Batch compress failed: ' + e.message, 'error');
+        }
       }
+      this._batchAbort = null;
       this.batchCompressing = false;
+    },
+    cancelBatchCompress() {
+      if (this._batchAbort) this._batchAbort.abort();
+      this.showBatchCompress = false;
+      this.batchResults = null;
     },
     closeBatchResults() {
       this.batchResults = null;
