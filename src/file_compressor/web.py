@@ -85,6 +85,16 @@ def _sanitize_label(label: str) -> str:
     return label[:_MAX_LABEL_LEN]
 
 
+def _sanitize_error(exc: Exception) -> str:
+    """Return a user-friendly error message without leaking internal details."""
+    msg = str(exc).split("\n")[0][:200]
+    if "no output" in msg.lower():
+        return "Compression produced no output — the file may be corrupted"
+    if "corrupt" in msg.lower() or "invalid" in msg.lower():
+        return "The file appears to be corrupted or invalid"
+    return "Compression failed"
+
+
 def init_storage(data_dir: Path) -> None:
     global _storage
     with _storage_lock:
@@ -227,7 +237,7 @@ def api_compress_pdf(
         ver = _compress_and_store(storage, pdf_id, data, config, label)
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
-        raise HTTPException(500, detail="Compression failed")
+        raise HTTPException(500, detail=_sanitize_error(exc))
     logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(len(data)), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
     return asdict(ver)
 
@@ -276,7 +286,7 @@ def api_batch_compress(
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
             logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "Compression failed"})
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": _sanitize_error(exc)})
 
     return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results + not_found}
 
@@ -374,7 +384,7 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
         raise HTTPException(500, detail="Preview render failed")
 
-    return StreamingResponse(BytesIO(png_data), media_type="image/png")
+    return StreamingResponse(BytesIO(png_data), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 _COPY_CHUNK = 1024 * 1024  # 1 MB
