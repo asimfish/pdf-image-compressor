@@ -146,6 +146,7 @@ function app() {
         const data = await res.json();
         this.showToast(`Deleted ${data.deleted} PDFs`);
         if (ids.includes(this.expanded)) this.expanded = null;
+        if (this.showCompare && ids.includes(this.comparePdf?.id)) this.showCompare = false;
         this.selectedPdfs = {};
         this.selectMode = false;
         this.loadLibrary();
@@ -338,6 +339,7 @@ function app() {
         const res = await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
+        if (this.showCompare && this.comparePdf?.id === pdf.id) this.showCompare = false;
         this.showToast('Deleted');
         this.loadLibrary();
       } catch (e) {
@@ -349,6 +351,7 @@ function app() {
       try {
         const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
+        if (this.showCompare && this.compareVersion?.id === versionId) this.showCompare = false;
         this.loadVersions(pdfId);
         this.loadLibrary();
       } catch (e) {
