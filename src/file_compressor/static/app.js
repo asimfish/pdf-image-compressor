@@ -395,7 +395,6 @@ function app() {
       window.addEventListener('touchend', this._onMouseUp);
     },
     _onCompareMouseMove(e) { if (this._compareDragging) this._updateCompareSlider(e); },
-    _onCompareMouseUp() { this._compareDragging = false; },
     _updateCompareSlider(e) {
       const container = this.$refs.compareContainer;
       if (!container) return;

@@ -254,6 +254,8 @@ async def api_batch_compress(
     all_pdfs = storage.list_pdfs()
     if pdf_ids:
         id_set = {s.strip() for s in pdf_ids.split(",") if s.strip()}
+        if len(id_set) > 1000:
+            raise HTTPException(422, detail="Too many PDF IDs (max 1000)")
         pdfs = [p for p in all_pdfs if p.id in id_set]
     else:
         pdfs = all_pdfs
