@@ -171,6 +171,7 @@ function app() {
       const existing = new Set(this.uploadFiles.map(f => f.name));
       const newFiles = valid.filter(f => !existing.has(f.name));
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
+      if (newFiles.length > 0 && !bad.length) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
