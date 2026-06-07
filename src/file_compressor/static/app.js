@@ -15,6 +15,7 @@ function app() {
     batchCompressing: false,
     showBatchCompress: false,
     batchForm: { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' },
+    batchResults: null,
     selectMode: false,
     selectedPdfs: {},
     // Upload
@@ -194,7 +195,7 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
-      let succeeded = 0; const errors = []; const warnings = []; let uploadedPdf = null;
+      let succeeded = 0; const errors = []; const warnings = []; const compressResults = []; let uploadedPdf = null;
       const { notes, ...formFields } = this.uploadForm;
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
@@ -225,6 +226,9 @@ function app() {
             xhr.send(fd);
           });
           if (data.warning) warnings.push(data.warning);
+          if (data.file_size && data.best_compressed_size) {
+            compressResults.push({ original: data.file_size, compressed: data.best_compressed_size });
+          }
           uploadedPdf = data; succeeded++;
         } catch (e) {
           if (!this.uploading) break;
@@ -242,8 +246,10 @@ function app() {
       }
       this.showUpload = false; this.uploadFiles = [];
       this.uploadForm = this._defaults({ notes: '' });
+      const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
       const parts = [`Uploaded ${succeeded} PDF(s)`];
-      if (warnings.length) parts.push(`${warnings.length} warning(s): ${warnings.join('; ')}`);
+      if (totalSaved > 0) parts.push(`saved ${this.fmtSize(totalSaved)}`);
+      if (warnings.length) parts.push(`${warnings.length} warning(s)`);
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
       this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
       this.loadLibrary();
@@ -256,10 +262,12 @@ function app() {
     batchCompress() {
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
+      this.batchResults = null;
       this.showBatchCompress = true;
     },
     async doBatchCompress() {
       this.batchCompressing = true;
+      this.batchResults = null;
       try {
         const fd = this._buildCompressFd(this.batchForm);
         if (this.batchTargetPdfs.length < this.pdfs.length) {
@@ -268,23 +276,16 @@ function app() {
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
-        const errors = (data.results || []).filter(r => r.status === 'error');
-        const ok = (data.results || []).filter(r => r.status === 'ok');
-        const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
-        const savedStr = saved > 0 ? ', saved ' + this.fmtSize(saved) : '';
-        if (errors.length > 0) {
-          const shown = errors.slice(0, 3).map(e => e.filename + ' (' + (e.error || 'unknown') + ')');
-          const rest = errors.length > 3 ? ` and ${errors.length - 3} more` : '';
-          this.showToast(`Compressed ${data.compressed}${savedStr}, ${errors.length} failed: ${shown.join('; ')}${rest}`, 'error');
-        } else {
-          this.showToast(`Compressed ${data.compressed} PDF(s)${savedStr}`);
-        }
+        this.batchResults = data;
         this.loadLibrary();
-        this.showBatchCompress = false;
       } catch (e) {
         this.showToast('Batch compress failed: ' + e.message, 'error');
       }
       this.batchCompressing = false;
+    },
+    closeBatchResults() {
+      this.batchResults = null;
+      this.showBatchCompress = false;
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;

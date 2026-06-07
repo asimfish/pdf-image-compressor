@@ -354,8 +354,8 @@
   </div>
   <!-- Batch Compress Modal -->
   <div x-show="showBatchCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showBatchCompress = false" @keydown.escape.window="if (showBatchCompress) { showBatchCompress = false }"
-    @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation) doBatchCompress()">
+    @click.self="showBatchCompress = false; batchResults = null" @keydown.escape.window="if (showBatchCompress) { showBatchCompress = false; batchResults = null }"
+    @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>
       <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + batchTargetPdfs.length + ' PDF' + (batchTargetPdfs.length !== 1 ? 's' : '') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
@@ -401,9 +401,34 @@
         <p class="text-sm text-gray-500 mt-1 text-center" x-text="'Compressing ' + batchTargetPdfs.length + ' PDFs...'"></p>
       </div>
       <div x-show="batchCompressValidation" class="mt-3 text-sm text-red-600" x-text="batchCompressValidation"></div>
+      <!-- Batch Results -->
+      <div x-show="batchResults" class="mt-4">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="batchResults?.results?.some(r => r.status === 'error') ? 'bg-amber-100' : 'bg-green-100'">
+            <svg x-show="!batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <svg x-show="batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+          </div>
+          <div>
+            <p class="font-medium text-gray-800" x-text="'Compressed ' + (batchResults?.compressed || 0) + ' PDF(s)'"></p>
+            <p class="text-xs text-gray-500" x-text="(() => { const ok = (batchResults?.results || []).filter(r => r.status === 'ok'); const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0); return saved > 0 ? 'Saved ' + fmtSize(saved) + ' total' : 'No size reduction'; })()"></p>
+          </div>
+        </div>
+        <div class="max-h-48 overflow-y-auto space-y-1.5 mb-4">
+          <template x-for="r in (batchResults?.results || [])" :key="r.pdf_id">
+            <div class="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg" :class="r.status === 'ok' ? 'bg-green-50' : 'bg-red-50'">
+              <svg x-show="r.status === 'ok'" class="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <svg x-show="r.status !== 'ok'" class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              <span class="truncate flex-1" x-text="r.filename"></span>
+              <span x-show="r.status === 'ok' && r.compression_ratio > 0" class="text-green-600 text-xs font-medium" x-text="'-' + (r.compression_ratio * 100).toFixed(0) + '%'"></span>
+              <span x-show="r.status === 'ok' && r.compression_ratio <= 0" class="text-gray-400 text-xs">no reduction</span>
+              <span x-show="r.status !== 'ok'" class="text-red-500 text-xs" x-text="r.error || 'failed'"></span>
+            </div>
+          </template>
+        </div>
+      </div>
       <div class="flex gap-3 mt-5">
-        <button @click="showBatchCompress = false" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
-        <button @click="doBatchCompress()" x-effect="$el.disabled = batchCompressing || !!batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"><span x-text="batchTargetPdfs.length < pdfs.length ? 'Compress ' + batchTargetPdfs.length : 'Compress All'"></span> <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
+        <button @click="batchResults ? closeBatchResults() : (showBatchCompress = false)" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition"><span x-text="batchResults ? 'Done' : 'Cancel'"></span> <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
+        <button x-show="!batchResults" @click="doBatchCompress()" x-effect="$el.disabled = batchCompressing || !!batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"><span x-text="batchTargetPdfs.length < pdfs.length ? 'Compress ' + batchTargetPdfs.length : 'Compress All'"></span> <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
       </div>
     </div>
   </div>
