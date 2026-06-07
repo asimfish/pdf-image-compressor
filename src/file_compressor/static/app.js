@@ -174,12 +174,14 @@ function app() {
       const valid = pdfs.filter(f => f.size <= MAX);
       const nonPdfCount = all.length - pdfs.length;
       const tooLargeCount = pdfs.length - valid.length;
-      const bad = [nonPdfCount > 0 && 'non-PDF', tooLargeCount > 0 && 'too large'].filter(Boolean);
-      if (bad.length) this.showToast(`Skipped ${bad.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
+      const skipped = [];
+      if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
+      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} too large`);
+      if (skipped.length) this.showToast(`Skipped ${skipped.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
       const existing = new Set(this.uploadFiles.map(f => f.name));
       const newFiles = valid.filter(f => !existing.has(f.name));
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
-      if (newFiles.length > 0 && !bad.length) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
+      if (newFiles.length > 0 && !skipped.length) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
