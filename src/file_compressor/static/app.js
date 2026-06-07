@@ -271,7 +271,9 @@ function app() {
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;
-      const target = pdf.file_size ? Math.max(10000, Math.round(pdf.file_size * 0.5)) : 500000;
+      const bv = this.bestVersion(pdf);
+      const base = bv ? bv.file_size : pdf.file_size;
+      const target = base ? Math.max(10000, Math.round(base * 0.8)) : 500000;
       this.compressForm = this._defaults({ target_size: this.fmtSize(target), label: '' });
       this.showCompress = true;
     },
