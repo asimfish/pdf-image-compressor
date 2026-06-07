@@ -358,7 +358,9 @@
     @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>
-      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + batchTargetPdfs.length + ' PDF' + (batchTargetPdfs.length !== 1 ? 's' : '') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span></p>
+      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + batchTargetPdfs.length + ' PDF' + (batchTargetPdfs.length !== 1 ? 's' : '') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
+        <span x-show="batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length > 0" class="block text-xs text-gray-400 mt-0.5" x-text="batchTargetPdfs.filter(p => (p.version_count || 0) === 0).length + ' new, ' + batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length + ' re-compress'"></span>
+      </p>
       <div class="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Target Size</label>
