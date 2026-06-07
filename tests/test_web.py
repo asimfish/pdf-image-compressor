@@ -1391,3 +1391,29 @@ def test_preview_version_not_found(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.get("/api/preview/version/nonexistent/0")
     assert resp.status_code == 404
+
+
+def test_legacy_compress_rejects_invalid_archive(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files={"files": ("test.pdf", f, "application/pdf")}, data={"archive": "tar"})
+    assert resp.status_code == 422
+    assert "archive" in resp.json()["detail"].lower()
+
+
+def test_legacy_compress_rejects_bad_max_edge(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files={"files": ("test.pdf", f, "application/pdf")}, data={"max_edge": "50"})
+    assert resp.status_code == 422
+    assert "max_edge" in resp.json()["detail"].lower()
+
+
+def test_legacy_compress_accepts_valid_archive_zip(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/compress", files={"files": ("test.pdf", f, "application/pdf")}, data={"archive": "zip"})
+    assert resp.status_code == 200
