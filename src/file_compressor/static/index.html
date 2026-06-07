@@ -188,7 +188,7 @@
               <template x-for="v in (versionCache[pdf.id] || [])" :key="v.id">
                 <div class="flex items-center gap-4 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
                   <div class="flex-1 min-w-0">
-                    <div class="font-medium text-sm text-gray-800">
+                    <div class="font-medium text-sm text-gray-800 truncate">
                       <span x-text="v.label"></span>
                       <span x-show="pdfMeta(pdf).bv?.file_size === v.file_size && (versionCache[pdf.id] || []).length > 1" class="ml-1 text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700">best</span>
                     </div>
