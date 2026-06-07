@@ -299,14 +299,17 @@ function app() {
       }
       this.showUpload = false; this.uploadFiles = [];
       this.uploadForm = this._defaults({ notes: '' });
+      this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, errors), errors.length ? 'error' : 'success');
+      this.loadLibrary();
+      if (succeeded === 1) this.compressPdf(uploadedPdf);
+    },
+    _buildUploadToast(succeeded, compressResults, warnings, errors) {
       const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
       const parts = [`Uploaded ${this._plural(succeeded, 'PDF')}`];
       if (totalSaved > 0) parts.push(`saved ${this.fmtSize(totalSaved)}`);
       if (warnings.length) parts.push(this._plural(warnings.length, 'warning'));
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
-      this.showToast(parts.join(', '), errors.length ? 'error' : 'success');
-      this.loadLibrary();
-      if (succeeded === 1) this.compressPdf(uploadedPdf);
+      return parts.join(', ');
     },
     cancelUpload() {
       this.uploading = false;
