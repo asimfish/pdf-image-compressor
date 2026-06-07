@@ -369,7 +369,16 @@ function app() {
     compareVersionUrl() {
       return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}`;
     },
-    _onCompareMouseDown(e) { this._compareDragging = true; this._updateCompareSlider(e); },
+    _onCompareMouseDown(e) {
+      this._compareDragging = true;
+      this._updateCompareSlider(e);
+      this._onMouseMove = (ev) => { if (this._compareDragging) this._updateCompareSlider(ev); };
+      this._onMouseUp = () => { this._compareDragging = false; window.removeEventListener('mousemove', this._onMouseMove); window.removeEventListener('mouseup', this._onMouseUp); window.removeEventListener('touchmove', this._onMouseMove); window.removeEventListener('touchend', this._onMouseUp); };
+      window.addEventListener('mousemove', this._onMouseMove);
+      window.addEventListener('mouseup', this._onMouseUp);
+      window.addEventListener('touchmove', this._onMouseMove, { passive: false });
+      window.addEventListener('touchend', this._onMouseUp);
+    },
     _onCompareMouseMove(e) { if (this._compareDragging) this._updateCompareSlider(e); },
     _onCompareMouseUp() { this._compareDragging = false; },
     _updateCompareSlider(e) {

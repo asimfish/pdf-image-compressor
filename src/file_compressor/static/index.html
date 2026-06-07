@@ -451,11 +451,7 @@
           x-ref="compareContainer"
           @mousedown="_onCompareMouseDown($event)"
           @mousemove="_onCompareMouseMove($event)"
-          @mouseup="_onCompareMouseUp($event)"
-          @mouseleave="_onCompareMouseUp($event)"
-          @touchstart.prevent="_onCompareMouseDown($event)"
-          @touchmove.prevent="_onCompareMouseMove($event)"
-          @touchend="_onCompareMouseUp($event)">
+          @touchstart.prevent="_onCompareMouseDown($event)">
           <!-- Original (right side) -->
           <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad()" @error="_onCompareError()">
           <!-- Compressed (left side, clipped) -->
