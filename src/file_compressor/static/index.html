@@ -534,7 +534,6 @@
         <div x-show="!compareLoading && !compareError" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
           x-ref="compareContainer" tabindex="0" role="slider" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(compareSlider)"
           @mousedown="_onCompareMouseDown($event)"
-          @mousemove="_onCompareMouseMove($event)"
           @dblclick="compareSlider = 50"
           @touchstart.prevent="_onCompareMouseDown($event)"
           @keydown.arrow-left.stop.prevent="compareSlider = Math.max(0, compareSlider - 2)"
