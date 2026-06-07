@@ -9,6 +9,11 @@ function app() {
     sortBy: 'date',
     filterTab: 'All',
     presets: ['200KB', '500KB', '1MB', '2MB', '5MB'],
+    pdfModeOptions: [
+      { value: 'auto', label: 'Auto' },
+      { value: 'optimize', label: 'Optimize (keep text)' },
+      { value: 'raster', label: 'Raster (max compression)' },
+    ],
     expanded: null,
     loading: true,
     apiError: false,
