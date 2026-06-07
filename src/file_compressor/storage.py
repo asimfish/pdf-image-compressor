@@ -316,9 +316,9 @@ class Storage:
 
     def delete_version(self, version_id: str) -> bool:
         with self._lock:
-            vpath = self.get_version_path(version_id)
-            self._conn.execute("BEGIN")
             try:
+                self._conn.execute("BEGIN")
+                vpath = self.get_version_path(version_id)
                 cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
                 deleted = cur.rowcount > 0
                 self._conn.commit()
