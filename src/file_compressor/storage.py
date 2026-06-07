@@ -217,12 +217,7 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-        for p in file_paths:
-            try:
-                if p.exists():
-                    p.unlink()
-            except OSError as exc:
-                logger.warning("Failed to remove file %s: %s", p, exc)
+        _cleanup_files(file_paths)
         return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
@@ -248,12 +243,7 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-        for p in file_paths:
-            try:
-                if p.exists():
-                    p.unlink()
-            except OSError as exc:
-                logger.warning("Failed to remove file %s: %s", p, exc)
+        _cleanup_files(file_paths)
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:
@@ -312,11 +302,7 @@ class Storage:
                 self._conn.rollback()
                 raise
         if vpath:
-            try:
-                if vpath.exists():
-                    vpath.unlink()
-            except OSError as exc:
-                logger.warning("Failed to remove file %s: %s", vpath, exc)
+            _cleanup_files([vpath])
         return deleted
 
     def stats(self) -> dict:
@@ -334,11 +320,11 @@ class Storage:
                  ON p.id = best.pdf_id) AS total_saved_bytes
         """).fetchone()
         return {
-            "pdf_count": row[0],
-            "version_count": row[1],
-            "total_original_bytes": row[2],
-            "total_compressed_bytes": row[3],
-            "total_saved_bytes": row[4],
+            "pdf_count": row["pdf_count"],
+            "version_count": row["version_count"],
+            "total_original_bytes": row["total_original_bytes"],
+            "total_compressed_bytes": row["total_compressed_bytes"],
+            "total_saved_bytes": row["total_saved_bytes"],
         }
 
 
@@ -368,6 +354,15 @@ def _row_to_version(row: sqlite3.Row) -> VersionRecord:
         compression_ratio=row["compression_ratio"],
         created_at=row["created_at"],
     )
+
+
+def _cleanup_files(paths: list[Path]) -> None:
+    for p in paths:
+        try:
+            if p.exists():
+                p.unlink()
+        except OSError as exc:
+            logger.warning("Failed to remove file %s: %s", p, exc)
 
 
 def _now_iso() -> str:
