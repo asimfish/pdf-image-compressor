@@ -73,6 +73,20 @@ def test_compress_nonexistent(tmp_path: Path):
     assert resp.status_code == 404
 
 
+def test_compress_missing_file(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+    # Delete the original file from disk
+    originals = tmp_path / "originals"
+    for f in originals.iterdir():
+        f.unlink()
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 404
+    assert "missing" in resp.json()["detail"].lower()
+
 
 
 def test_batch_compress(tmp_path: Path):
@@ -567,6 +581,25 @@ def test_compress_strip_metadata_default_true(tmp_path: Path):
     assert captured_configs[0].strip_metadata is True
 
 
+
+
+def test_batch_compress_handles_missing_file(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "test.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+    # Delete the original file from disk to simulate missing file
+    originals = tmp_path / "originals"
+    for f in originals.iterdir():
+        f.unlink()
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "60"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["compressed"] == 0
+    assert len(data["results"]) == 1
+    assert data["results"][0]["status"] == "error"
+    assert "missing" in data["results"][0]["error"].lower()
 
 
 def test_compress_500_does_not_leak_details(tmp_path: Path):
