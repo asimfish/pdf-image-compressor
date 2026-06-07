@@ -420,7 +420,7 @@
   </div>
   <!-- Compare Modal -->
   <div x-show="showCompare" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    @click.self="showCompare = false" @keydown.escape.window="if (showCompare) showCompare = false">
+    @click.self="showCompare = false" @keydown.escape.window="if (showCompare) showCompare = false" @keydown.left.window="if (showCompare) comparePrev()" @keydown.right.window="if (showCompare) compareNext()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 p-6 fade-in max-h-[90vh] flex flex-col" @click.stop>
       <div class="flex items-center justify-between mb-4">
         <div>
