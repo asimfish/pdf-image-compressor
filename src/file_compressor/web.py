@@ -158,7 +158,11 @@ async def api_upload_pdf(
 
     target_bytes = parse_size(target_size)
     try:
-        _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label="Initial compression")
+        config = CompressionConfig(
+            quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
+            pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
+        )
+        _compress_and_store(storage, pdf.id, data, config, label="Initial compression")
     except Exception as exc:
         logger.warning("Initial compression failed for %s: %s", filename, exc)
         result["warning"] = "Upload succeeded but initial compression failed"
@@ -217,9 +221,13 @@ async def api_compress_pdf(
     target_bytes = parse_size(target_size)
     if not label:
         label = _auto_label(target_bytes, quality, pdf_mode)
+    config = CompressionConfig(
+        quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
+    )
 
     try:
-        ver = _compress_and_store(storage, pdf_id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
+        ver = _compress_and_store(storage, pdf_id, data, config, label)
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail="Compression failed")
@@ -254,6 +262,10 @@ async def api_batch_compress(
     target_bytes = parse_size(target_size)
     if not label:
         label = _auto_label(target_bytes, quality, pdf_mode)
+    config = CompressionConfig(
+        quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
+    )
     logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), quality, pdf_mode)
     results = []
     for pdf in pdfs:
@@ -267,7 +279,7 @@ async def api_batch_compress(
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
             continue
         try:
-            ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
+            ver = _compress_and_store(storage, pdf.id, data, config, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
@@ -489,12 +501,7 @@ def _compress_and_store(
     storage: Storage,
     pdf_id: str,
     original_data: bytes,
-    quality: int,
-    target_bytes: Optional[int],
-    pdf_mode: str,
-    pdf_dpi: int,
-    pdf_grayscale: bool,
-    strip_metadata: bool,
+    config: CompressionConfig,
     label: str,
 ) -> VersionRecord:
     with tempfile.TemporaryDirectory(prefix="pdf_compress_") as td:
@@ -503,13 +510,13 @@ def _compress_and_store(
         src.write_bytes(original_data)
         out = td_path / "output.pdf"
         config = CompressionConfig(
-            quality=quality,
-            target_bytes=target_bytes,
+            quality=config.quality,
+            target_bytes=config.target_bytes,
             output_dir=td_path,
-            pdf_mode=pdf_mode,
-            pdf_dpi=pdf_dpi,
-            pdf_grayscale=pdf_grayscale,
-            strip_metadata=strip_metadata,
+            pdf_mode=config.pdf_mode,
+            pdf_dpi=config.pdf_dpi,
+            pdf_grayscale=config.pdf_grayscale,
+            strip_metadata=config.strip_metadata,
         )
         summary = compress_path(src, config, out)
         if not out.exists():
@@ -527,12 +534,12 @@ def _compress_and_store(
         pdf_id=pdf_id,
         label=label,
         file_data=compressed_data,
-        quality=quality,
-        pdf_mode=pdf_mode,
-        pdf_dpi=pdf_dpi,
-        pdf_grayscale=pdf_grayscale,
-        strip_metadata=strip_metadata,
-        target_bytes=target_bytes,
+        quality=config.quality,
+        pdf_mode=config.pdf_mode,
+        pdf_dpi=config.pdf_dpi,
+        pdf_grayscale=config.pdf_grayscale,
+        strip_metadata=config.strip_metadata,
+        target_bytes=config.target_bytes,
         compression_ratio=ratio,
     )
     return storage.add_version(params)
