@@ -196,8 +196,12 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (!files.length) return;
-      this.uploadFiles = files;
-      this.showUpload = true;
+      if (this.showUpload) {
+        this._selectFiles(files);
+      } else {
+        this.uploadFiles = files;
+        this.showUpload = true;
+      }
     },
     handleFiles(files) {
       this._selectFiles([...files]);
