@@ -511,8 +511,8 @@
           @mousemove="_onCompareMouseMove($event)"
           @dblclick="compareSlider = 50"
           @touchstart.prevent="_onCompareMouseDown($event)"
-          @keydown.arrow-left.prevent="compareSlider = Math.max(0, compareSlider - 2)"
-          @keydown.arrow-right.prevent="compareSlider = Math.min(100, compareSlider + 2)"
+          @keydown.arrow-left.stop.prevent="compareSlider = Math.max(0, compareSlider - 2)"
+          @keydown.arrow-right.stop.prevent="compareSlider = Math.min(100, compareSlider + 2)"
           @keydown.home.prevent="compareSlider = 0"
           @keydown.end.prevent="compareSlider = 100">
           <!-- Original (right side) -->
@@ -535,7 +535,7 @@
           <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded"><span x-text="fmtSize(compareVersion?.file_size)"></span> <span class="text-purple-500" x-text="'Q' + compareVersion?.quality + ' ' + compareVersion?.pdf_mode + ' ' + compareVersion?.pdf_dpi + 'dpi' + (compareVersion?.pdf_grayscale ? ' gray' : '')"></span></span>
           <span x-show="compareVersion?.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="'target ' + fmtSize(compareVersion?.target_bytes)"></span>
           <span x-show="compareVersion?.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (compareVersion.compression_ratio * 100).toFixed(1) + '% saved'"></span>
-          <span class="text-gray-400 italic">double-click to reset</span>
+          <span class="text-gray-400 italic">double-click to reset · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">←</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">→</kbd> pages · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">Home</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">End</kbd> slider</span>
           <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Original: <span x-text="fmtSize(comparePdf?.file_size)"></span></span>
         </div>
       </div>
