@@ -126,7 +126,7 @@
             <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
               <span x-text="fmtSize(pdf.file_size)"></span>
               <span x-text="pdf.page_count + ' pages'"></span>
-              <span x-text="fmtDate(pdf.upload_time)"></span>
+              <span x-text="fmtRelative(pdf.upload_time)" :title="fmtDate(pdf.upload_time)"></span>
             </div>
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
             <template x-if="pdfMeta(pdf).bv">
@@ -200,7 +200,7 @@
                       <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="'Q' + v.quality + ' ' + v.pdf_mode + ' ' + v.pdf_dpi + 'dpi' + (v.pdf_grayscale ? ' gray' : '')"></span>
                       <span x-show="!v.strip_metadata" class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-600">metadata kept</span>
                       <span x-show="v.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="'target ' + fmtSize(v.target_bytes)"></span>
-                      <span x-text="fmtDate(v.created_at)"></span>
+                      <span x-text="fmtRelative(v.created_at)" :title="fmtDate(v.created_at)"></span>
                     </div>
                   </div>
                   <a :href="'/api/versions/' + v.id + '/download'" target="_blank" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition">Download</a>

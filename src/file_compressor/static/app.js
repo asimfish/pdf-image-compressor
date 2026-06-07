@@ -464,6 +464,22 @@ function app() {
       if (!iso) return '';
       return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     },
+    fmtRelative(iso) {
+      if (!iso) return '';
+      const now = Date.now();
+      const then = new Date(iso).getTime();
+      const diff = now - then;
+      if (diff < 0) return this.fmtDate(iso);
+      const seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      return this.fmtDate(iso);
+    },
     showToast(msg, type = 'success') {
       this.toast = msg; this.toastType = type;
       setTimeout(() => { if (this.toast === msg) this.toast = ''; }, type === 'error' ? 8000 : 3000);
