@@ -54,7 +54,7 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
                     status="ok",
                 )
             )
-        except Exception:
+        except Exception as exc:
             try:
                 orig_size = file_path.stat().st_size
             except OSError:
@@ -66,7 +66,7 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
                     original_size=orig_size,
                     compressed_size=None,
                     status="failed",
-                    error="Compression failed",
+                    error=f"Compression failed: {exc}",
                 )
             )
     return CompressionSummary(results=results)
