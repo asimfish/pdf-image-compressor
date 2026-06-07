@@ -49,7 +49,7 @@ def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_
             raise HTTPException(422, detail="Invalid target_size format")
 
 
-async def _compress_form(
+def _compress_form(
     quality: int = Form(82),
     target_size: Optional[str] = Form(None),
     pdf_mode: str = Form("auto"),
@@ -136,7 +136,7 @@ def api_list_pdfs() -> list:
 
 
 @app.post("/api/pdfs/upload")
-async def api_upload_pdf(
+def api_upload_pdf(
     file: UploadFile = File(...),
     config: CompressionConfig = Depends(_compress_form),
     notes: str = Form(""),
@@ -202,7 +202,7 @@ def api_list_versions(pdf_id: str) -> list:
 
 
 @app.post("/api/pdfs/{pdf_id}/compress")
-async def api_compress_pdf(
+def api_compress_pdf(
     pdf_id: str,
     config: CompressionConfig = Depends(_compress_form),
     label: str = Form(""),
@@ -233,7 +233,7 @@ async def api_compress_pdf(
 
 
 @app.post("/api/pdfs/batch-compress")
-async def api_batch_compress(
+def api_batch_compress(
     config: CompressionConfig = Depends(_compress_form),
     pdf_ids: Optional[str] = Form(None),
     label: str = Form(""),
@@ -407,7 +407,7 @@ def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
 # ── Legacy compress endpoint (backward compat) ──
 
 @app.post("/compress")
-async def compress_upload(
+def compress_upload(
     files: list[UploadFile] = File(...),
     config: CompressionConfig = Depends(_compress_form),
     max_edge: Optional[int] = Form(None),
