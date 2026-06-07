@@ -85,6 +85,9 @@ def _sanitize_label(label: str) -> str:
     return label[:_MAX_LABEL_LEN]
 
 
+_PATH_RE = re.compile(r"(/[^/\s]+){2,}|([A-Za-z]:\\[^\s]+)")
+
+
 def _sanitize_error(exc: Exception) -> str:
     """Return a user-friendly error message without leaking internal details."""
     msg = str(exc).split("\n")[0][:200]
@@ -92,7 +95,8 @@ def _sanitize_error(exc: Exception) -> str:
         return "Compression produced no output — the file may be corrupted"
     if "corrupt" in msg.lower() or "invalid" in msg.lower():
         return "The file appears to be corrupted or invalid"
-    return "Compression failed"
+    sanitized = _PATH_RE.sub("[path]", msg).strip()
+    return sanitized if sanitized and sanitized != str(exc).strip()[:200] else "Compression failed"
 
 
 def init_storage(data_dir: Path) -> None:

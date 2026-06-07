@@ -638,3 +638,49 @@ def test_batch_compress_does_not_leak_exception_details(tmp_path: Path):
     assert "secret" not in errors[0]["error"]
 
 
+def test_compress_error_message_no_output(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "noout.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("noout.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("no output produced")):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 500
+    assert "corrupted" in resp.json()["detail"].lower()
+
+
+def test_compress_error_message_corrupt(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "corrupt.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("corrupt.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("invalid xref table")):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 500
+    assert "corrupted" in resp.json()["detail"].lower() or "invalid" in resp.json()["detail"].lower()
+
+
+def test_compress_error_message_strips_paths(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "patherr.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post("/api/pdfs/upload", files={"file": ("patherr.pdf", f, "application/pdf")})
+    pdf_id = resp.json()["id"]
+
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("disk full at /var/data/lib")):
+        resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert "/var/data" not in detail
+
+
