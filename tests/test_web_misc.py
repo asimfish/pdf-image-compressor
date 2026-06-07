@@ -360,3 +360,15 @@ def test_batch_compress_rejects_too_many_ids(tmp_path: Path):
     ids = ",".join(f"id{i}" for i in range(1001))
     resp = client.post("/api/pdfs/batch-compress", data={"pdf_ids": ids})
     assert resp.status_code == 422
+
+
+def test_upload_fails_when_pymupdf_missing(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "pm.pdf")
+    with open(pdf_path, "rb") as f:
+        with patch("file_compressor.web._fitz", side_effect=RuntimeError("no fitz")):
+            resp = client.post("/api/pdfs/upload", files={"file": ("pm.pdf", f, "application/pdf")})
+    assert resp.status_code == 500
+    assert "PyMuPDF" in resp.json()["detail"]
