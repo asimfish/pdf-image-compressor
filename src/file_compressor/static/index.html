@@ -451,6 +451,7 @@
           x-ref="compareContainer"
           @mousedown="_onCompareMouseDown($event)"
           @mousemove="_onCompareMouseMove($event)"
+          @dblclick="compareSlider = 50"
           @touchstart.prevent="_onCompareMouseDown($event)">
           <!-- Original (right side) -->
           <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad()" @error="_onCompareError()">
@@ -468,8 +469,10 @@
             <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
           </div>
         </div>
-        <div class="flex justify-between mt-2 text-xs text-gray-500">
+        <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
           <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Compressed: <span x-text="fmtSize(compareVersion?.file_size)"></span></span>
+          <span x-show="compareVersion?.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (compareVersion.compression_ratio * 100).toFixed(1) + '% saved'"></span>
+          <span class="text-gray-400 italic">double-click to reset</span>
           <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Original: <span x-text="fmtSize(comparePdf?.file_size)"></span></span>
         </div>
       </div>
