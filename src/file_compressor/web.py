@@ -21,7 +21,7 @@ from starlette.background import BackgroundTask
 from .core import compress_path
 from .models import CompressionConfig
 from .pdfs import render_page
-from .storage import Storage, VersionRecord
+from .storage import Storage, VersionParams, VersionRecord
 from .utils import clamp_quality, format_size, parse_size
 
 _STATIC = Path(__file__).parent / "static"
@@ -523,7 +523,7 @@ def _compress_and_store(
     compressed_size = len(compressed_data)
     ratio = 1.0 - (compressed_size / original_size) if original_size > 0 else None
 
-    return storage.add_version(
+    params = VersionParams(
         pdf_id=pdf_id,
         label=label,
         file_data=compressed_data,
@@ -531,10 +531,11 @@ def _compress_and_store(
         pdf_mode=pdf_mode,
         pdf_dpi=pdf_dpi,
         pdf_grayscale=pdf_grayscale,
+        strip_metadata=strip_metadata,
         target_bytes=target_bytes,
         compression_ratio=ratio,
-        strip_metadata=strip_metadata,
     )
+    return storage.add_version(params)
 
 
 def _auto_label(target_bytes: Optional[int], quality: int, pdf_mode: str) -> str:

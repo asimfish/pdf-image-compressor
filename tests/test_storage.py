@@ -1,6 +1,27 @@
 from pathlib import Path
+from typing import Optional
 
-from file_compressor.storage import Storage
+from file_compressor.storage import Storage, VersionParams
+
+
+def _vp(
+    pdf_id: str,
+    label: str = "v1",
+    file_data: bytes = b"compressed",
+    quality: int = 80,
+    pdf_mode: str = "auto",
+    pdf_dpi: int = 120,
+    pdf_grayscale: bool = False,
+    target_bytes: Optional[int] = None,
+    compression_ratio: Optional[float] = None,
+    strip_metadata: bool = True,
+) -> VersionParams:
+    return VersionParams(
+        pdf_id=pdf_id, label=label, file_data=file_data,
+        quality=quality, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi,
+        pdf_grayscale=pdf_grayscale, target_bytes=target_bytes,
+        compression_ratio=compression_ratio, strip_metadata=strip_metadata,
+    )
 
 
 def test_add_and_list_pdfs(tmp_path: Path):
@@ -42,18 +63,17 @@ def test_add_and_list_versions(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("v.pdf", b"%PDF-1.4 original", 10)
 
-    v1 = storage.add_version(
+    v1 = storage.add_version(_vp(
         pdf_id=pdf.id, label="500KB · Q70 · auto",
         file_data=b"%PDF compressed v1", quality=70,
-        pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
         target_bytes=500_000, compression_ratio=0.45,
-    )
-    v2 = storage.add_version(
+    ))
+    v2 = storage.add_version(_vp(
         pdf_id=pdf.id, label="300KB · Q50 · raster",
         file_data=b"%PDF compressed v2", quality=50,
         pdf_mode="raster", pdf_dpi=100, pdf_grayscale=True,
         target_bytes=300_000, compression_ratio=0.65,
-    )
+    ))
 
     versions = storage.list_versions(pdf.id)
     assert len(versions) == 2
@@ -66,11 +86,7 @@ def test_add_and_list_versions(tmp_path: Path):
 def test_delete_version(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("vd.pdf", b"%PDF", 1)
-    v = storage.add_version(
-        pdf_id=pdf.id, label="test", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=None,
-    )
+    v = storage.add_version(_vp(pdf_id=pdf.id, label="test", file_data=b"compressed"))
     vpath = storage.get_version_path(v.id)
     assert vpath.exists()
 
@@ -85,11 +101,7 @@ def test_delete_version_rollback_preserves_file(tmp_path: Path):
 
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("vd.pdf", b"%PDF", 1)
-    v = storage.add_version(
-        pdf_id=pdf.id, label="test", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=None,
-    )
+    v = storage.add_version(_vp(pdf_id=pdf.id, label="test", file_data=b"compressed"))
     vpath = storage.get_version_path(v.id)
     assert vpath.exists()
 
@@ -117,11 +129,7 @@ def test_delete_version_rollback_preserves_file(tmp_path: Path):
 def test_delete_pdf_cascades_versions(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("cascade.pdf", b"%PDF", 1)
-    storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"c1",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=None,
-    )
+    storage.add_version(_vp(pdf_id=pdf.id, label="v1", file_data=b"c1"))
     storage.delete_pdf(pdf.id)
     assert storage.list_versions(pdf.id) == []
     storage.close()
@@ -157,11 +165,10 @@ def test_stats(tmp_path: Path):
 def test_stats_with_savings(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("big.pdf", b"X" * 10000, 5)
-    storage.add_version(
+    storage.add_version(_vp(
         pdf_id=pdf.id, label="compressed", file_data=b"Y" * 3000,
-        quality=50, pdf_mode="raster", pdf_dpi=100, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.7,
-    )
+        quality=50, pdf_mode="raster", pdf_dpi=100, compression_ratio=0.7,
+    ))
     stats = storage.stats()
     assert stats["total_saved_bytes"] == 7000
     storage.close()
@@ -170,16 +177,15 @@ def test_stats_with_savings(tmp_path: Path):
 def test_stats_compressed_bytes_uses_best_version(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("multi.pdf", b"X" * 10000, 5)
-    storage.add_version(
+    storage.add_version(_vp(
         pdf_id=pdf.id, label="v1-big", file_data=b"A" * 8000,
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.2,
-    )
-    storage.add_version(
+        quality=80, compression_ratio=0.2,
+    ))
+    storage.add_version(_vp(
         pdf_id=pdf.id, label="v2-small", file_data=b"B" * 2000,
         quality=50, pdf_mode="raster", pdf_dpi=100, pdf_grayscale=True,
-        target_bytes=None, compression_ratio=0.8,
-    )
+        compression_ratio=0.8,
+    ))
     stats = storage.stats()
     assert stats["version_count"] == 2
     assert stats["total_original_bytes"] == 10000
@@ -209,11 +215,7 @@ def test_batch_delete_pdfs(tmp_path: Path):
     ids = []
     for name in ["a.pdf", "b.pdf", "c.pdf"]:
         pdf = storage.add_pdf(name, b"%PDF", 1)
-        storage.add_version(
-            pdf_id=pdf.id, label="v1", file_data=b"compressed",
-            quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-            target_bytes=None, compression_ratio=None,
-        )
+        storage.add_version(_vp(pdf_id=pdf.id))
         ids.append(pdf.id)
 
     deleted = storage.batch_delete_pdfs(ids[:2])
@@ -238,11 +240,7 @@ def test_batch_delete_pdfs_empty(tmp_path: Path):
 def test_list_pdfs_with_stats(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("stats.pdf", b"%PDF" * 100, 5)
-    storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
     result = storage.list_pdfs_with_stats()
     assert len(result) == 1
     assert result[0]["version_count"] == 1
@@ -288,11 +286,9 @@ def test_list_pdfs_with_stats_multiple(tmp_path: Path):
     storage = Storage(tmp_path)
     p1 = storage.add_pdf("a.pdf", b"A" * 100, 3)
     p2 = storage.add_pdf("b.pdf", b"B" * 200, 5)
-    storage.add_version(
-        pdf_id=p1.id, label="v1", file_data=b"compressed1",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    storage.add_version(_vp(
+        pdf_id=p1.id, label="v1", file_data=b"compressed1", compression_ratio=0.5,
+    ))
     result = storage.list_pdfs_with_stats()
     assert len(result) == 2
     ids = {r["id"] for r in result}
@@ -308,16 +304,13 @@ def test_list_pdfs_with_stats_multiple(tmp_path: Path):
 def test_delete_pdf_cleans_version_files(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("doc.pdf", b"%PDF" * 100, 2)
-    v1 = storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed1",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
-    v2 = storage.add_version(
+    v1 = storage.add_version(_vp(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed1", compression_ratio=0.5,
+    ))
+    v2 = storage.add_version(_vp(
         pdf_id=pdf.id, label="v2", file_data=b"compressed2",
-        quality=60, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.7,
-    )
+        quality=60, compression_ratio=0.7,
+    ))
     v1_path = storage.get_version_path(v1.id)
     v2_path = storage.get_version_path(v2.id)
     assert v1_path is not None and v1_path.exists()
@@ -369,11 +362,9 @@ def test_delete_pdf_rollback_preserves_files(tmp_path: Path):
 
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("rollback.pdf", b"%PDF", 1)
-    v = storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    v = storage.add_version(_vp(
+        pdf_id=pdf.id, label="v1", file_data=b"compressed", compression_ratio=0.5,
+    ))
     pdf_path = storage.get_pdf_path(pdf.id)
     v_path = storage.get_version_path(v.id)
     assert pdf_path.exists()
@@ -404,11 +395,10 @@ def test_delete_pdf_rollback_preserves_files(tmp_path: Path):
 def test_version_strip_metadata_true(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("sm.pdf", b"%PDF", 1)
-    v = storage.add_version(
+    v = storage.add_version(_vp(
         pdf_id=pdf.id, label="stripped", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5, strip_metadata=True,
-    )
+        compression_ratio=0.5, strip_metadata=True,
+    ))
     assert v.strip_metadata is True
     versions = storage.list_versions(pdf.id)
     assert versions[0].strip_metadata is True
@@ -418,11 +408,10 @@ def test_version_strip_metadata_true(tmp_path: Path):
 def test_version_strip_metadata_false(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("nosm.pdf", b"%PDF", 1)
-    v = storage.add_version(
+    v = storage.add_version(_vp(
         pdf_id=pdf.id, label="kept", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5, strip_metadata=False,
-    )
+        compression_ratio=0.5, strip_metadata=False,
+    ))
     assert v.strip_metadata is False
     versions = storage.list_versions(pdf.id)
     assert versions[0].strip_metadata is False
@@ -432,11 +421,9 @@ def test_version_strip_metadata_false(tmp_path: Path):
 def test_version_strip_metadata_default_true(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("def.pdf", b"%PDF", 1)
-    v = storage.add_version(
-        pdf_id=pdf.id, label="default", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    v = storage.add_version(_vp(
+        pdf_id=pdf.id, label="default", file_data=b"compressed", compression_ratio=0.5,
+    ))
     assert v.strip_metadata is True
     storage.close()
 
@@ -493,7 +480,7 @@ def test_add_version_cleans_file_on_db_error(tmp_path: Path):
     # Close DB so INSERT fails
     storage._conn.close()
     try:
-        storage.add_version(pdf.id, "v1", b"%PDF-1.4 compressed", 82, "auto", 120, False, None, 0.5)
+        storage.add_version(_vp(pdf_id=pdf.id, file_data=b"%PDF-1.4 compressed", quality=82, compression_ratio=0.5))
     except Exception:
         pass
     remaining = list(versions.iterdir())
@@ -505,11 +492,7 @@ def test_batch_delete_succeeds_when_file_unlink_fails(tmp_path: Path):
 
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
-    storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
 
     real_unlink = Path.unlink
 
@@ -532,11 +515,7 @@ def test_delete_pdf_succeeds_when_file_unlink_fails(tmp_path: Path):
 
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
-    storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
 
     def failing_unlink(self, *args, **kwargs):
         raise OSError("Permission denied")
@@ -555,11 +534,7 @@ def test_delete_version_succeeds_when_file_unlink_fails(tmp_path: Path):
 
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
-    v = storage.add_version(
-        pdf_id=pdf.id, label="v1", file_data=b"compressed",
-        quality=80, pdf_mode="auto", pdf_dpi=120, pdf_grayscale=False,
-        target_bytes=None, compression_ratio=0.5,
-    )
+    v = storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
 
     def failing_unlink(self, *args, **kwargs):
         raise OSError("Permission denied")

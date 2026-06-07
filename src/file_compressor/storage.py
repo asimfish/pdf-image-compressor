@@ -23,6 +23,20 @@ class PdfRecord:
 
 
 @dataclass(frozen=True)
+class VersionParams:
+    pdf_id: str
+    label: str
+    file_data: bytes
+    quality: int
+    pdf_mode: str
+    pdf_dpi: int
+    pdf_grayscale: bool
+    strip_metadata: bool
+    target_bytes: Optional[int]
+    compression_ratio: Optional[float]
+
+
+@dataclass(frozen=True)
 class VersionRecord:
     id: str
     pdf_id: str
@@ -236,38 +250,28 @@ class Storage:
 
     # ── Version CRUD ──
 
-    def add_version(
-        self,
-        pdf_id: str,
-        label: str,
-        file_data: bytes,
-        quality: int,
-        pdf_mode: str,
-        pdf_dpi: int,
-        pdf_grayscale: bool,
-        target_bytes: Optional[int],
-        compression_ratio: Optional[float],
-        strip_metadata: bool = True,
-    ) -> VersionRecord:
+    def add_version(self, params: VersionParams) -> VersionRecord:
         ver_id = uuid.uuid4().hex[:12]
         file_path = self._versions / f"{ver_id}.pdf"
-        file_path.write_bytes(file_data)
+        file_path.write_bytes(params.file_data)
         now = _now_iso()
         with self._lock:
             try:
                 self._conn.execute(
                     "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (ver_id, pdf_id, label, str(file_path), len(file_data), quality, pdf_mode, pdf_dpi, int(pdf_grayscale), int(strip_metadata), target_bytes, compression_ratio, now),
+                    (ver_id, params.pdf_id, params.label, str(file_path), len(params.file_data),
+                     params.quality, params.pdf_mode, params.pdf_dpi, int(params.pdf_grayscale),
+                     int(params.strip_metadata), params.target_bytes, params.compression_ratio, now),
                 )
                 self._conn.commit()
             except Exception:
                 file_path.unlink(missing_ok=True)
                 raise
         return VersionRecord(
-            id=ver_id, pdf_id=pdf_id, label=label, file_size=len(file_data),
-            quality=quality, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi, pdf_grayscale=bool(pdf_grayscale),
-            strip_metadata=bool(strip_metadata),
-            target_bytes=target_bytes, compression_ratio=compression_ratio, created_at=now,
+            id=ver_id, pdf_id=params.pdf_id, label=params.label, file_size=len(params.file_data),
+            quality=params.quality, pdf_mode=params.pdf_mode, pdf_dpi=params.pdf_dpi,
+            pdf_grayscale=params.pdf_grayscale, strip_metadata=params.strip_metadata,
+            target_bytes=params.target_bytes, compression_ratio=params.compression_ratio, created_at=now,
         )
 
     def list_versions(self, pdf_id: str) -> list[VersionRecord]:
