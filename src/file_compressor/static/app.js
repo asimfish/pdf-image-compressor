@@ -179,17 +179,21 @@ function app() {
       const valid = pdfs.filter(f => f.size <= MAX);
       const nonPdfCount = all.length - pdfs.length;
       const tooLargeCount = pdfs.length - valid.length;
-      const skipped = [];
-      if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
-      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} too large`);
-      if (skipped.length) this.showToast(`Skipped ${skipped.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
       const existing = new Set(this.uploadFiles.map(f => f.name));
       const newFiles = valid.filter(f => !existing.has(f.name));
       const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
-      if (newFiles.length > 0 && !skipped.length && dupes === 0) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
-      else if (newFiles.length > 0 && (skipped.length || dupes > 0)) this.showToast(`Added ${newFiles.length} PDF(s)${dupes > 0 ? `, ${dupes} duplicate(s)` : ''}`);
-      else if (dupes > 0 && newFiles.length === 0 && !skipped.length) this.showToast(`${dupes} file(s) already in queue`, 'error');
+      // Build a single toast message
+      const parts = [];
+      const skipped = [];
+      if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
+      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} too large`);
+      if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
+      if (newFiles.length > 0) parts.push(`Added ${newFiles.length} PDF(s)`);
+      if (dupes > 0) parts.push(`${dupes} duplicate(s)`);
+      if (!parts.length) { this.showToast('No new files to add', 'error'); return; }
+      const isError = newFiles.length === 0;
+      this.showToast(parts.join(', '), isError ? 'error' : 'success');
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
