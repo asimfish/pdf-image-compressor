@@ -258,7 +258,9 @@ function app() {
         const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
         const savedStr = saved > 0 ? ', saved ' + this.fmtSize(saved) : '';
         if (errors.length > 0) {
-          this.showToast(`Compressed ${data.compressed}${savedStr}, ${errors.length} failed: ${errors.map(e => e.filename + ' (' + (e.error || 'unknown') + ')').join('; ')}`, 'error');
+          const shown = errors.slice(0, 3).map(e => e.filename + ' (' + (e.error || 'unknown') + ')');
+          const rest = errors.length > 3 ? ` and ${errors.length - 3} more` : '';
+          this.showToast(`Compressed ${data.compressed}${savedStr}, ${errors.length} failed: ${shown.join('; ')}${rest}`, 'error');
         } else {
           this.showToast(`Compressed ${data.compressed} PDF(s)${savedStr}`);
         }
