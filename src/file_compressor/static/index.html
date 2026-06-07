@@ -253,7 +253,7 @@
               <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/></svg>
               <span class="truncate flex-1" x-text="f.name"></span>
               <span class="text-gray-400" x-text="fmtSize(f.size)"></span>
-              <button @click="uploadFiles.splice(i, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
+              <button @click="uploadFiles = uploadFiles.filter((_, j) => j !== i)" class="text-gray-400 hover:text-red-500">&times;</button>
             </div></template></div>
       </div>
       <!-- Compression Settings -->
