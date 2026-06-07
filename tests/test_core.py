@@ -219,6 +219,37 @@ def test_compress_path_zip_relative_output(tmp_path: Path):
         os.chdir(old_cwd)
 
 
+def test_compress_error_handler_oserror(tmp_path: Path):
+    """When compression fails and file is also gone, original_size defaults to 0."""
+    from unittest.mock import patch
+    from file_compressor.core import _compress_files
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    bad_pdf = src_dir / "bad.pdf"
+    bad_pdf.write_bytes(b"not a real pdf")
+
+    config = CompressionConfig(output_dir=tmp_path / "out")
+    real_stat = Path.stat
+    bad_str = str(bad_pdf)
+    bad_calls = [0]
+
+    def selective_stat(self, *args, **kwargs):
+        if str(self) == bad_str:
+            bad_calls[0] += 1
+            if bad_calls[0] == 1:
+                return real_stat(self, *args, **kwargs)
+            raise OSError("file gone")
+        return real_stat(self, *args, **kwargs)
+
+    with patch("file_compressor.core._compress_one", side_effect=RuntimeError("boom")):
+        with patch.object(Path, "stat", selective_stat):
+            summary = _compress_files(src_dir, config, None)
+
+    assert summary.results[0].status == "failed"
+    assert summary.results[0].original_size == 0
+
+
 def test_compress_path_zip_relative_output_dir_no_explicit_output(tmp_path: Path):
     docs = tmp_path / "docs"
     docs.mkdir()
