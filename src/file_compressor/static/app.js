@@ -206,7 +206,7 @@ function app() {
       this._globalDragCounter = 0;
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (!files.length) return;
+      if (!files.length) { this.showToast('Only PDF files are supported', 'error'); return; }
       if (this.showUpload) {
         this._selectFiles(files);
       } else {
