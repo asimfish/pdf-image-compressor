@@ -185,7 +185,8 @@ function app() {
       const newFiles = valid.filter(f => !existing.has(f.name));
       const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
-      if (newFiles.length > 0 && !skipped.length) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
+      if (newFiles.length > 0 && !skipped.length && dupes === 0) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
+      else if (newFiles.length > 0 && (skipped.length || dupes > 0)) this.showToast(`Added ${newFiles.length} PDF(s)${dupes > 0 ? `, ${dupes} duplicate(s)` : ''}`);
       else if (dupes > 0 && newFiles.length === 0 && !skipped.length) this.showToast(`${dupes} file(s) already in queue`, 'error');
     },
     async doUpload() {
