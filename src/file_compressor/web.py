@@ -294,6 +294,7 @@ def api_delete_pdf(pdf_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_pdf(pdf_id):
         raise HTTPException(404, detail="PDF not found")
+    render_page.cache_clear()
     logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
@@ -306,6 +307,8 @@ class BatchDeleteRequest(BaseModel):
 def api_batch_delete(body: BatchDeleteRequest) -> dict:
     storage = _get_storage()
     deleted = storage.batch_delete_pdfs(body.pdf_ids)
+    if deleted > 0:
+        render_page.cache_clear()
     return {"deleted": deleted}
 
 
@@ -335,6 +338,7 @@ def api_delete_version(version_id: str) -> dict:
     storage = _get_storage()
     if not storage.delete_version(version_id):
         raise HTTPException(404, detail="Version not found")
+    render_page.cache_clear()
     return {"ok": True}
 
 
