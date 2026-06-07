@@ -166,3 +166,180 @@ def test_sanitize_label_truncates_long():
     assert len(_sanitize_label(long)) <= 500
 
 
+# ── Preview endpoint error paths ──
+
+
+def test_preview_invalid_pdf_type(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/preview/bad/someid/0")
+    assert resp.status_code == 400
+    assert "pdf_type" in resp.json()["detail"]
+
+
+def test_preview_original_not_found(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/preview/original/nonexistent/0")
+    assert resp.status_code == 404
+
+
+def test_preview_version_not_found(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = client.get("/api/preview/version/nonexistent/0")
+    assert resp.status_code == 404
+
+
+def test_preview_page_out_of_range(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "pr.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("pr.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.get(f"/api/preview/original/{pdf_id}/99")
+    assert resp.status_code == 422
+    assert "out of range" in resp.json()["detail"]
+
+
+def test_preview_render_file_not_found(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "prf.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("prf.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    with patch("file_compressor.web.render_page", side_effect=FileNotFoundError("gone")):
+        resp = client.get(f"/api/preview/original/{pdf_id}/0")
+    assert resp.status_code == 404
+
+
+def test_preview_render_generic_error(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "pre.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("pre.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    with patch("file_compressor.web.render_page", side_effect=RuntimeError("render boom")):
+        resp = client.get(f"/api/preview/original/{pdf_id}/0")
+    assert resp.status_code == 500
+    assert "Preview render failed" in resp.json()["detail"]
+
+
+def test_preview_version_page(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "pv.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("pv.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    ver_id = versions[0]["id"]
+    resp = client.get(f"/api/preview/version/{ver_id}/0")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+
+
+# ── Batch compress with missing file ──
+
+
+def test_batch_compress_handles_missing_file(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "bm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("bm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    # Delete the stored file to simulate missing disk file
+    storage = client.app.state if hasattr(client.app, "state") else None
+    from file_compressor.web import _get_storage
+    s = _get_storage()
+    stored_path = s.get_pdf_path(pdf_id)
+    if stored_path:
+        stored_path.unlink(missing_ok=True)
+
+    resp = client.post("/api/pdfs/batch-compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["results"][0]["status"] == "error"
+    assert "missing" in data["results"][0]["error"].lower() or "file" in data["results"][0]["error"].lower()
+
+
+# ── Version download with missing file ──
+
+
+def test_download_version_file_missing(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "vm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("vm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    ver_id = versions[0]["id"]
+
+    # Delete the version file from disk
+    from file_compressor.web import _get_storage
+    s = _get_storage()
+    ver_path = s.get_version_path(ver_id)
+    if ver_path:
+        ver_path.unlink(missing_ok=True)
+
+    resp = client.get(f"/api/versions/{ver_id}/download")
+    assert resp.status_code == 404
+
+
+# ── PDF download with missing file ──
+
+
+def test_download_pdf_file_missing(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "dm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("dm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    # Delete the stored PDF file
+    from file_compressor.web import _get_storage
+    s = _get_storage()
+    stored_path = s.get_pdf_path(pdf_id)
+    if stored_path:
+        stored_path.unlink(missing_ok=True)
+
+    resp = client.get(f"/api/pdfs/{pdf_id}/download")
+    assert resp.status_code == 404
+
+
+# ── Compress with missing original file ──
+
+
+def test_compress_pdf_file_missing(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "cm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("cm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+
+    # Delete the stored PDF file
+    from file_compressor.web import _get_storage
+    s = _get_storage()
+    stored_path = s.get_pdf_path(pdf_id)
+    if stored_path:
+        stored_path.unlink(missing_ok=True)
+
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
+    assert resp.status_code == 404
+
+
+# ── Label validation ──
+
+
+def test_compress_rejects_label_too_long(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "ll.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("ll.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"label": "x" * 501})
+    assert resp.status_code == 422
+    assert "label" in resp.json()["detail"].lower()
