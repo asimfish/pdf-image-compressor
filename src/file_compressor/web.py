@@ -12,13 +12,14 @@ from typing import Optional
 logger = logging.getLogger("pdf_manager")
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from starlette.background import BackgroundTask
 
 from .core import compress_path
 from .models import CompressionConfig
+from .pdfs import render_page
 from .storage import Storage, VersionRecord
 from .utils import clamp_quality, format_size, parse_size
 
@@ -314,6 +315,38 @@ def api_delete_version(version_id: str) -> dict:
     if not storage.delete_version(version_id):
         raise HTTPException(404, detail="Version not found")
     return {"ok": True}
+
+
+@app.get("/api/preview/{pdf_type}/{item_id}/{page}")
+def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingResponse:
+    storage = _get_storage()
+    if pdf_type == "original":
+        pdf = storage.get_pdf(item_id)
+        if not pdf:
+            raise HTTPException(404, detail="PDF not found")
+        path = storage.get_pdf_path(item_id)
+        total = pdf.page_count
+    elif pdf_type == "version":
+        ver = storage.get_version(item_id)
+        if not ver:
+            raise HTTPException(404, detail="Version not found")
+        path = storage.get_version_path(item_id)
+        pdf = storage.get_pdf(ver.pdf_id)
+        total = pdf.page_count if pdf else 1
+    else:
+        raise HTTPException(400, detail="pdf_type must be 'original' or 'version'")
+    if not path or not path.exists():
+        raise HTTPException(404, detail="File not found")
+    if page < 0 or page >= total:
+        raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
+    try:
+        png_data = render_page(path, page)
+    except Exception as exc:
+        logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
+        raise HTTPException(500, detail="Preview render failed")
+    from io import BytesIO
+
+    return StreamingResponse(BytesIO(png_data), media_type="image/png")
 
 
 _COPY_CHUNK = 1024 * 1024  # 1 MB

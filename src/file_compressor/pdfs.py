@@ -28,9 +28,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
-        lo = int(config.target_bytes * 0.9)
-        hi = int(config.target_bytes * 1.1)
-        if lo <= opt_size <= hi:
+        if opt_size <= config.target_bytes * 1.02:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
@@ -52,10 +50,16 @@ def optimize_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         doc.close()
 
 
+_SIZE_TOLERANCE = 1.02
+
+
 def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfig) -> Path:
     candidates = _pdf_candidates(config)
     best_path: Optional[Path] = None
     best_size: Optional[int] = None
+    best_quality: Optional[int] = None
+    closest_path: Optional[Path] = None
+    closest_size: Optional[int] = None
     best_diff: Optional[int] = None
 
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
@@ -69,17 +73,19 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
                     best_path = candidate
                     best_size = size
                 continue
-            lo = int(config.target_bytes * 0.9)
-            hi = int(config.target_bytes * 1.1)
-            if lo <= size <= hi:
-                best_path = candidate
-                best_size = size
-                break
+            if size <= config.target_bytes * _SIZE_TOLERANCE:
+                if best_quality is None or quality > best_quality:
+                    best_path = candidate
+                    best_size = size
+                    best_quality = quality
             diff = abs(size - config.target_bytes)
             if best_diff is None or diff < best_diff:
-                best_path = candidate
-                best_size = size
+                closest_path = candidate
+                closest_size = size
                 best_diff = diff
+        if best_path is None and closest_path is not None:
+            best_path = closest_path
+            best_size = closest_size
         if best_path is None:
             raise RuntimeError("PDF compression produced no output")
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -121,9 +127,10 @@ _MIN_QUALITY = 16
 
 # Fixed-quality tail entries (dpi, quality) — appended after the dynamic head
 _TAIL_CANDIDATES: list[tuple[int, int]] = [
-    (110, 58), (105, 50), (100, 44), (95, 40), (90, 36),
-    (85, 32), (80, 30), (72, 28), (65, 25), (60, 22),
-    (55, 20), (50, 18), (45, _MIN_QUALITY),
+    (110, 58), (105, 54), (105, 50), (100, 47), (100, 44),
+    (95, 42), (95, 40), (90, 38), (90, 36), (85, 34),
+    (85, 32), (80, 30), (75, 29), (72, 28), (68, 27),
+    (65, 25), (60, 22), (55, 20), (50, 18), (45, _MIN_QUALITY),
 ]
 
 # Quality offsets applied to start_quality for the high-DPI head entries
@@ -146,8 +153,12 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     for dpi in _MID_DPI_ENTRIES:
         base.append((dpi, start_quality))
     base.append((start_dpi, start_quality))
+    base.append((min(start_dpi, 140), min(start_quality, 80)))
     base.append((min(start_dpi, 140), min(start_quality, 78)))
+    base.append((min(start_dpi, 135), min(start_quality, 75)))
     base.append((min(start_dpi, 130), min(start_quality, 72)))
+    base.append((min(start_dpi, 125), min(start_quality, 70)))
+    base.append((min(start_dpi, 120), min(start_quality, 68)))
     base.append((min(start_dpi, 120), min(start_quality, 66)))
     base.extend(_TAIL_CANDIDATES)
     seen: set[tuple[int, int]] = set()
@@ -158,6 +169,20 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
             seen.add(item)
             values.append(item)
     return values
+
+
+def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
+    """Render a single PDF page as PNG bytes."""
+    fitz = _fitz()
+    doc = fitz.open(source)
+    try:
+        if page_index < 0 or page_index >= len(doc):
+            raise ValueError(f"Page index {page_index} out of range (0-{len(doc) - 1})")
+        page = doc[page_index]
+        pix = page.get_pixmap(dpi=dpi, alpha=False)
+        return pix.tobytes("png")
+    finally:
+        doc.close()
 
 
 def _fitz():

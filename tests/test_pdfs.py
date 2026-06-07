@@ -4,7 +4,7 @@ import fitz
 import pytest
 
 from file_compressor.models import CompressionConfig
-from file_compressor.pdfs import compress_pdf, optimize_pdf, rasterize_pdf
+from file_compressor.pdfs import compress_pdf, optimize_pdf, rasterize_pdf, render_page
 
 
 def _make_pdf(path: Path, pages: int = 3, with_images: bool = False) -> Path:
@@ -196,6 +196,32 @@ def test_compress_pdf_keep_metadata(tmp_path: Path):
     compress_pdf(source, output, config)
 
     assert output.exists()
+
+
+def test_render_page_returns_png(tmp_path: Path):
+    source = _make_pdf(tmp_path / "render.pdf", pages=3)
+    png = render_page(source, 0)
+    assert isinstance(png, bytes)
+    assert png[:4] == b"\x89PNG"
+
+
+def test_render_page_second_page(tmp_path: Path):
+    source = _make_pdf(tmp_path / "render2.pdf", pages=3)
+    png = render_page(source, 1)
+    assert len(png) > 0
+    assert png[:4] == b"\x89PNG"
+
+
+def test_render_page_out_of_range(tmp_path: Path):
+    source = _make_pdf(tmp_path / "render_oob.pdf", pages=2)
+    with pytest.raises(ValueError, match="out of range"):
+        render_page(source, 5)
+
+
+def test_render_page_negative_index(tmp_path: Path):
+    source = _make_pdf(tmp_path / "render_neg.pdf", pages=2)
+    with pytest.raises(ValueError, match="out of range"):
+        render_page(source, -1)
 
 
 def test_fitz_import_error(tmp_path: Path):
