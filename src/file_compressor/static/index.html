@@ -113,7 +113,7 @@
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition fade-in">
         <div class="flex items-start gap-4 p-5 cursor-pointer" role="button" tabindex="0" @click="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)" @keydown.enter="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)" @keydown.space.prevent="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)">
           <div x-show="selectMode" @click.stop class="flex items-center pt-1">
-            <input type="checkbox" :checked="selectedPdfs[pdf.id]" @change="toggleSelect(pdf.id)" :aria-label="'Select ' + pdf.filename"
+            <input type="checkbox" :checked="selectedPdfs[pdf.id]" @change="toggleSelect(pdf.id)" @keydown.stop :aria-label="'Select ' + pdf.filename"
               class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
           </div>
           <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
