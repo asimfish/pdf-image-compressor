@@ -183,7 +183,7 @@ function app() {
       const { notes, ...formFields } = this.uploadForm;
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
-        this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}...`;
+        this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}: ${this.uploadFiles[i].name}`;
         try {
           const data = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -193,7 +193,7 @@ function app() {
               if (e.lengthComputable) {
                 const filePct = e.loaded / e.total;
                 this.uploadProgress = Math.round(((i + filePct) / this.uploadFiles.length) * 100);
-                if (filePct >= 1) this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}...`;
+                if (filePct >= 1) this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}: ${this.uploadFiles[i].name}`;
               }
             };
             xhr.onload = () => {
