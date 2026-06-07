@@ -51,9 +51,9 @@
     </div>
     <div class="flex items-center gap-3">
       <div class="text-right text-sm text-gray-500" x-show="stats">
-        <span x-text="stats ? stats.pdf_count + (stats.pdf_count === 1 ? ' PDF' : ' PDFs') : ''"></span>
+        <span x-text="stats ? _plural(stats.pdf_count, 'PDF') : ''"></span>
         <span class="mx-1" x-show="stats">·</span>
-        <span x-text="stats ? stats.version_count + (stats.version_count === 1 ? ' version' : ' versions') : ''"></span>
+        <span x-text="stats ? _plural(stats.version_count, 'version') : ''"></span>
         <span class="mx-1" x-show="stats">·</span>
         <span x-text="stats ? fmtSize(stats.total_original_bytes) : ''"></span>
         <template x-if="stats?.total_saved_bytes > 0">
@@ -138,7 +138,7 @@
             <h3 class="font-semibold text-gray-800 truncate" x-text="pdf.filename"></h3>
             <div class="flex items-center gap-3 mt-1 text-sm text-gray-500">
               <span x-text="fmtSize(pdf.file_size)"></span>
-              <span x-text="pdf.page_count + (pdf.page_count === 1 ? ' page' : ' pages')"></span>
+              <span x-text="_plural(pdf.page_count, 'page')"></span>
               <span x-text="fmtRelative(pdf.upload_time)" :title="fmtDate(pdf.upload_time)"></span>
             </div>
             <div x-show="pdf.notes" class="text-sm text-gray-400 mt-1 truncate" x-text="pdf.notes"></div>
@@ -176,9 +176,9 @@
               </svg>
             </a>
             <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium cursor-pointer"
-              x-text="pdf.version_count + (pdf.version_count === 1 ? ' version' : ' versions')"
+              x-text="_plural(pdf.version_count, 'version')"
               @click="toggleExpand(pdf.id)" tabindex="0" role="button"
-              :aria-label="'Show ' + pdf.version_count + (pdf.version_count === 1 ? ' version' : ' versions') + ' for ' + pdf.filename"
+              :aria-label="'Show ' + _plural(pdf.version_count, 'version') + ' for ' + pdf.filename"
               @keydown.enter="toggleExpand(pdf.id)" @keydown.space.prevent="toggleExpand(pdf.id)"></span>
             <svg class="w-5 h-5 text-gray-400 transition-transform cursor-pointer" :class="expanded === pdf.id && 'rotate-180'"
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -201,7 +201,7 @@
             <div x-show="!versionLoading[pdf.id] && versionCache[pdf.id] !== undefined && versionCache[pdf.id].length === 0" class="text-sm text-gray-400 py-4 text-center">No compressed versions yet. Click "New Compression" to create one.</div>
             <div class="space-y-2" x-show="(versionCache[pdf.id] || []).length > 0">
               <template x-for="v in (versionCache[pdf.id] || [])" :key="v.id">
-                <div class="flex items-center gap-4 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition">
+                <div class="flex items-center gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition flex-wrap">
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-sm text-gray-800 truncate">
                       <span x-text="v.label"></span>
@@ -218,10 +218,12 @@
                       <span x-text="fmtRelative(v.created_at)" :title="fmtDate(v.created_at)"></span>
                     </div>
                   </div>
-                  <a :href="'/api/versions/' + v.id + '/download'" target="_blank" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition">Download</a>
-                  <button @click="reuseSettings(pdf, v)" class="px-3 py-1.5 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-200 transition" title="Reuse these settings">Reuse</button>
-                  <button @click="openCompare(pdf, v)" class="px-3 py-1.5 text-purple-500 rounded-lg text-xs font-medium hover:bg-purple-50 transition">Compare</button>
-                  <button @click="deleteVersion(pdf.id, v.id)" class="px-3 py-1.5 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition">Delete</button>
+                  <div class="flex items-center gap-1.5 flex-wrap justify-end flex-shrink-0">
+                    <a :href="'/api/versions/' + v.id + '/download'" target="_blank" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition">Download</a>
+                    <button @click="reuseSettings(pdf, v)" class="px-3 py-1.5 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-200 transition" title="Reuse these settings">Reuse</button>
+                    <button @click="openCompare(pdf, v)" class="px-3 py-1.5 text-purple-500 rounded-lg text-xs font-medium hover:bg-purple-50 transition">Compare</button>
+                    <button @click="deleteVersion(pdf.id, v.id)" class="px-3 py-1.5 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition">Delete</button>
+                  </div>
                 </div>
               </template>
             </div>
@@ -241,12 +243,12 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
         <p class="text-gray-600 font-medium">Drop PDFs here or click to browse</p>
-        <p class="text-sm text-gray-400 mt-1" x-show="uploadFiles.length > 0" x-text="uploadFiles.length + ' file(s) selected — ' + fmtSize(uploadFiles.reduce((s, f) => s + f.size, 0))"></p>
+        <p class="text-sm text-gray-400 mt-1" x-show="uploadFiles.length > 0" x-text="_plural(uploadFiles.length, 'file') + ' selected — ' + fmtSize(uploadFiles.reduce((s, f) => s + f.size, 0))"></p>
       </div>
       <!-- Selected Files -->
       <div x-show="uploadFiles.length > 0" class="mb-4">
         <div class="flex items-center justify-between mb-1">
-          <span class="text-xs text-gray-400" x-text="uploadFiles.length + (uploadFiles.length === 1 ? ' file' : ' files')"></span>
+          <span class="text-xs text-gray-400" x-text="_plural(uploadFiles.length, 'file')"></span>
           <button x-show="uploadFiles.length > 1" @click="uploadFiles = []" class="text-xs text-gray-400 hover:text-red-500 transition">Clear all</button>
         </div>
         <div class="space-y-1"><template x-for="(f, i) in uploadFiles" :key="i"><div class="flex items-center gap-2 text-sm text-gray-600">
@@ -400,7 +402,7 @@
     @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>
-      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + batchTargetPdfs.length + ' PDF' + (batchTargetPdfs.length !== 1 ? 's' : '') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
+      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + _plural(batchTargetPdfs.length, 'PDF') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
         <span x-show="batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length > 0" class="block text-xs text-gray-400 mt-0.5" x-text="batchTargetPdfs.filter(p => (p.version_count || 0) === 0).length + ' new, ' + batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length + ' re-compress'"></span>
       </p>
       <div class="grid grid-cols-2 gap-3 mb-4">
@@ -451,7 +453,7 @@
             <svg x-show="batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
           </div>
           <div>
-            <p class="font-medium text-gray-800" x-text="'Compressed ' + (batchResults?.compressed || 0) + ((batchResults?.compressed || 0) === 1 ? ' PDF' : ' PDFs')"></p>
+            <p class="font-medium text-gray-800" x-text="'Compressed ' + _plural(batchResults?.compressed || 0, 'PDF')"></p>
             <p class="text-xs text-gray-500" x-text="(() => { const ok = (batchResults?.results || []).filter(r => r.status === 'ok'); const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0); return saved > 0 ? 'Saved ' + fmtSize(saved) + ' total' : 'No size reduction'; })()"></p>
           </div>
         </div>
