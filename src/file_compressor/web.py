@@ -12,7 +12,7 @@ from typing import Optional
 
 logger = logging.getLogger("pdf_manager")
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -47,6 +47,22 @@ def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_
             parse_size(target_size)
         except ValueError:
             raise HTTPException(422, detail="Invalid target_size format")
+
+
+async def _compress_form(
+    quality: int = Form(82),
+    target_size: Optional[str] = Form(None),
+    pdf_mode: str = Form("auto"),
+    pdf_dpi: int = Form(120),
+    pdf_grayscale: bool = Form(False),
+    strip_metadata: bool = Form(True),
+) -> CompressionConfig:
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    return CompressionConfig(
+        quality=quality, target_bytes=parse_size(target_size), pdf_mode=pdf_mode,
+        pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
+    )
+
 
 _storage: Optional[Storage] = None
 _storage_lock = threading.Lock()
@@ -122,15 +138,9 @@ def api_list_pdfs() -> list:
 @app.post("/api/pdfs/upload")
 async def api_upload_pdf(
     file: UploadFile = File(...),
-    quality: int = Form(82),
-    target_size: Optional[str] = Form(None),
-    pdf_mode: str = Form("auto"),
-    pdf_dpi: int = Form(120),
-    pdf_grayscale: bool = Form(False),
-    strip_metadata: bool = Form(True),
+    config: CompressionConfig = Depends(_compress_form),
     notes: str = Form(""),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     if len(notes) > _MAX_NOTES_LEN:
         raise HTTPException(422, detail=f"notes must be {_MAX_NOTES_LEN} characters or fewer")
     storage = _get_storage()
@@ -157,12 +167,7 @@ async def api_upload_pdf(
     result = asdict(pdf)
     result["warning"] = None
 
-    target_bytes = parse_size(target_size)
     try:
-        config = CompressionConfig(
-            quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
-            pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
-        )
         ver = _compress_and_store(storage, pdf.id, data, config, label="Initial compression")
         result["best_compressed_size"] = ver.file_size
         result["best_compression_ratio"] = ver.compression_ratio
@@ -199,15 +204,9 @@ def api_list_versions(pdf_id: str) -> list:
 @app.post("/api/pdfs/{pdf_id}/compress")
 async def api_compress_pdf(
     pdf_id: str,
-    quality: int = Form(82),
-    target_size: Optional[str] = Form(None),
-    pdf_mode: str = Form("auto"),
-    pdf_dpi: int = Form(120),
-    pdf_grayscale: bool = Form(False),
-    strip_metadata: bool = Form(True),
+    config: CompressionConfig = Depends(_compress_form),
     label: str = Form(""),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     if len(label) > _MAX_LABEL_LEN:
         raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
@@ -221,13 +220,8 @@ async def api_compress_pdf(
         data = path.read_bytes()
     except FileNotFoundError:
         raise HTTPException(404, detail="Original file missing")
-    target_bytes = parse_size(target_size)
     if not label:
-        label = _auto_label(target_bytes, quality, pdf_mode)
-    config = CompressionConfig(
-        quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
-        pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
-    )
+        label = _auto_label(config.target_bytes, config.quality, config.pdf_mode)
 
     try:
         ver = _compress_and_store(storage, pdf_id, data, config, label)
@@ -240,16 +234,10 @@ async def api_compress_pdf(
 
 @app.post("/api/pdfs/batch-compress")
 async def api_batch_compress(
-    quality: int = Form(82),
-    target_size: Optional[str] = Form(None),
-    pdf_mode: str = Form("auto"),
-    pdf_dpi: int = Form(120),
-    pdf_grayscale: bool = Form(False),
-    strip_metadata: bool = Form(True),
+    config: CompressionConfig = Depends(_compress_form),
     pdf_ids: Optional[str] = Form(None),
     label: str = Form(""),
 ):
-    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     if len(label) > _MAX_LABEL_LEN:
         raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
@@ -264,14 +252,9 @@ async def api_batch_compress(
     if not pdfs:
         return {"compressed": 0, "results": []}
 
-    target_bytes = parse_size(target_size)
     if not label:
-        label = _auto_label(target_bytes, quality, pdf_mode)
-    config = CompressionConfig(
-        quality=quality, target_bytes=target_bytes, pdf_mode=pdf_mode,
-        pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
-    )
-    logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), quality, pdf_mode)
+        label = _auto_label(config.target_bytes, config.quality, config.pdf_mode)
+    logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), config.quality, config.pdf_mode)
     results = []
     for pdf in pdfs:
         path = storage.get_pdf_path(pdf.id)
@@ -426,17 +409,11 @@ def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
 @app.post("/compress")
 async def compress_upload(
     files: list[UploadFile] = File(...),
-    quality: int = Form(82),
+    config: CompressionConfig = Depends(_compress_form),
     max_edge: Optional[int] = Form(None),
-    target_size: Optional[str] = Form(None),
-    pdf_mode: str = Form("auto"),
-    pdf_dpi: int = Form(120),
     to_webp: bool = Form(False),
-    pdf_grayscale: bool = Form(False),
-    strip_metadata: bool = Form(True),
     archive: Optional[str] = Form(None),
 ) -> FileResponse:
-    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     if archive is not None and archive != "zip":
         raise HTTPException(422, detail="archive must be None or 'zip'")
     if max_edge is not None and (max_edge < 100 or max_edge > 10000):
@@ -451,12 +428,7 @@ async def compress_upload(
     except HTTPException:
         shutil.rmtree(temp_path, True)
         raise
-    config = CompressionConfig(
-        quality=quality, max_edge=max_edge, to_webp=to_webp,
-        target_bytes=parse_size(target_size), output_dir=output_dir,
-        archive=archive, pdf_mode=pdf_mode, pdf_dpi=pdf_dpi,
-        pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
-    )
+    config = replace(config, max_edge=max_edge, to_webp=to_webp, output_dir=output_dir, archive=archive)
     try:
         if len(files) > 1 or archive == "zip":
             source = upload_dir
