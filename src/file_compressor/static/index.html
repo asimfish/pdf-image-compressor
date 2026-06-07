@@ -471,6 +471,7 @@
         </div>
         <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
           <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Compressed: <span x-text="fmtSize(compareVersion?.file_size)"></span></span>
+          <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="'Q' + compareVersion?.quality + ' ' + compareVersion?.pdf_mode + ' ' + compareVersion?.pdf_dpi + 'dpi'"></span>
           <span x-show="compareVersion?.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (compareVersion.compression_ratio * 100).toFixed(1) + '% saved'"></span>
           <span class="text-gray-400 italic">double-click to reset</span>
           <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Original: <span x-text="fmtSize(comparePdf?.file_size)"></span></span>
