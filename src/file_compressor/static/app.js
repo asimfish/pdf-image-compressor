@@ -31,6 +31,7 @@ function app() {
     compressTarget: null,
     compressing: false,
     compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' },
+    compressResult: null,
     // Notes
     batchTargetPdfs: [],
     showNotes: false,
@@ -289,6 +290,7 @@ function app() {
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;
+      this.compressResult = null;
       const bv = this.bestVersion(pdf);
       const base = bv ? bv.file_size : pdf.file_size;
       const target = base ? Math.max(10000, Math.round(base * 0.8)) : 500000;
@@ -297,6 +299,7 @@ function app() {
     },
     reuseSettings(pdf, version) {
       this.compressTarget = pdf;
+      this.compressResult = null;
       this.compressForm = {
         quality: version.quality,
         target_size: version.target_bytes ? this.fmtSize(version.target_bytes) : '',
@@ -311,22 +314,24 @@ function app() {
     async doCompress() {
       if (!this.compressTarget) return;
       this.compressing = true;
+      this.compressResult = null;
       try {
         const fd = this._buildCompressFd(this.compressForm);
         const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
         const ver = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(ver.detail || 'Compression failed');
-        const ratio = ver.compression_ratio;
-        const size = this.fmtSize(ver.file_size);
-        const msg = ratio > 0 ? `Compressed: -${(ratio * 100).toFixed(1)}% (${size})` : ratio < 0 ? `Larger: +${(Math.abs(ratio) * 100).toFixed(1)}% → ${size}` : `No change → ${size}`;
-        this.showToast(msg);
+        this.compressResult = ver;
         this.loadVersions(this.compressTarget.id);
         this.loadLibrary();
-        this.showCompress = false;
       } catch (e) {
         this.showToast('Compression failed: ' + e.message, 'error');
       }
       this.compressing = false;
+    },
+    closeCompress() {
+      this.compressResult = null;
+      this.showCompress = false;
+      this.compressTarget = null;
     },
     editNotes(pdf) {
       this.notesTarget = pdf;

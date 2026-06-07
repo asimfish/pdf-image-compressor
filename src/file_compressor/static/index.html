@@ -299,56 +299,83 @@
   </div>
   <!-- Compress Modal -->
   <div x-show="showCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showCompress = false; compressTarget = null" @keydown.escape.window="if (showCompress) { showCompress = false; compressTarget = null }"
-    @keydown.enter.window="if (showCompress && !compressing && !compressValidation) doCompress()">
+    @click.self="closeCompress()" @keydown.escape.window="if (showCompress) closeCompress()"
+    @keydown.enter.window="if (showCompress && !compressing && !compressValidation && !compressResult) doCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-1">Compress PDF</h2>
-      <p class="text-sm text-gray-500 mb-5"><span x-text="compressTarget?.filename"></span> <span class="text-gray-400" x-text="compressTarget ? '(' + fmtSize(compressTarget.file_size) + ')' : ''"></span><span x-show="compressTarget && bestVersion(compressTarget)" class="text-green-600 ml-1" x-text="compressTarget ? '→ best: ' + fmtSize(bestVersion(compressTarget)?.file_size) : ''"></span></p>
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Target Size</label>
-          <input type="text" x-model="compressForm.target_size" placeholder="e.g. 500KB" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
-          <div class="flex gap-1.5 mt-1.5 flex-wrap">
-            <template x-for="preset in presets" :key="preset">
-              <button type="button" @click="compressForm.target_size = preset" class="px-2 py-0.5 text-xs rounded-md border transition" :class="compressForm.target_size === preset ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'" x-text="preset"></button>
-            </template>
+      <p class="text-sm text-gray-500 mb-5"><span x-text="compressTarget?.filename"></span> <span class="text-gray-400" x-text="compressTarget ? '(' + fmtSize(compressTarget.file_size) + ')' : ''"></span><span x-show="compressTarget && bestVersion(compressTarget) && !compressResult" class="text-green-600 ml-1" x-text="compressTarget ? '→ best: ' + fmtSize(bestVersion(compressTarget)?.file_size) : ''"></span></p>
+      <!-- Compression Form (hidden when showing results) -->
+      <div x-show="!compressResult">
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Target Size</label>
+            <input type="text" x-model="compressForm.target_size" placeholder="e.g. 500KB" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+            <div class="flex gap-1.5 mt-1.5 flex-wrap">
+              <template x-for="preset in presets" :key="preset">
+                <button type="button" @click="compressForm.target_size = preset" class="px-2 py-0.5 text-xs rounded-md border transition" :class="compressForm.target_size === preset ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'" x-text="preset"></button>
+              </template>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Quality</label>
+            <input type="number" x-model.number="compressForm.quality" min="1" max="95" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">PDF Mode</label>
+            <select x-model="compressForm.pdf_mode" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+              <option value="auto">Auto</option>
+              <option value="optimize">Optimize (keep text)</option>
+              <option value="raster">Raster (max compression)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">DPI</label>
+            <input type="number" x-model.number="compressForm.pdf_dpi" min="36" max="300" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
           </div>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Quality</label>
-          <input type="number" x-model.number="compressForm.quality" min="1" max="95" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+        <div class="flex items-center gap-4 mb-5">
+          <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" x-model="compressForm.pdf_grayscale" class="rounded"> Grayscale</label>
+          <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" x-model="compressForm.strip_metadata" class="rounded"> Strip metadata</label>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">PDF Mode</label>
-          <select x-model="compressForm.pdf_mode" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
-            <option value="auto">Auto</option>
-            <option value="optimize">Optimize (keep text)</option>
-            <option value="raster">Raster (max compression)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">DPI</label>
-          <input type="number" x-model.number="compressForm.pdf_dpi" min="36" max="300" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
+          <label class="block text-sm font-medium text-gray-700 mb-1">Version Label</label>
+          <input type="text" x-model="compressForm.label" maxlength="500" placeholder="e.g. Email version" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
         </div>
       </div>
-      <div class="flex items-center gap-4 mb-5">
-        <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" x-model="compressForm.pdf_grayscale" class="rounded"> Grayscale</label>
-        <label class="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" x-model="compressForm.strip_metadata" class="rounded"> Strip metadata</label>
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Version Label</label>
-        <input type="text" x-model="compressForm.label" maxlength="500" placeholder="e.g. Email version" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm">
-      </div>
+      <!-- Compression Progress -->
       <div x-show="compressing" class="mt-4">
         <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div class="h-full bg-green-600 rounded-full animate-pulse w-full"></div>
         </div>
         <p class="text-sm text-gray-500 mt-1 text-center">Compressing...</p>
       </div>
-      <div x-show="compressValidation" class="mt-3 text-sm text-red-600" x-text="compressValidation"></div>
+      <!-- Compression Result -->
+      <div x-show="compressResult" class="mt-2">
+        <div class="flex items-center gap-3 mb-4 p-4 rounded-xl" :class="(compressResult?.compression_ratio || 0) > 0 ? 'bg-green-50' : (compressResult?.compression_ratio || 0) < 0 ? 'bg-amber-50' : 'bg-gray-50'">
+          <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="(compressResult?.compression_ratio || 0) > 0 ? 'bg-green-100' : (compressResult?.compression_ratio || 0) < 0 ? 'bg-amber-100' : 'bg-gray-100'">
+            <svg x-show="(compressResult?.compression_ratio || 0) > 0" class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <svg x-show="(compressResult?.compression_ratio || 0) < 0" class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            <svg x-show="(compressResult?.compression_ratio || 0) === 0" class="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg>
+          </div>
+          <div class="flex-1">
+            <p class="font-semibold text-lg" :class="(compressResult?.compression_ratio || 0) > 0 ? 'text-green-800' : (compressResult?.compression_ratio || 0) < 0 ? 'text-amber-800' : 'text-gray-700'"
+              x-text="compressResult ? ((compressResult.compression_ratio > 0 ? '-' + (compressResult.compression_ratio * 100).toFixed(1) + '%' : compressResult.compression_ratio < 0 ? '+' + (Math.abs(compressResult.compression_ratio) * 100).toFixed(1) + '% larger' : 'No change')) : ''"></p>
+            <p class="text-sm text-gray-500" x-text="compressResult ? fmtSize(compressResult.file_size) + ' (from ' + fmtSize(compressTarget?.file_size) + ')' : ''"></p>
+          </div>
+          <a x-show="compressResult" :href="'/api/versions/' + compressResult?.id + '/download'" target="_blank"
+            class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">Download</a>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
+          <span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" x-text="compressResult ? 'Q' + compressResult.quality + ' ' + compressResult.pdf_mode + ' ' + compressResult.pdf_dpi + 'dpi' : ''"></span>
+          <span x-show="compressResult?.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="compressResult ? 'target ' + fmtSize(compressResult.target_bytes) : ''"></span>
+          <span x-show="compressResult?.label" class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 truncate" x-text="compressResult?.label"></span>
+        </div>
+        <button @click="compressResult = null" class="text-sm text-blue-600 hover:text-blue-800 font-medium mt-1">+ Compress again with different settings</button>
+      </div>
+      <div x-show="compressValidation && !compressResult" class="mt-3 text-sm text-red-600" x-text="compressValidation"></div>
       <div class="flex gap-3 mt-5">
-        <button @click="showCompress = false; compressTarget = null" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
-        <button @click="doCompress()" x-effect="$el.disabled = compressing || !!compressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40">Compress <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
+        <button @click="closeCompress()" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition"><span x-text="compressResult ? 'Done' : 'Cancel'"></span> <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
+        <button x-show="!compressResult" @click="doCompress()" x-effect="$el.disabled = compressing || !!compressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40">Compress <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
       </div>
     </div>
   </div>
