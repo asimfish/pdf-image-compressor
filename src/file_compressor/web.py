@@ -241,8 +241,10 @@ def api_batch_compress(
     if len(label) > _MAX_LABEL_LEN:
         raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
-    if pdf_ids:
+    if pdf_ids is not None:
         id_list = [s.strip() for s in pdf_ids.split(",") if s.strip()]
+        if not id_list:
+            raise HTTPException(422, detail="pdf_ids is empty")
         if len(id_list) > 1000:
             raise HTTPException(422, detail="Too many PDF IDs (max 1000)")
         pdfs = storage.get_pdfs_by_ids(id_list)

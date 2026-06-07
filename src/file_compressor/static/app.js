@@ -1,3 +1,19 @@
+function _trapFocus(el) {
+  if (el._focusTrap) el.removeEventListener('keydown', el._focusTrap);
+  const focusable = () => el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  el._focusTrap = (e) => {
+    if (e.key !== 'Tab') return;
+    const items = focusable();
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  el.addEventListener('keydown', el._focusTrap);
+  const first = focusable()[0];
+  if (first) first.focus();
+}
+
 function app() {
   return {
     pdfs: [],
