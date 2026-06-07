@@ -452,11 +452,15 @@
         </div>
         <div x-show="compareError" class="text-center py-12 text-red-500 text-sm" x-text="compareError"></div>
         <div x-show="!compareLoading && !compareError" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
-          x-ref="compareContainer"
+          x-ref="compareContainer" tabindex="0" role="slider" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(compareSlider)"
           @mousedown="_onCompareMouseDown($event)"
           @mousemove="_onCompareMouseMove($event)"
           @dblclick="compareSlider = 50"
-          @touchstart.prevent="_onCompareMouseDown($event)">
+          @touchstart.prevent="_onCompareMouseDown($event)"
+          @keydown.arrow-left.prevent="compareSlider = Math.max(0, compareSlider - 2)"
+          @keydown.arrow-right.prevent="compareSlider = Math.min(100, compareSlider + 2)"
+          @keydown.home.prevent="compareSlider = 0"
+          @keydown.end.prevent="compareSlider = 100">
           <!-- Original (right side) -->
           <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad(_compareGen)" @error="_onCompareError()">
           <!-- Compressed (left side, clipped) -->
