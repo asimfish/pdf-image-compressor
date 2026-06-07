@@ -38,13 +38,10 @@ def format_size(size: Optional[int]) -> str:
         return "-"
     value = float(size)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if value < 1000 or unit == "TB":
-            text = f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
-            if text.startswith("1000.0 ") and unit != "TB":
-                value /= 1000
-                continue
-            return text
-        value /= 1000
+        if value >= 1000 and unit != "TB":
+            value /= 1000
+            continue
+        return f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
     return f"{value:.1f} PB"
 
 
