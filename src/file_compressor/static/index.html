@@ -443,7 +443,11 @@
         </div>
       </div>
       <div class="flex-1 overflow-auto">
-        <div class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
+        <div x-show="compareLoading" class="flex items-center justify-center py-12">
+          <svg class="w-8 h-8 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+        </div>
+        <div x-show="compareError" class="text-center py-12 text-red-500 text-sm" x-text="compareError"></div>
+        <div x-show="!compareLoading && !compareError" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
           x-ref="compareContainer"
           @mousedown="_onCompareMouseDown($event)"
           @mousemove="_onCompareMouseMove($event)"
@@ -453,7 +457,7 @@
           @touchmove.prevent="_onCompareMouseMove($event)"
           @touchend="_onCompareMouseUp($event)">
           <!-- Original (right side) -->
-          <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false">
+          <img :src="compareOriginalUrl()" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad()" @error="_onCompareError()">
           <!-- Compressed (left side, clipped) -->
           <div class="compare-overlay" :style="'width:' + compareSlider + '%'">
             <img :src="compareVersionUrl()" alt="Compressed" :style="'width:' + ($refs.compareContainer ? $refs.compareContainer.offsetWidth + 'px' : '100vw')" draggable="false">

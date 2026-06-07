@@ -43,6 +43,8 @@ function app() {
     compareTotalPages: 1,
     compareSlider: 50,
     _compareDragging: false,
+    compareLoading: false,
+    compareError: '',
     // Toast
     toast: '',
     toastType: 'success',
@@ -353,10 +355,14 @@ function app() {
       this.comparePage = 0;
       this.compareTotalPages = pdf.page_count || 1;
       this.compareSlider = 50;
+      this.compareLoading = true;
+      this.compareError = '';
       this.showCompare = true;
     },
-    comparePrev() { if (this.comparePage > 0) this.comparePage--; },
-    compareNext() { if (this.comparePage < this.compareTotalPages - 1) this.comparePage++; },
+    comparePrev() { if (this.comparePage > 0) { this.comparePage--; this.compareLoading = true; this.compareError = ''; } },
+    compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this.compareLoading = true; this.compareError = ''; } },
+    _onCompareLoad() { this.compareLoading = false; },
+    _onCompareError() { this.compareLoading = false; this.compareError = 'Failed to load preview'; },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
     },
