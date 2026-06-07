@@ -235,6 +235,32 @@ function app() {
       const isError = newFiles.length === 0;
       this.showToast(parts.join(', '), isError ? 'error' : 'success');
     },
+    _uploadWithProgress(file, fd, index, total) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        this._currentXhr = xhr;
+        xhr.open('POST', '/api/pdfs/upload');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const filePct = e.loaded / e.total;
+            this.uploadProgress = Math.round(((index + filePct) / total) * 100);
+            if (filePct >= 1) this.uploadStatus = `Processing ${index + 1}/${total}: ${file.name}`;
+          }
+        };
+        xhr.onload = () => {
+          this._currentXhr = null;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText).detail || xhr.statusText)); }
+            catch { reject(new Error(xhr.statusText)); }
+          }
+        };
+        xhr.onerror = () => { this._currentXhr = null; reject(new Error('Network error')); };
+        xhr.onabort = () => { this._currentXhr = null; reject(new Error('Upload cancelled')); };
+        xhr.send(fd);
+      });
+    },
     async doUpload() {
       if (!this.uploadFiles.length) return;
       this.uploading = true;
@@ -246,30 +272,7 @@ function app() {
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
         this.uploadStatus = `Uploading ${i + 1}/${this.uploadFiles.length}: ${this.uploadFiles[i].name}`;
         try {
-          const data = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            this._currentXhr = xhr;
-            xhr.open('POST', '/api/pdfs/upload');
-            xhr.upload.onprogress = (e) => {
-              if (e.lengthComputable) {
-                const filePct = e.loaded / e.total;
-                this.uploadProgress = Math.round(((i + filePct) / this.uploadFiles.length) * 100);
-                if (filePct >= 1) this.uploadStatus = `Processing ${i + 1}/${this.uploadFiles.length}: ${this.uploadFiles[i].name}`;
-              }
-            };
-            xhr.onload = () => {
-              this._currentXhr = null;
-              if (xhr.status >= 200 && xhr.status < 300) {
-                try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
-              } else {
-                try { reject(new Error(JSON.parse(xhr.responseText).detail || xhr.statusText)); }
-                catch { reject(new Error(xhr.statusText)); }
-              }
-            };
-            xhr.onerror = () => { this._currentXhr = null; reject(new Error('Network error')); };
-            xhr.onabort = () => { this._currentXhr = null; reject(new Error('Upload cancelled')); };
-            xhr.send(fd);
-          });
+          const data = await this._uploadWithProgress(this.uploadFiles[i], fd, i, this.uploadFiles.length);
           if (data.warning) warnings.push(data.warning);
           if (data.file_size && data.best_compressed_size) {
             compressResults.push({ original: data.file_size, compressed: data.best_compressed_size });
