@@ -545,3 +545,28 @@ def test_delete_version_succeeds_when_file_unlink_fails(tmp_path: Path):
     assert deleted is True
     assert storage.get_version(v.id) is None
     storage.close()
+
+
+def test_context_manager(tmp_path: Path):
+    with Storage(tmp_path) as storage:
+        pdf = storage.add_pdf("test.pdf", b"%PDF-1.4 fake", 1)
+        assert pdf.filename == "test.pdf"
+    # Connection should be closed after exiting context
+    import sqlite3
+    try:
+        storage._conn.execute("SELECT 1")
+        assert False, "Connection should be closed"
+    except sqlite3.ProgrammingError:
+        pass
+
+
+def test_migration_rejects_unsafe_table(tmp_path: Path):
+    import pytest
+    from unittest.mock import patch
+
+    storage = Storage(tmp_path)
+    # Patch _EXPECTED_COLUMNS to include a table NOT in _ALLOWED_MIGRATE_TABLES
+    with patch.object(type(storage), "_EXPECTED_COLUMNS", (("unsafe_table", "col INTEGER"),)):
+        with pytest.raises(ValueError, match="not in allowlist"):
+            storage._migrate()
+    storage.close()
