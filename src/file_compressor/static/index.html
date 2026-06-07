@@ -432,11 +432,15 @@
           </p>
         </div>
         <div class="flex items-center gap-3">
-          <button @click="comparePrev()" :disabled="comparePage <= 0"
-            class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">&larr; Prev <kbd class="ml-1 text-xs text-gray-400">&larr;</kbd></button>
-          <span class="text-sm text-gray-600 font-medium" x-text="(comparePage + 1) + ' / ' + compareTotalPages"></span>
-          <button @click="compareNext()" :disabled="comparePage >= compareTotalPages - 1"
-            class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed"><kbd class="mr-1 text-xs text-gray-400">&rarr;</kbd> Next &rarr;</button>
+          <template x-if="compareTotalPages > 1">
+            <div class="flex items-center gap-3">
+              <button @click="comparePrev()" :disabled="comparePage <= 0"
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">&larr; Prev <kbd class="ml-1 text-xs text-gray-400">&larr;</kbd></button>
+              <span class="text-sm text-gray-600 font-medium" x-text="(comparePage + 1) + ' / ' + compareTotalPages"></span>
+              <button @click="compareNext()" :disabled="comparePage >= compareTotalPages - 1"
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed"><kbd class="mr-1 text-xs text-gray-400">&rarr;</kbd> Next &rarr;</button>
+            </div>
+          </template>
           <button @click="showCompare = false" class="ml-2 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
