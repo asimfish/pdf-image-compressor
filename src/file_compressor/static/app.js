@@ -25,6 +25,8 @@ function app() {
     uploadProgress: 0,
     uploadStatus: '',
     dragOver: false,
+    globalDragActive: false,
+    _globalDragCounter: 0,
     uploadForm: { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, notes: '' },
     // Compress
     showCompress: false,
@@ -168,6 +170,33 @@ function app() {
     handleDrop(e) {
       this.dragOver = false;
       this._selectFiles([...e.dataTransfer.files]);
+    },
+    _onGlobalDragEnter(e) {
+      e.preventDefault();
+      this._globalDragCounter++;
+      if (e.dataTransfer.types.includes('Files')) {
+        this.globalDragActive = true;
+      }
+    },
+    _onGlobalDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    },
+    _onGlobalDragLeave(e) {
+      this._globalDragCounter--;
+      if (this._globalDragCounter <= 0) {
+        this._globalDragCounter = 0;
+        this.globalDragActive = false;
+      }
+    },
+    _onGlobalDrop(e) {
+      e.preventDefault();
+      this._globalDragCounter = 0;
+      this.globalDragActive = false;
+      const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (!files.length) return;
+      this.uploadFiles = files;
+      this.showUpload = true;
     },
     handleFiles(files) {
       this._selectFiles([...files]);
