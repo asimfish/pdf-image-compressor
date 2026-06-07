@@ -39,6 +39,7 @@ function app() {
     showNotes: false,
     notesTarget: null,
     notesText: '',
+    showShortcuts: false,
     // Compare
     showCompare: false,
     comparePdf: null,

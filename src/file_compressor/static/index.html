@@ -22,7 +22,7 @@
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
-<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" @keydown.ctrl.b.window.prevent="if (pdfs.length > 0) batchCompress()" @dragenter="_onGlobalDragEnter($event)" @dragover="_onGlobalDragOver($event)" @dragleave="_onGlobalDragLeave($event)" @drop="_onGlobalDrop($event)" class="max-w-6xl mx-auto px-4 py-8">
+<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="$refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="showUpload = true" @keydown.ctrl.b.window.prevent="if (pdfs.length > 0) batchCompress()" @keydown.shift.slash.window.prevent="showShortcuts = !showShortcuts" @dragenter="_onGlobalDragEnter($event)" @dragover="_onGlobalDragOver($event)" @dragleave="_onGlobalDragLeave($event)" @drop="_onGlobalDrop($event)" class="max-w-6xl mx-auto px-4 py-8">
   <!-- Global drag-and-drop overlay -->
   <div x-show="globalDragActive" x-cloak x-transition.opacity class="fixed inset-0 z-[60] flex items-center justify-center bg-blue-600/20 backdrop-blur-sm pointer-events-none">
     <div class="bg-white rounded-2xl shadow-2xl p-12 text-center border-2 border-dashed border-blue-400">
@@ -60,6 +60,8 @@
           <span class="ml-2 text-green-600 font-medium" x-text="'saved ' + fmtSize(stats.total_saved_bytes)"></span>
         </template>
       </div>
+      <button @click="showShortcuts = true" title="Keyboard shortcuts (?)"
+        class="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition flex items-center justify-center text-sm font-bold">?</button>
       <button @click="showUpload = true" title="Ctrl+U"
         class="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">
         + Upload PDF
@@ -556,6 +558,40 @@
           <span x-show="compareVersion?.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (compareVersion.compression_ratio * 100).toFixed(1) + '% saved'"></span>
           <span class="text-gray-400 italic">double-click to reset · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">←</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">→</kbd> pages · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">Home</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">End</kbd> slider</span>
           <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Original: <span x-text="fmtSize(comparePdf?.file_size)"></span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard shortcuts help -->
+  <div x-show="showShortcuts" x-cloak @click.self="showShortcuts = false" @keydown.escape.window="showShortcuts = false"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" @click.stop>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-bold text-gray-800">Keyboard Shortcuts</h2>
+        <button @click="showShortcuts = false" class="text-gray-400 hover:text-gray-600 transition" aria-label="Close shortcuts">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-sm text-gray-600">Search PDFs</span>
+          <div><kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">Ctrl</kbd> <kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">K</kbd></div>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-sm text-gray-600">Upload PDF</span>
+          <div><kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">Ctrl</kbd> <kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">U</kbd></div>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-sm text-gray-600">Batch Compress</span>
+          <div><kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">Ctrl</kbd> <kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">B</kbd></div>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-sm text-gray-600">Show shortcuts</span>
+          <div><kbd class="px-2 py-1 bg-gray-100 rounded text-xs font-mono text-gray-700">?</kbd></div>
+        </div>
+        <div class="border-t border-gray-100 pt-3 mt-3">
+          <p class="text-xs text-gray-400">Drag &amp; drop PDF files anywhere on the page to upload</p>
         </div>
       </div>
     </div>
