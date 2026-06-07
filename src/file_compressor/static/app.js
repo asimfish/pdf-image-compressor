@@ -83,7 +83,7 @@ function app() {
     },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
-      return /^\s*\d+(\.\d+)?\s*[kmgt]?\s*b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 500 KB, 2MB)';
+      return /^\s*\d+(\.\d+)?\s*[kmgt]?b\s*$/i.test(v) ? '' : 'Enter a size with unit (e.g. 500KB, 2MB)';
     },
     _validateForm(form) {
       if (!(form.quality >= 1 && form.quality <= 95)) return 'Quality must be between 1 and 95';
