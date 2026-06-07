@@ -187,3 +187,18 @@ def test_legacy_compress_accepts_valid_archive_zip(tmp_path: Path):
         resp = client.post("/compress", files={"files": ("test.pdf", f, "application/pdf")}, data={"archive": "zip"})
     assert resp.status_code == 200
 
+
+def test_legacy_compress_deduplicates_filenames(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "dup.pdf")
+    data = pdf_path.read_bytes()
+    resp = client.post(
+        "/compress",
+        files=[
+            ("files", ("dup.pdf", data, "application/pdf")),
+            ("files", ("dup.pdf", data, "application/pdf")),
+        ],
+        data={"archive": "zip"},
+    )
+    assert resp.status_code == 200
+

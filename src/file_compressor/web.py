@@ -22,7 +22,7 @@ from .core import compress_path
 from .models import CompressionConfig
 from .pdfs import _fitz, render_page
 from .storage import Storage, VersionParams, VersionRecord
-from .utils import clamp_quality, format_size, parse_size
+from .utils import clamp_quality, format_size, parse_size, unique_path
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -401,7 +401,7 @@ def _read_upload_with_limit(file: UploadFile) -> bytes:
 def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
     for item in files:
         safe_name = Path(item.filename or "uploaded.bin").name
-        target = dest / safe_name
+        target = unique_path(dest / safe_name, overwrite=False)
         written = 0
         with target.open("wb") as handle:
             while True:
