@@ -73,7 +73,7 @@
   </header>
   <div class="mb-6 flex gap-3">
     <div class="flex-1 relative">
-      <input type="text" x-model="search" x-ref="searchInput" placeholder="Search PDFs... (Ctrl+K)"
+      <input type="text" x-model="search" x-ref="searchInput" placeholder="Search PDFs... (Ctrl+K)" aria-label="Search PDFs"
         @keydown.escape.window="$refs.searchInput.blur(); search = ''"
         class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
       <svg class="absolute left-3 top-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -111,9 +111,9 @@
   <div class="grid gap-4" x-show="filteredPdfs.length > 0">
     <template x-for="pdf in filteredPdfs" :key="pdf.id">
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition fade-in">
-        <div class="flex items-start gap-4 p-5 cursor-pointer" @click="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)">
+        <div class="flex items-start gap-4 p-5 cursor-pointer" role="button" tabindex="0" @click="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)" @keydown.enter="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)" @keydown.space.prevent="selectMode ? toggleSelect(pdf.id) : toggleExpand(pdf.id)">
           <div x-show="selectMode" @click.stop class="flex items-center pt-1">
-            <input type="checkbox" :checked="selectedPdfs[pdf.id]" @change="toggleSelect(pdf.id)"
+            <input type="checkbox" :checked="selectedPdfs[pdf.id]" @change="toggleSelect(pdf.id)" :aria-label="'Select ' + pdf.filename"
               class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
           </div>
           <div class="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
