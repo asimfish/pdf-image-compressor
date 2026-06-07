@@ -37,11 +37,13 @@ def test_parse_size_empty():
 
 
 def test_parse_size_zero():
-    assert parse_size("0") is None
+    with pytest.raises(ValueError):
+        parse_size("0")
 
 
 def test_parse_size_zero_mb():
-    assert parse_size("0MB") is None
+    with pytest.raises(ValueError):
+        parse_size("0MB")
 
 
 def test_parse_size_gb():

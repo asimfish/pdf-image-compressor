@@ -30,7 +30,9 @@ def parse_size(value: Optional[str]) -> Optional[int]:
         "tb": 1000**4,
     }
     result = int(number * multipliers[unit])
-    return result if result > 0 else None
+    if result <= 0:
+        raise ValueError(f"Size must be positive: {value}")
+    return result
 
 
 def format_size(size: Optional[int]) -> str:
