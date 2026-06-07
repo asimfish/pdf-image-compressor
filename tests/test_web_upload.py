@@ -92,6 +92,7 @@ def test_upload_warns_on_compression_failure(tmp_path: Path):
     data = resp.json()
     assert data["warning"] is not None
     assert "compression failed" in data["warning"].lower()
+    assert "best_compressed_size" not in data
 
 
 
