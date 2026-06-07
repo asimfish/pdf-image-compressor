@@ -239,6 +239,23 @@ def test_preview_version_page(tmp_path: Path):
     assert resp.headers["content-type"] == "image/png"
 
 
+def test_preview_version_deleted_with_parent(tmp_path: Path):
+    """Deleting a parent PDF cascades to its versions, so version preview returns 404."""
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "orphan.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("orphan.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    versions = client.get(f"/api/pdfs/{pdf_id}/versions").json()
+    ver_id = versions[0]["id"]
+
+    # Delete parent PDF — CASCADE deletes versions too
+    client.delete(f"/api/pdfs/{pdf_id}")
+
+    resp = client.get(f"/api/preview/version/{ver_id}/0")
+    assert resp.status_code == 404
+
+
 # ── Batch compress with missing file ──
 
 
