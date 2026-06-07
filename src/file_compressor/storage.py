@@ -120,6 +120,21 @@ class Storage:
     def close(self) -> None:
         self._conn.close()
 
+    def cleanup_orphans(self) -> int:
+        """Remove files on disk that have no database record. Returns count removed."""
+        referenced: set[str] = set()
+        for row in self._conn.execute("SELECT file_path FROM pdfs"):
+            referenced.add(row[0])
+        for row in self._conn.execute("SELECT file_path FROM versions"):
+            referenced.add(row[0])
+        removed = 0
+        for directory in (self._originals, self._versions):
+            for f in directory.iterdir():
+                if f.is_file() and str(f) not in referenced:
+                    f.unlink()
+                    removed += 1
+        return removed
+
     def __enter__(self) -> Storage:
         return self
 

@@ -75,6 +75,9 @@ def _get_storage() -> Storage:
             if _storage is None:
                 data_dir = Path.home() / ".pdf-manager"
                 _storage = Storage(data_dir)
+                removed = _storage.cleanup_orphans()
+                if removed:
+                    logger.info("Cleaned up %d orphaned file(s)", removed)
     return _storage
 
 
@@ -202,7 +205,7 @@ def api_download_pdf(pdf_id: str) -> FileResponse:
     if not path or not path.exists():
         raise HTTPException(404, detail="Original file missing")
     try:
-        return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
+        return FileResponse(path, filename=_sanitize_label(pdf.filename), media_type="application/pdf")
     except FileNotFoundError:
         raise HTTPException(404, detail="Original file missing")
 
@@ -259,8 +262,8 @@ def api_batch_compress(
         id_list = [s.strip() for s in pdf_ids.split(",") if s.strip()]
         if not id_list:
             raise HTTPException(422, detail="pdf_ids is empty")
-        if len(id_list) > 1000:
-            raise HTTPException(422, detail="Too many PDF IDs (max 1000)")
+        if len(id_list) > 50:
+            raise HTTPException(422, detail="Too many PDF IDs (max 50)")
         pdfs = storage.get_pdfs_by_ids(id_list)
         found_ids = {p.id for p in pdfs}
         not_found = [{"pdf_id": pid, "filename": "", "status": "not_found"} for pid in id_list if pid not in found_ids]
@@ -314,7 +317,7 @@ def api_delete_pdf(pdf_id: str) -> dict:
 
 
 class BatchDeleteRequest(BaseModel):
-    pdf_ids: list[str] = Field(..., min_length=1, max_length=1000)
+    pdf_ids: list[str] = Field(..., min_length=1, max_length=50)
 
 
 @app.post("/api/pdfs/batch-delete")

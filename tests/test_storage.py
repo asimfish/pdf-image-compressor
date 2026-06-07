@@ -570,3 +570,33 @@ def test_migration_rejects_unsafe_table(tmp_path: Path):
         with pytest.raises(ValueError, match="not in allowlist"):
             storage._migrate()
     storage.close()
+
+
+def test_cleanup_orphans_removes_unreferenced_files(tmp_path: Path):
+    storage = Storage(tmp_path)
+    # Create a real PDF so DB has a record
+    storage.add_pdf("test.pdf", b"A" * 100, 1)
+    # Drop an orphan file into originals/
+    orphan = storage._originals / "orphan.pdf"
+    orphan.write_bytes(b"junk")
+    # Drop an orphan file into versions/
+    orphan_ver = storage._versions / "orphan_ver.pdf"
+    orphan_ver.write_bytes(b"junk")
+    assert orphan.exists()
+    assert orphan_ver.exists()
+    removed = storage.cleanup_orphans()
+    assert removed == 2
+    assert not orphan.exists()
+    assert not orphan_ver.exists()
+    # The real file should still be there
+    real_files = list(storage._originals.iterdir())
+    assert len(real_files) == 1
+    storage.close()
+
+
+def test_cleanup_orphans_no_orphans(tmp_path: Path):
+    storage = Storage(tmp_path)
+    storage.add_pdf("test.pdf", b"A" * 100, 1)
+    removed = storage.cleanup_orphans()
+    assert removed == 0
+    storage.close()
