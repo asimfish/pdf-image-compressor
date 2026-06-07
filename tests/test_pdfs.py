@@ -245,3 +245,35 @@ def test_fitz_import_error(tmp_path: Path):
     finally:
         if saved is not None:
             sys.modules["fitz"] = saved
+
+
+def test_rasterize_pdf_to_target_no_output(tmp_path: Path):
+    from unittest.mock import patch
+    from file_compressor.pdfs import rasterize_pdf_to_target
+
+    source = _make_pdf(tmp_path / "src.pdf")
+    output = tmp_path / "out.pdf"
+    config = CompressionConfig(target_bytes=50000)
+    with patch("file_compressor.pdfs._pdf_candidates", return_value=[]):
+        with pytest.raises(RuntimeError, match="no output"):
+            rasterize_pdf_to_target(source, output, config)
+
+
+def test_rasterize_pdf_dst_open_failure(tmp_path: Path):
+    """When fitz.open() for dst fails, src must still be closed."""
+    from unittest.mock import MagicMock, patch
+    from file_compressor.pdfs import rasterize_pdf
+
+    source = _make_pdf(tmp_path / "src.pdf")
+    output = tmp_path / "out.pdf"
+
+    mock_src = MagicMock()
+    mock_src.close = MagicMock()
+    mock_fitz = MagicMock()
+    mock_fitz.open.side_effect = [mock_src, RuntimeError("open dst failed")]
+
+    with patch("file_compressor.pdfs._fitz", return_value=mock_fitz):
+        with pytest.raises(RuntimeError, match="open dst failed"):
+            rasterize_pdf(source, output, dpi=100, quality=70, grayscale=False, strip_metadata=False)
+
+    mock_src.close.assert_called_once()

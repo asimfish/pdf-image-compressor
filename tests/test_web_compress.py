@@ -398,7 +398,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     errors = [r for r in data["results"] if r["status"] == "error"]
-    assert any(e["error"].startswith("Compression failed:") for e in errors)
+    assert any(e["error"] == "Compression failed" for e in errors)
 
 
 
@@ -617,5 +617,22 @@ def test_compress_500_does_not_leak_details(tmp_path: Path):
     detail = resp.json()["detail"]
     assert "/internal/path" not in detail
     assert "secret" not in detail
+
+
+def test_batch_compress_does_not_leak_exception_details(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "secret.pdf")
+    with open(pdf_path, "rb") as f:
+        client.post("/api/pdfs/upload", files={"file": ("secret.pdf", f, "application/pdf")})
+
+    with patch("file_compressor.web._compress_and_store", side_effect=RuntimeError("/internal/path/secret")):
+        resp = client.post("/api/pdfs/batch-compress", data={"quality": "50"})
+    assert resp.status_code == 200
+    errors = [r for r in resp.json()["results"] if r["status"] == "error"]
+    assert len(errors) == 1
+    assert "/internal/path" not in errors[0]["error"]
+    assert "secret" not in errors[0]["error"]
 
 

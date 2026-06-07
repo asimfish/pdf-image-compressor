@@ -233,7 +233,8 @@
       </div>
     </template>
   </div>
-  <div x-show="showUpload" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+  <div x-show="showUpload" x-cloak role="dialog" aria-modal="true" aria-label="Upload PDF"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showUpload = false; uploadFiles = []" @keydown.escape.window="if (showUpload) { showUpload = false; uploadFiles = [] }"
     @keydown.enter.window="if ($event.target.tagName !== 'TEXTAREA' && showUpload && uploadFiles.length > 0 && !uploading && !uploadValidation) doUpload()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop>
@@ -314,7 +315,8 @@
     </div>
   </div>
   <!-- Compress Modal -->
-  <div x-show="showCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+  <div x-show="showCompress" x-cloak role="dialog" aria-modal="true" aria-label="Compress PDF"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="closeCompress()" @keydown.escape.window="if (showCompress) closeCompress()"
     @keydown.enter.window="if (showCompress && !compressing && !compressValidation && !compressResult) doCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
@@ -394,7 +396,8 @@
     </div>
   </div>
   <!-- Batch Compress Modal -->
-  <div x-show="showBatchCompress" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+  <div x-show="showBatchCompress" x-cloak role="dialog" aria-modal="true" aria-label="Batch Compress"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showBatchCompress = false; batchResults = null" @keydown.escape.window="if (showBatchCompress) { showBatchCompress = false; batchResults = null }"
     @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
@@ -475,7 +478,8 @@
     </div>
   </div>
   <!-- Notes Modal -->
-  <div x-show="showNotes" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+  <div x-show="showNotes" x-cloak role="dialog" aria-modal="true" aria-label="Edit Notes"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showNotes = false; notesTarget = null" @keydown.escape.window="if (showNotes) { showNotes = false; notesTarget = null }">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop>
       <h2 class="text-xl font-bold mb-4">Edit Notes</h2>
@@ -488,7 +492,8 @@
     </div>
   </div>
   <!-- Compare Modal -->
-  <div x-show="showCompare" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+  <div x-show="showCompare" x-cloak role="dialog" aria-modal="true" aria-label="Compare PDFs"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
     @click.self="showCompare = false" @keydown.escape.window="if (showCompare) showCompare = false" @keydown.left.window="if (showCompare) comparePrev()" @keydown.right.window="if (showCompare) compareNext()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 p-6 fade-in max-h-[90vh] flex flex-col" @click.stop>
       <div class="flex items-center justify-between mb-4">
@@ -563,7 +568,8 @@
   </div>
 
   <!-- Keyboard shortcuts help -->
-  <div x-show="showShortcuts" x-cloak @click.self="showShortcuts = false" @keydown.escape.window="showShortcuts = false"
+  <div x-show="showShortcuts" x-cloak role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts"
+    @click.self="showShortcuts = false" @keydown.escape.window="showShortcuts = false"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" @click.stop>
       <div class="flex items-center justify-between mb-5">
