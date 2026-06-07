@@ -170,6 +170,13 @@ class Storage:
         rows = self._conn.execute("SELECT * FROM pdfs ORDER BY upload_time DESC").fetchall()
         return [_row_to_pdf(r) for r in rows]
 
+    def get_pdfs_by_ids(self, pdf_ids: list[str]) -> list[PdfRecord]:
+        if not pdf_ids:
+            return []
+        placeholders = ",".join("?" for _ in pdf_ids)
+        rows = self._conn.execute(f"SELECT * FROM pdfs WHERE id IN ({placeholders})", pdf_ids).fetchall()
+        return [_row_to_pdf(r) for r in rows]
+
     def list_pdfs_with_stats(self) -> list[PdfWithStats]:
         rows = self._conn.execute("""
             SELECT p.*,

@@ -104,7 +104,7 @@
   </div>
   <div class="mb-6 flex gap-2" role="tablist">
     <template x-for="tab in ['All', 'Uncompressed', 'Compressed']" :key="tab">
-      <button @click="filterTab = tab" role="tab" :id="'tab-' + tab.toLowerCase()" :aria-selected="filterTab === tab" :aria-controls="filterTab === tab ? 'tabpanel' : null"
+      <button @click="filterTab = tab; if (selectMode) selectedPdfs = {}" role="tab" :id="'tab-' + tab.toLowerCase()" :aria-selected="filterTab === tab" :aria-controls="filterTab === tab ? 'tabpanel' : null"
         class="px-3 py-1.5 rounded-lg text-sm font-medium transition"
         :class="filterTab === tab ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
         x-text="tab + (tab === 'Uncompressed' ? ' (' + uncompressedCount + ')' : tab === 'Compressed' ? ' (' + compressedCount + ')' : '')"></button>
