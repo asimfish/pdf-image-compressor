@@ -57,6 +57,11 @@ function app() {
       if (extras) Object.entries(extras).forEach(([k, v]) => fd.append(k, v));
       return fd;
     },
+    _evictPdfCache(pdfId) {
+      delete this._pdfMeta[pdfId];
+      delete this.versionCache[pdfId];
+      delete this.versionLoading[pdfId];
+    },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
       return /^\s*\d+(\.\d+)?\s*[kmgt]?\s*b?\s*$/i.test(v) ? '' : 'Invalid target size (e.g. 500KB, 500 KB, 2MB)';
@@ -145,6 +150,7 @@ function app() {
         if (!res.ok) throw new Error('Batch delete failed');
         const data = await res.json();
         this.showToast(`Deleted ${data.deleted} PDFs`);
+        ids.forEach(id => this._evictPdfCache(id));
         if (ids.includes(this.expanded)) this.expanded = null;
         if (this.showCompare && ids.includes(this.comparePdf?.id)) this.showCompare = false;
         this.selectedPdfs = {};
@@ -340,6 +346,7 @@ function app() {
         if (!res.ok) throw new Error('Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
         if (this.showCompare && this.comparePdf?.id === pdf.id) this.showCompare = false;
+        this._evictPdfCache(pdf.id);
         this.showToast('Deleted');
         this.loadLibrary();
       } catch (e) {
