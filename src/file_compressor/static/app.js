@@ -234,8 +234,8 @@ function app() {
       e.preventDefault();
       this._globalDragCounter = 0;
       this.globalDragActive = false;
-      const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (!files.length) { this.showToast('Only PDF files are supported', 'error'); return; }
+      const files = [...e.dataTransfer.files];
+      if (!files.length) return;
       this.showUpload = true;
       this._selectFiles(files);
     },
