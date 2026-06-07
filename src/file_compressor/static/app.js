@@ -491,7 +491,6 @@ function app() {
       window.addEventListener('touchmove', this._onMouseMove, { passive: false });
       window.addEventListener('touchend', this._onMouseUp);
     },
-    _onCompareMouseMove(e) { if (this._compareDragging) this._updateCompareSlider(e); },
     _updateCompareSlider(e) {
       const container = this.$refs.compareContainer;
       if (!container) return;
@@ -507,6 +506,15 @@ function app() {
     fmtSaving(r) {
       if (r == null || r === 0) return '';
       return r > 0 ? 'saved ' + (r * 100).toFixed(0) + '%' : '+' + (Math.abs(r) * 100).toFixed(0) + '% larger';
+    },
+    fmtRatio(r) {
+      if (r == null || r === 0) return 'No change';
+      return r > 0 ? '-' + (r * 100).toFixed(1) + '%' : '+' + (Math.abs(r) * 100).toFixed(1) + '% larger';
+    },
+    batchSavedText() {
+      const ok = (this.batchResults?.results || []).filter(r => r.status === 'ok');
+      const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
+      return saved > 0 ? 'Saved ' + this.fmtSize(saved) + ' total' : 'No size reduction';
     },
     bestVersion(pdf) {
       const versions = this.versionCache[pdf.id] || [];
