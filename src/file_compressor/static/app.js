@@ -248,7 +248,7 @@ function app() {
       const parts = [];
       const skipped = [];
       if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
-      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} too large`);
+      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} over 500MB limit`);
       if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
       if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
       if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
@@ -371,12 +371,13 @@ function app() {
     reuseSettings(pdf, version) {
       this.compressTarget = pdf;
       this.compressResult = null;
+      const d = this._defaults({});
       this.compressForm = {
-        quality: version.quality,
+        quality: version.quality ?? d.quality,
         target_size: version.target_bytes ? this.fmtSize(version.target_bytes) : '',
-        pdf_mode: version.pdf_mode,
-        pdf_dpi: version.pdf_dpi,
-        pdf_grayscale: version.pdf_grayscale,
+        pdf_mode: version.pdf_mode ?? d.pdf_mode,
+        pdf_dpi: version.pdf_dpi ?? d.pdf_dpi,
+        pdf_grayscale: version.pdf_grayscale ?? false,
         strip_metadata: version.strip_metadata !== false,
         label: '',
       };
@@ -536,6 +537,7 @@ function app() {
       return r > 0 ? '-' + (r * 100).toFixed(1) + '%' : '+' + (Math.abs(r) * 100).toFixed(1) + '% larger';
     },
     fmtSettings(v) {
+      if (v.quality == null) return '';
       return 'Q' + v.quality + ' ' + v.pdf_mode + ' ' + v.pdf_dpi + 'dpi' + (v.pdf_grayscale ? ' gray' : '');
     },
     fmtTarget(bytes) {

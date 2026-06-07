@@ -226,6 +226,7 @@ class Storage:
 
     def delete_pdf(self, pdf_id: str) -> bool:
         with self._lock:
+            self._conn.execute("BEGIN")
             vrows = self._conn.execute(
                 "SELECT file_path FROM versions WHERE pdf_id=?", (pdf_id,)
             ).fetchall()
@@ -233,7 +234,6 @@ class Storage:
             pdf_path = self.get_pdf_path(pdf_id)
             if pdf_path:
                 file_paths.append(pdf_path)
-            self._conn.execute("BEGIN")
             try:
                 cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
                 deleted = cur.rowcount > 0
@@ -248,6 +248,7 @@ class Storage:
         if not pdf_ids:
             return 0
         with self._lock:
+            self._conn.execute("BEGIN")
             placeholders = ",".join("?" for _ in pdf_ids)
             rows = self._conn.execute(
                 f"SELECT file_path FROM versions WHERE pdf_id IN ({placeholders})", pdf_ids
@@ -257,7 +258,6 @@ class Storage:
                 f"SELECT file_path FROM pdfs WHERE id IN ({placeholders})", pdf_ids
             ).fetchall()
             file_paths.extend(Path(r["file_path"]) for r in pdf_rows)
-            self._conn.execute("BEGIN")
             try:
                 cur = self._conn.execute(
                     f"DELETE FROM pdfs WHERE id IN ({placeholders})", pdf_ids
