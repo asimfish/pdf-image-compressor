@@ -246,9 +246,12 @@ def api_batch_compress(
         if len(id_list) > 1000:
             raise HTTPException(422, detail="Too many PDF IDs (max 1000)")
         pdfs = storage.get_pdfs_by_ids(id_list)
+        found_ids = {p.id for p in pdfs}
+        not_found = [{"pdf_id": pid, "filename": "", "status": "not_found"} for pid in id_list if pid not in found_ids]
     else:
         pdfs = storage.list_pdfs()
-    if not pdfs:
+        not_found = []
+    if not pdfs and not not_found:
         return {"compressed": 0, "results": []}
 
     if not label:
@@ -273,7 +276,7 @@ def api_batch_compress(
             logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "Compression failed"})
 
-    return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results}
+    return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results + not_found}
 
 
 @app.put("/api/pdfs/{pdf_id}/notes")

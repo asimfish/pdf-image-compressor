@@ -143,7 +143,9 @@ def test_batch_compress_with_nonexistent_pdf_ids(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     assert data["compressed"] == 0
-    assert data["results"] == []
+    not_found = [r for r in data["results"] if r["status"] == "not_found"]
+    assert len(not_found) == 2
+    assert {r["pdf_id"] for r in not_found} == {"nonexistent1", "nonexistent2"}
 
 
 
