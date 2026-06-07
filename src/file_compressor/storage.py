@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_versions_pdf ON versions(pdf_id);
+CREATE INDEX IF NOT EXISTS idx_versions_best ON versions(pdf_id, file_size, created_at);
 """
 
 
