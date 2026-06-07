@@ -183,8 +183,10 @@ function app() {
       if (skipped.length) this.showToast(`Skipped ${skipped.join(', ')} file(s)${!valid.length ? ' — none to upload' : ''}`, valid.length ? 'success' : 'error');
       const existing = new Set(this.uploadFiles.map(f => f.name));
       const newFiles = valid.filter(f => !existing.has(f.name));
+      const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
       if (newFiles.length > 0 && !skipped.length) this.showToast(`Added ${newFiles.length} PDF(s) to upload queue`);
+      else if (dupes > 0 && newFiles.length === 0 && !skipped.length) this.showToast(`${dupes} file(s) already in queue`, 'error');
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
