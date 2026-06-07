@@ -55,11 +55,17 @@ function app() {
     // Toast
     toast: '',
     toastType: 'success',
-    _defaults(extra = {}) { return { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, ...extra }; },
+    _defaults(extra = {}) {
+      return { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, ...extra };
+    },
     _buildCompressFd(form, extras) {
       const fd = new FormData();
-      for (const [k, v] of Object.entries(form)) { if (v !== '' && v != null) fd.append(k, v); }
-      if (extras) Object.entries(extras).forEach(([k, v]) => fd.append(k, v));
+      for (const [k, v] of Object.entries(form)) {
+        if (v !== '' && v != null) fd.append(k, v);
+      }
+      if (extras) {
+        for (const [k, v] of Object.entries(extras)) fd.append(k, v);
+      }
       return fd;
     },
     _evictPdfCache(pdfId) {
@@ -430,12 +436,32 @@ function app() {
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
     _resetCompareLoading() {
-      this.compareLoading = true; this.compareError = ''; this._compareLoaded = 0; this._compareGen++;
+      this.compareLoading = true;
+      this.compareError = '';
+      this._compareLoaded = 0;
+      this._compareGen++;
       const gen = this._compareGen;
-      setTimeout(() => { if (gen === this._compareGen && this.compareLoading) { this.compareLoading = false; this.compareError = 'Loading timed out — try again'; } }, 15000);
+      setTimeout(() => {
+        if (gen === this._compareGen && this.compareLoading) {
+          this.compareLoading = false;
+          this.compareError = 'Loading timed out — try again';
+        }
+      }, 15000);
     },
-    _onCompareLoad(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this.compareLoading) this.compareError = ''; if (this._compareLoaded >= 2 && this.compareLoading) this.compareLoading = false; },
-    _onCompareError(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this._compareLoaded >= 2 && this.compareLoading) { this.compareLoading = false; this.compareError = 'Failed to load preview'; } },
+    _onCompareLoad(gen) {
+      if (gen !== this._compareGen) return;
+      this._compareLoaded++;
+      if (this.compareLoading) this.compareError = '';
+      if (this._compareLoaded >= 2 && this.compareLoading) this.compareLoading = false;
+    },
+    _onCompareError(gen) {
+      if (gen !== this._compareGen) return;
+      this._compareLoaded++;
+      if (this._compareLoaded >= 2 && this.compareLoading) {
+        this.compareLoading = false;
+        this.compareError = 'Failed to load preview';
+      }
+    },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
     },
@@ -443,8 +469,16 @@ function app() {
       return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}`;
     },
     _cleanupCompareListeners() {
-      if (this._onMouseMove) { window.removeEventListener('mousemove', this._onMouseMove); window.removeEventListener('touchmove', this._onMouseMove); this._onMouseMove = null; }
-      if (this._onMouseUp) { window.removeEventListener('mouseup', this._onMouseUp); window.removeEventListener('touchend', this._onMouseUp); this._onMouseUp = null; }
+      if (this._onMouseMove) {
+        window.removeEventListener('mousemove', this._onMouseMove);
+        window.removeEventListener('touchmove', this._onMouseMove);
+        this._onMouseMove = null;
+      }
+      if (this._onMouseUp) {
+        window.removeEventListener('mouseup', this._onMouseUp);
+        window.removeEventListener('touchend', this._onMouseUp);
+        this._onMouseUp = null;
+      }
     },
     _onCompareMouseDown(e) {
       this._cleanupCompareListeners();
@@ -520,8 +554,11 @@ function app() {
     },
     _plural(n, singular, plural) { return n + ' ' + (n === 1 ? singular : (plural || singular + 's')); },
     showToast(msg, type = 'success') {
-      this.toast = msg; this.toastType = type;
-      setTimeout(() => { if (this.toast === msg) this.toast = ''; }, type === 'error' ? 8000 : 3000);
+      this.toast = msg;
+      this.toastType = type;
+      setTimeout(() => {
+        if (this.toast === msg) this.toast = '';
+      }, type === 'error' ? 8000 : 3000);
     },
   };
 }
