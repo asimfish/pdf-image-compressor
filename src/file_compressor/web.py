@@ -181,11 +181,11 @@ def api_download_pdf(pdf_id: str) -> FileResponse:
         raise HTTPException(404, detail="PDF not found")
     path = storage.get_pdf_path(pdf_id)
     if not path or not path.exists():
-        raise HTTPException(404, detail="File not found")
+        raise HTTPException(404, detail="Original file missing")
     try:
         return FileResponse(path, filename=pdf.filename, media_type="application/pdf")
     except FileNotFoundError:
-        raise HTTPException(404, detail="File not found")
+        raise HTTPException(404, detail="Original file missing")
 
 
 @app.get("/api/pdfs/{pdf_id}/versions")
@@ -332,7 +332,7 @@ def api_download_version(version_id: str) -> FileResponse:
         raise HTTPException(404, detail="Version not found")
     path = storage.get_version_path(version_id)
     if not path or not path.exists():
-        raise HTTPException(404, detail="Version file not found")
+        raise HTTPException(404, detail="Version file missing")
     pdf = storage.get_pdf(ver.pdf_id)
     stem = Path(pdf.filename).stem if pdf else "version"
     label = _sanitize_label(ver.label) if ver.label else ""
@@ -340,7 +340,7 @@ def api_download_version(version_id: str) -> FileResponse:
     try:
         return FileResponse(path, filename=download_name, media_type="application/pdf")
     except FileNotFoundError:
-        raise HTTPException(404, detail="Version file not found")
+        raise HTTPException(404, detail="Version file missing")
 
 
 @app.delete("/api/versions/{version_id}")
@@ -372,13 +372,13 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
     else:
         raise HTTPException(400, detail="pdf_type must be 'original' or 'version'")
     if not path:
-        raise HTTPException(404, detail="File not found")
+        raise HTTPException(404, detail="Original file missing" if pdf_type == "original" else "Version file missing")
     if page < 0 or page >= total:
         raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
     try:
         png_data = render_page(path, page)
     except FileNotFoundError:
-        raise HTTPException(404, detail="File not found")
+        raise HTTPException(404, detail="Original file missing" if pdf_type == "original" else "Version file missing")
     except Exception as exc:
         logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
         raise HTTPException(500, detail="Preview render failed")
