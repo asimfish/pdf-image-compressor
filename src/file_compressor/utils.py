@@ -45,6 +45,7 @@ def format_size(size: Optional[int]) -> str:
                 continue
             return text
         value /= 1000
+    return f"{value:.1f} PB"
 
 
 def is_image(path: Path) -> bool:

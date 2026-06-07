@@ -205,10 +205,12 @@ async def api_compress_pdf(
     if not pdf:
         raise HTTPException(404, detail="PDF not found")
     path = storage.get_pdf_path(pdf_id)
-    if not path or not path.exists():
+    if not path:
         raise HTTPException(404, detail="Original file missing")
-
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        raise HTTPException(404, detail="Original file missing")
     target_bytes = parse_size(target_size)
     if not label:
         label = _auto_label(target_bytes, quality, pdf_mode)
@@ -253,11 +255,15 @@ async def api_batch_compress(
     results = []
     for pdf in pdfs:
         path = storage.get_pdf_path(pdf.id)
-        if not path or not path.exists():
+        if not path:
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
             continue
         try:
             data = path.read_bytes()
+        except FileNotFoundError:
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
+            continue
+        try:
             ver = _compress_and_store(storage, pdf.id, data, quality, target_bytes, pdf_mode, pdf_dpi, pdf_grayscale, strip_metadata, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
@@ -340,12 +346,14 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         total = pdf.page_count if pdf else 1
     else:
         raise HTTPException(400, detail="pdf_type must be 'original' or 'version'")
-    if not path or not path.exists():
+    if not path:
         raise HTTPException(404, detail="File not found")
     if page < 0 or page >= total:
         raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
     try:
         png_data = render_page(path, page)
+    except FileNotFoundError:
+        raise HTTPException(404, detail="File not found")
     except Exception as exc:
         logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
         raise HTTPException(500, detail="Preview render failed")
