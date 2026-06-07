@@ -32,9 +32,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
     exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
 
+    normalized = _normalize_mode(raw, suffix)
     for edge in edges:
+        resized = _resize(normalized, edge)
         for quality in qualities:
-            data = _render_loaded(raw, suffix, quality, edge, exif_bytes)
+            data = _render(resized, suffix, quality, exif_bytes)
             size = len(data)
             if best_size is None or size < best_size:
                 best_data = data
@@ -52,9 +54,7 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
 
 
 
-def _render_loaded(image: Image.Image, suffix: str, quality: int, max_edge: Optional[int], exif_bytes: Optional[bytes] = None) -> bytes:
-    image = _resize(image, max_edge)
-    image = _normalize_mode(image, suffix)
+def _render(image: Image.Image, suffix: str, quality: int, exif_bytes: Optional[bytes] = None) -> bytes:
     buffer = BytesIO()
     _save(image, buffer, suffix, quality, exif_bytes)
     return buffer.getvalue()
