@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import threading
 from dataclasses import asdict
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -23,8 +24,10 @@ from .pdfs import render_page
 from .storage import Storage, VersionRecord
 from .utils import clamp_quality, format_size, parse_size
 
+_STATIC = Path(__file__).parent / "static"
+
 app = FastAPI(title="PDF Manager")
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 _VALID_MODES = {"auto", "optimize", "raster"}
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
@@ -45,7 +48,6 @@ def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_
         except ValueError:
             raise HTTPException(422, detail="Invalid target_size format")
 
-_STATIC = Path(__file__).parent / "static"
 _storage: Optional[Storage] = None
 _storage_lock = threading.Lock()
 
@@ -70,6 +72,8 @@ def _sanitize_label(label: str) -> str:
 def init_storage(data_dir: Path) -> None:
     global _storage
     with _storage_lock:
+        if _storage is not None:
+            _storage.close()
         _storage = Storage(data_dir)
 
 
@@ -258,6 +262,7 @@ async def api_batch_compress(
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
+            logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "Compression failed"})
 
     return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results}
@@ -344,7 +349,6 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
     except Exception as exc:
         logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
         raise HTTPException(500, detail="Preview render failed")
-    from io import BytesIO
 
     return StreamingResponse(BytesIO(png_data), media_type="image/png")
 

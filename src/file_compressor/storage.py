@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 import uuid
@@ -7,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -87,9 +90,15 @@ class Storage:
     def close(self) -> None:
         self._conn.close()
 
-    _EXPECTED_COLUMNS: list[tuple[str, str]] = [
+    def __enter__(self) -> Storage:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    _EXPECTED_COLUMNS: tuple[tuple[str, str], ...] = (
         ("versions", "strip_metadata INTEGER NOT NULL DEFAULT 1"),
-    ]
+    )
 
     def _migrate(self) -> None:
         """Add missing columns for backward compatibility with older databases."""
@@ -184,8 +193,8 @@ class Storage:
             try:
                 if p.exists():
                     p.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("Failed to remove file %s: %s", p, exc)
         return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
@@ -215,8 +224,8 @@ class Storage:
             try:
                 if p.exists():
                     p.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("Failed to remove file %s: %s", p, exc)
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:
@@ -288,8 +297,8 @@ class Storage:
             try:
                 if vpath.exists():
                     vpath.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("Failed to remove file %s: %s", vpath, exc)
         return deleted
 
     def stats(self) -> dict:
