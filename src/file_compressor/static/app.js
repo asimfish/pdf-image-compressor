@@ -209,6 +209,7 @@ function app() {
     _onGlobalDragOver(e) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
+      this._globalDragCounter = 1;
     },
     _onGlobalDragLeave(e) {
       this._globalDragCounter--;
@@ -223,12 +224,8 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (!files.length) { this.showToast('Only PDF files are supported', 'error'); return; }
-      if (this.showUpload) {
-        this._selectFiles(files);
-      } else {
-        this.uploadFiles = files;
-        this.showUpload = true;
-      }
+      this.showUpload = true;
+      this._selectFiles(files);
     },
     handleFiles(files) {
       this._selectFiles([...files]);

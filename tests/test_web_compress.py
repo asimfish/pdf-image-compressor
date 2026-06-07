@@ -171,8 +171,7 @@ def test_batch_delete(tmp_path: Path):
 def test_batch_delete_empty(tmp_path: Path):
     client = _client(tmp_path)
     resp = client.post("/api/pdfs/batch-delete", json={"pdf_ids": []})
-    assert resp.status_code == 200
-    assert resp.json()["deleted"] == 0
+    assert resp.status_code == 422
 
 
 # ── Validation error tests ──

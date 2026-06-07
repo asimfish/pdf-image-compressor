@@ -314,7 +314,7 @@ def api_delete_pdf(pdf_id: str) -> dict:
 
 
 class BatchDeleteRequest(BaseModel):
-    pdf_ids: list[str] = Field(..., max_length=1000)
+    pdf_ids: list[str] = Field(..., min_length=1, max_length=1000)
 
 
 @app.post("/api/pdfs/batch-delete")
