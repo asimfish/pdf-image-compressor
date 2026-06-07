@@ -138,14 +138,14 @@ async def api_upload_pdf(
     if not filename.lower().endswith(".pdf"):
         raise HTTPException(400, detail="Only PDF files are supported")
 
-    data = await file.read()
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(413, detail=f"File too large ({format_size(len(data))}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
+    data = _read_upload_with_limit(file)
     try:
         import fitz
         doc = fitz.open(stream=data, filetype="pdf")
         page_count = len(doc)
         doc.close()
+    except ImportError:
+        raise HTTPException(500, detail="PDF processing unavailable (PyMuPDF not installed)")
     except Exception:
         raise HTTPException(400, detail="Invalid PDF file")
     if page_count == 0:
@@ -356,6 +356,21 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
 _COPY_CHUNK = 1024 * 1024  # 1 MB
 
 
+def _read_upload_with_limit(file: UploadFile) -> bytes:
+    """Read an upload file in chunks, enforcing size limit before full allocation."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = file.file.read(_COPY_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > _MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail=f"File too large ({format_size(total)}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
     for item in files:
         safe_name = Path(item.filename or "uploaded.bin").name
@@ -389,6 +404,10 @@ async def compress_upload(
     archive: Optional[str] = Form(None),
 ) -> FileResponse:
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    if archive is not None and archive != "zip":
+        raise HTTPException(422, detail="archive must be None or 'zip'")
+    if max_edge is not None and (max_edge < 100 or max_edge > 10000):
+        raise HTTPException(422, detail="max_edge must be between 100 and 10000")
     temp = tempfile.mkdtemp(prefix="file_compressor_web_")
     temp_path = Path(temp)
     upload_dir = temp_path / "uploads"
@@ -401,7 +420,12 @@ async def compress_upload(
         raise
     config = _build_legacy_config(quality, max_edge, target_size, pdf_mode, pdf_dpi, to_webp, pdf_grayscale, strip_metadata, archive, output_dir)
     try:
-        source = upload_dir if len(files) > 1 or archive == "zip" else next(upload_dir.iterdir())
+        if len(files) > 1 or archive == "zip":
+            source = upload_dir
+        else:
+            source = next(upload_dir.iterdir(), None)
+            if source is None:
+                raise HTTPException(400, detail="No files uploaded")
         output = output_dir / "compressed.zip" if archive == "zip" else None
         summary = compress_path(source, config, output)
         result = summary.archive or next((item for item in summary.results if item.output is not None), None)
