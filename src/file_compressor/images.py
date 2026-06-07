@@ -114,6 +114,5 @@ def _edge_candidates(max_edge: Optional[int]) -> list[Optional[int]]:
     if max_edge is not None and max_edge > 0:
         values = [max_edge, int(max_edge * 0.9), int(max_edge * 0.8), int(max_edge * 0.7), int(max_edge * 0.6)]
         clamped = [max(320, value) for value in values]
-        seen: set[int] = set()
-        return [v for v in clamped if v not in seen and not seen.add(v)]
+        return list(dict.fromkeys(clamped))
     return [None, 2400, 2000, 1800, 1600, 1400, 1200, 1000, 800, 640]
