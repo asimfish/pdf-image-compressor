@@ -61,8 +61,8 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     closest_path: Optional[Path] = None
     closest_size: Optional[int] = None
     best_diff: Optional[int] = None
-    # Number of high-DPI entries before quality starts decreasing monotonically
-    _high_dpi_count = len(_HIGH_DPI_OFFSETS) + len(_MID_DPI_ENTRIES) + 1
+    # Number of entries before quality starts decreasing monotonically
+    _high_dpi_count = len(_HIGH_DPI_OFFSETS) + len(_MID_DPI_ENTRIES) + 1 + len(_MID_QUALITY_ENTRIES)
 
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)
@@ -147,6 +147,12 @@ _HIGH_DPI_OFFSETS: list[tuple[int, int]] = [
 # Fixed-DPI entries that use start_quality (no offset)
 _MID_DPI_ENTRIES: list[int] = [200, 180, 160, 150]
 
+# Mid-range entries: (dpi_cap, quality_cap) — dpi and quality are clamped to these caps
+_MID_QUALITY_ENTRIES: list[tuple[int, int]] = [
+    (140, 80), (140, 78), (135, 75), (130, 72),
+    (125, 70), (120, 68), (120, 66),
+]
+
 
 def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     if config.target_bytes is None:
@@ -159,13 +165,8 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     for dpi in _MID_DPI_ENTRIES:
         base.append((dpi, start_quality))
     base.append((start_dpi, start_quality))
-    base.append((min(start_dpi, 140), min(start_quality, 80)))
-    base.append((min(start_dpi, 140), min(start_quality, 78)))
-    base.append((min(start_dpi, 135), min(start_quality, 75)))
-    base.append((min(start_dpi, 130), min(start_quality, 72)))
-    base.append((min(start_dpi, 125), min(start_quality, 70)))
-    base.append((min(start_dpi, 120), min(start_quality, 68)))
-    base.append((min(start_dpi, 120), min(start_quality, 66)))
+    for dpi_cap, quality_cap in _MID_QUALITY_ENTRIES:
+        base.append((min(start_dpi, dpi_cap), min(start_quality, quality_cap)))
     base.extend(_TAIL_CANDIDATES)
     seen: set[tuple[int, int]] = set()
     values: list[tuple[int, int]] = []
