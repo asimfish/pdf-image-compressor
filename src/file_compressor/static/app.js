@@ -430,8 +430,8 @@ function app() {
       const gen = this._compareGen;
       setTimeout(() => { if (gen === this._compareGen && this.compareLoading) { this.compareLoading = false; this.compareError = 'Loading timed out — try again'; } }, 15000);
     },
-    _onCompareLoad(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; this.compareError = ''; if (this._compareLoaded >= 2) this.compareLoading = false; },
-    _onCompareError(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this._compareLoaded >= 2) { this.compareLoading = false; this.compareError = 'Failed to load preview'; } },
+    _onCompareLoad(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this.compareLoading) this.compareError = ''; if (this._compareLoaded >= 2 && this.compareLoading) this.compareLoading = false; },
+    _onCompareError(gen) { if (gen !== this._compareGen) return; this._compareLoaded++; if (this._compareLoaded >= 2 && this.compareLoading) { this.compareLoading = false; this.compareError = 'Failed to load preview'; } },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
     },
