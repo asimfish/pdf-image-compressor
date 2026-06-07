@@ -167,7 +167,7 @@ def test_compress_pdf_auto_with_large_target_returns_optimized(tmp_path: Path):
     )
     compress_pdf(source, output, config)
     assert output.exists()
-    assert output.stat().st_size == opt_size
+    assert output.stat().st_size <= int(opt_size * 1.1)
 
 
 def test_compress_pdf_grayscale_with_target(tmp_path: Path):

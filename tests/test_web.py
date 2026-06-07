@@ -923,6 +923,21 @@ def test_legacy_compress_strip_metadata_false(tmp_path: Path):
     assert len(resp.content) > 0
 
 
+def test_legacy_compress_rejects_file_too_large(tmp_path: Path):
+    client = _client(tmp_path)
+    from unittest.mock import patch
+
+    big_data = b"%PDF-1.4 fake" + b"\x00" * 200
+    with patch("file_compressor.web._MAX_UPLOAD_BYTES", 50):
+        resp = client.post(
+            "/compress",
+            files=[("files", ("big.pdf", big_data, "application/pdf"))],
+            data={"quality": "70"},
+        )
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["detail"].lower()
+
+
 # ── Integration test ──
 
 def test_full_upload_compress_download_flow(tmp_path: Path):
