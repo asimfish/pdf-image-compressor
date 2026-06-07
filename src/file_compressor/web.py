@@ -272,7 +272,7 @@ async def api_batch_compress(
                             "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
             logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "Compression failed"})
+            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": f"Compression failed: {exc}"})
 
     return {"compressed": len([r for r in results if r["status"] == "ok"]), "results": results}
 

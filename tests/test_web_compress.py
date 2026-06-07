@@ -398,7 +398,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     errors = [r for r in data["results"] if r["status"] == "error"]
-    assert any(e["error"] == "Compression failed" for e in errors)
+    assert any(e["error"].startswith("Compression failed:") for e in errors)
 
 
 
