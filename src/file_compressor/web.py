@@ -20,7 +20,7 @@ from starlette.background import BackgroundTask
 
 from .core import compress_path
 from .models import CompressionConfig
-from .pdfs import render_page
+from .pdfs import _fitz, render_page
 from .storage import Storage, VersionParams, VersionRecord
 from .utils import clamp_quality, format_size, parse_size
 
@@ -140,12 +140,13 @@ async def api_upload_pdf(
 
     data = _read_upload_with_limit(file)
     try:
-        import fitz
+        fitz = _fitz()
+    except RuntimeError:
+        raise HTTPException(500, detail="PDF processing unavailable (PyMuPDF not installed)")
+    try:
         doc = fitz.open(stream=data, filetype="pdf")
         page_count = len(doc)
         doc.close()
-    except ImportError:
-        raise HTTPException(500, detail="PDF processing unavailable (PyMuPDF not installed)")
     except Exception:
         raise HTTPException(400, detail="Invalid PDF file")
     if page_count == 0:
