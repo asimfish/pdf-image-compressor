@@ -106,6 +106,7 @@ function app() {
       if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
+      if (num > 0 && num < 1) return 'Target size must be at least 1 byte';
       return '';
     },
     _validateForm(form) {
@@ -387,12 +388,18 @@ function app() {
       this.uploadFiles = [];
     },
     batchCompress() {
-      if (this.filteredPdfs.length > 50) {
-        this.showToast(`Select at most 50 PDFs for batch compress (currently ${this.filteredPdfs.length})`, 'error');
+      const selected = this.selectMode ? this.pdfs.filter(p => this.selectedPdfs[p.id]) : [];
+      const targets = selected.length > 0 ? selected : this.filteredPdfs;
+      if (targets.length > 50) {
+        this.showToast(`Select at most 50 PDFs for batch compress (currently ${targets.length})`, 'error');
+        return;
+      }
+      if (targets.length === 0) {
+        this.showToast('No PDFs to compress', 'error');
         return;
       }
       this.batchForm = this._defaults({ label: '' });
-      this.batchTargetPdfs = this.filteredPdfs;
+      this.batchTargetPdfs = targets;
       this._batchTotalAtOpen = this.pdfs.length;
       this.batchResults = null;
       this.showBatchCompress = true;
