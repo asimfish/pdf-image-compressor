@@ -194,6 +194,14 @@ _render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
 
 
+def _evict_oldest_result() -> None:
+    """Evict the oldest completed (non-Event) cache entry. Caller must hold _render_cache_lock."""
+    for k in list(_render_cache):
+        if not isinstance(_render_cache[k], threading.Event):
+            del _render_cache[k]
+            return
+
+
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
     key = (str(source), page_index, dpi)
@@ -205,6 +213,8 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         elif cached is not None:
             return cached  # type: ignore[return-value]
         else:
+            if len(_render_cache) >= _RENDER_CACHE_MAX:
+                _evict_oldest_result()
             _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
@@ -225,7 +235,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             doc.close()
         with _render_cache_lock:
             if len(_render_cache) >= _RENDER_CACHE_MAX:
-                _render_cache.pop(next(iter(_render_cache)))
+                _evict_oldest_result()
             event = _render_cache[key]
             _render_cache[key] = result
             event.set()  # type: ignore[union-attr]
