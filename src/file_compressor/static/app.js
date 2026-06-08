@@ -493,6 +493,7 @@ function app() {
       if (this.compressTarget) this.compressing = false;
     },
     closeCompress() {
+      this.compressing = false;
       this.compressResult = null;
       this.showCompress = false;
       this.compressTarget = null;
