@@ -255,7 +255,9 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             doc.close()
         with _render_cache_lock:
             _try_make_cache_room()
-            event = _render_cache[key]
+            event = _render_cache.pop(key, None)
+            if event is None:
+                return result  # type: ignore[return-value]
             _render_cache[key] = result
             event._render_result = result  # type: ignore[attr-defined]
             event.set()
