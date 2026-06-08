@@ -130,6 +130,9 @@ function app() {
       return fids.size > 0 && fids.size === sids.size && [...fids].every(id => sids.has(id));
     },
     get filteredPdfs() {
+      const key = `${this.pdfs.length}|${this.search}|${this.filterTab}|${this.sortBy}`;
+      if (this._filteredKey === key && this._filteredCache) return this._filteredCache;
+      this._filteredKey = key;
       let list = this.pdfs;
       if (this.search.trim()) {
         const q = this.search.toLowerCase();
@@ -147,6 +150,7 @@ function app() {
         case 'savings': sorted.sort((a, b) => this.bestSaving(b) - this.bestSaving(a)); break;
         default: sorted.sort((a, b) => b.upload_time.localeCompare(a.upload_time)); break;
       }
+      this._filteredCache = sorted;
       return sorted;
     },
     get uncompressedCount() {
@@ -164,8 +168,11 @@ function app() {
         const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         if (gen !== this._libraryGen) return;
-        this.pdfs = await pdfsRes.json();
-        this._pdfMeta = {};
+        const newPdfs = await pdfsRes.json();
+        const oldIds = new Set(this.pdfs.map(p => p.id));
+        const changed = newPdfs.length !== this.pdfs.length || newPdfs.some(p => !oldIds.has(p.id));
+        this.pdfs = newPdfs;
+        if (changed) this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
         fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
