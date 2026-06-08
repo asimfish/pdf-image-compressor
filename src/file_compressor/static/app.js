@@ -21,6 +21,7 @@ function app() {
     _versionGen: {},
     versionLoading: {},
     _pdfMeta: {},
+    _libraryGen: 0,
     stats: null,
     _maxUploadBytes: 500 * 1024 * 1024,
     search: '',
@@ -154,22 +155,27 @@ function app() {
       return this.pdfs.filter(p => (p.version_count || 0) > 0).length;
     },
     async loadLibrary() {
+      const gen = ++this._libraryGen;
       const isInitial = !this._libraryLoaded;
       this.loading = isInitial;
       this.apiError = false;
       try {
         const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
+        if (gen !== this._libraryGen) return;
         this.pdfs = await pdfsRes.json();
         this._pdfMeta = {};
-        fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
-        fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
+        fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
+        fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
+        if (gen !== this._libraryGen) return;
         this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
       }
-      this._libraryLoaded = true;
-      this.loading = false;
+      if (gen === this._libraryGen) {
+        this._libraryLoaded = true;
+        this.loading = false;
+      }
     },
     async loadVersions(pdfId) {
       const gen = (this._versionGen[pdfId] || 0) + 1;
