@@ -404,7 +404,7 @@
     @keydown.enter.window="if (!['INPUT','TEXTAREA','SELECT'].includes($event.target.tagName) && showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop x-init="_trapFocus($el)">
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>
-      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + _plural(batchTargetPdfs.length, 'PDF') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
+      <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + _plural(batchTargetPdfs.length, 'PDF') + (batchTargetPdfs.length < _batchTotalAtOpen ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
         <span x-show="batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length > 0" class="block text-xs text-gray-400 mt-0.5" x-text="batchTargetPdfs.filter(p => (p.version_count || 0) === 0).length + ' new, ' + _plural(batchTargetPdfs.filter(p => (p.version_count || 0) > 0).length, 're-compression')"></span>
       </p>
       <div class="grid grid-cols-2 gap-3 mb-4">
@@ -475,7 +475,7 @@
       </div>
       <div class="flex gap-3 mt-5">
         <button @click="batchResults ? closeBatchResults() : cancelBatchCompress()" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition"><span x-text="batchResults ? 'Done' : 'Cancel'"></span> <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
-        <button x-show="!batchResults" @click="doBatchCompress()" x-effect="$el.disabled = batchCompressing || !!batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"><span x-text="batchTargetPdfs.length < pdfs.length ? 'Compress ' + _plural(batchTargetPdfs.length, 'PDF') : 'Compress All'"></span> <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
+        <button x-show="!batchResults" @click="doBatchCompress()" x-effect="$el.disabled = batchCompressing || !!batchCompressValidation" class="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"><span x-text="batchTargetPdfs.length < _batchTotalAtOpen ? 'Compress ' + _plural(batchTargetPdfs.length, 'PDF') : 'Compress All'"></span> <kbd class="ml-1 text-xs text-green-200">Enter</kbd></button>
       </div>
     </div>
   </div>

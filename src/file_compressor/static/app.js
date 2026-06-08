@@ -344,6 +344,7 @@ function app() {
     batchCompress() {
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
+      this._batchTotalAtOpen = this.pdfs.length;
       this.batchResults = null;
       this.showBatchCompress = true;
     },
