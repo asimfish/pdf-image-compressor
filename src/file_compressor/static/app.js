@@ -237,6 +237,10 @@ function app() {
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
       if (this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
+      if (!files.some(f => f.name.toLowerCase().endsWith('.pdf'))) {
+        this.showToast('Only PDF files are supported', 'error');
+        return;
+      }
       this.showUpload = true;
       this._selectFiles(files);
     },
@@ -513,10 +517,10 @@ function app() {
       if (this._compareLoaded >= 2) this.compareLoading = false;
     },
     compareOriginalUrl() {
-      return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}`;
+      return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     compareVersionUrl() {
-      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}`;
+      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     _cleanupCompareListeners() {
       if (this._onMouseMove) {
