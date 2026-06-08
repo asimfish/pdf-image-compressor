@@ -335,8 +335,10 @@ function app() {
         return;
       }
       if (this._uploadCancelled && succeeded > 0) {
-        const remaining = totalFiles - succeeded;
-        this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (cancelled, ${remaining} remaining)`, 'warning');
+        this.uploadFiles = this.uploadFiles.slice(succeeded);
+        this.uploading = false;
+        this.uploadProgress = 0;
+        this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (cancelled, ${this.uploadFiles.length} remaining)`, 'warning');
         this.loadLibrary();
         return;
       }
@@ -542,6 +544,7 @@ function app() {
       return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     _cleanupCompareListeners() {
+      this._compareDragging = false;
       if (this._onMouseMove) {
         window.removeEventListener('mousemove', this._onMouseMove);
         window.removeEventListener('touchmove', this._onMouseMove);
@@ -605,7 +608,7 @@ function app() {
       return versions.reduce((best, v) => (!best || v.file_size < best.file_size) ? v : best, null);
     },
     pdfMeta(pdf) {
-      const vc = (this.versionCache[pdf.id] || []).length;
+      const vc = this._versionGen[pdf.id] || 0;
       const cached = this._pdfMeta[pdf.id];
       if (cached && cached.ts === vc) return cached;
       const meta = { bv: this.bestVersion(pdf), saving: this.bestSaving(pdf), ts: vc };
