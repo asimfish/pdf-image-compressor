@@ -255,6 +255,9 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             doc.close()
         with _render_cache_lock:
             _try_make_cache_room()
+            existing = _render_cache.get(key)
+            if existing is not None and not isinstance(existing, threading.Event):
+                return existing  # type: ignore[return-value]
             event = _render_cache.pop(key, None)
             if event is None:
                 return result  # type: ignore[return-value]
@@ -276,6 +279,9 @@ def evict_render_cache(source: Path) -> None:
     prefix = str(source)
     with _render_cache_lock:
         for key in [k for k in _render_cache if k[0] == prefix]:
+            entry = _render_cache[key]
+            if isinstance(entry, threading.Event):
+                entry.set()
             del _render_cache[key]
 
 

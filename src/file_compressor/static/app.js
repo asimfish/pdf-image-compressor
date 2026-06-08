@@ -544,6 +544,9 @@ function app() {
       if ((pdf.page_count || 0) === 0) {
         this.compareLoading = false;
         this.compareError = 'Cannot compare: original PDF has no readable pages';
+      } else if ((version.page_count || 0) === 0) {
+        this.compareLoading = false;
+        this.compareError = 'Cannot compare: compressed version has no readable pages';
       }
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
