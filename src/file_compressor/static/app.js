@@ -152,6 +152,7 @@ function app() {
         const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         this.pdfs = await pdfsRes.json();
+        this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
       } catch (e) {
         this.apiError = true;
@@ -227,7 +228,6 @@ function app() {
     _onGlobalDragOver(e) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      this._globalDragCounter = 1;
     },
     _onGlobalDragLeave(e) {
       this._globalDragCounter--;

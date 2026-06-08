@@ -20,7 +20,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode == "raster":
         return rasterize_pdf_to_target(source, output, config)
 
-    with TemporaryDirectory(prefix="pdf_optimize_") as temp_dir:
+    with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
         optimized = Path(temp_dir) / "optimized.pdf"
         optimize_pdf(source, optimized, config)
         opt_size = optimized.stat().st_size
@@ -32,7 +32,17 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
-    return rasterize_pdf_to_target(source, output, config)
+        rasterized = Path(temp_dir) / "rasterized.pdf"
+        try:
+            rasterize_pdf_to_target(source, rasterized, config)
+        except RuntimeError:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(optimized, output)
+            return output
+        best = rasterized if rasterized.stat().st_size < opt_size else optimized
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(best, output)
+        return output
 
 
 def optimize_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
