@@ -289,8 +289,8 @@ function app() {
       if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
       if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
       if (!parts.length) { this.showToast('No new files to add', 'error'); return; }
-      const isError = newFiles.length === 0;
-      this.showToast(parts.join(', '), isError ? 'error' : 'success');
+      const isError = newFiles.length === 0 && dupes === 0;
+      this.showToast(parts.join(', '), isError ? 'error' : newFiles.length === 0 ? 'warning' : 'success');
     },
     _uploadWithProgress(file, fd, index, total) {
       return new Promise((resolve, reject) => {

@@ -242,6 +242,8 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
+        if getattr(wait_event, '_render_cancelled', False):
+            raise FileNotFoundError(f"Source file was removed: {source}")
         if hasattr(wait_event, '_render_exc'):
             raise wait_event._render_exc  # type: ignore[attr-defined]
         result = getattr(wait_event, '_render_result', None)
@@ -287,6 +289,7 @@ def evict_render_cache(source: Path) -> None:
         for key in [k for k in _render_cache if k[0] == prefix]:
             entry = _render_cache[key]
             if isinstance(entry, threading.Event):
+                entry._render_cancelled = True  # type: ignore[attr-defined]
                 entry.set()
             del _render_cache[key]
 
