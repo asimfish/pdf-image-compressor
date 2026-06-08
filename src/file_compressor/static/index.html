@@ -237,7 +237,7 @@
   </div>
   <div x-show="showUpload" x-cloak role="dialog" aria-modal="true" aria-label="Upload PDF"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="showUpload = false; uploadFiles = []" @keydown.escape.window="if (showUpload) { showUpload = false; uploadFiles = [] }"
+    @click.self="closeUpload()" @keydown.escape.window="if (showUpload) closeUpload()"
     @keydown.enter.window="if (!['INPUT','TEXTAREA','SELECT','BUTTON'].includes($event.target.tagName) && showUpload && uploadFiles.length > 0 && !uploading && !uploadValidation) doUpload()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop x-init="_trapFocus($el)">
       <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
@@ -311,7 +311,7 @@
       </div>
       <!-- Actions -->
       <div class="flex gap-3 mt-5">
-        <button @click="showUpload = false; uploadFiles = []" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
+        <button @click="closeUpload()" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition">Cancel <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
         <button @click="doUpload()" x-effect="$el.disabled = uploadFiles.length === 0 || uploading || !!uploadValidation" class="flex-1 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition disabled:opacity-40 disabled:cursor-not-allowed">Upload & Compress <kbd class="ml-1 text-xs text-blue-200">Enter</kbd></button>
       </div>
     </div>

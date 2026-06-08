@@ -359,6 +359,11 @@ function app() {
       this.uploading = false;
       if (this._currentXhr) { this._currentXhr.abort(); this._currentXhr = null; }
     },
+    closeUpload() {
+      if (this.uploading) { this.cancelUpload(); }
+      this.showUpload = false;
+      this.uploadFiles = [];
+    },
     batchCompress() {
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
