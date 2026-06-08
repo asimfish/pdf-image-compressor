@@ -253,7 +253,7 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-        _cleanup_files(file_paths)
+            _cleanup_files(file_paths)
         return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
@@ -279,7 +279,7 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-        _cleanup_files(file_paths)
+            _cleanup_files(file_paths)
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:
