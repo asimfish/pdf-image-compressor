@@ -534,6 +534,10 @@ function app() {
       this.compareSlider = 50;
       this._resetCompareLoading();
       this.showCompare = true;
+      if ((pdf.page_count || 0) === 0) {
+        this.compareLoading = false;
+        this.compareError = 'Cannot compare: original PDF has no readable pages';
+      }
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
