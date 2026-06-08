@@ -85,7 +85,7 @@ def _sanitize_label(label: str) -> str:
     """Sanitize a label for use in download filenames."""
     label = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", label)
     label = re.sub(r"-{2,}", "-", label).strip("- ")
-    return label[:_MAX_LABEL_LEN]
+    return label[:_MAX_LABEL_LEN] or "version"
 
 
 _PATH_RE = re.compile(r"(/[^/\s]+){2,}|([A-Za-z]:\\[^\s]+)")
