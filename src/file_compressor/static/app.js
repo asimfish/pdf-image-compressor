@@ -539,8 +539,7 @@ function app() {
       }, 15000);
     },
     _onCompareLoad(e) {
-      const m = /[?&]_=(\d+)/.exec(e.target.src);
-      if (!m || +m[1] !== this._compareGen) return;
+      if (+e.target.dataset.gen !== this._compareGen) return;
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
@@ -548,8 +547,7 @@ function app() {
       }
     },
     _onCompareError(e) {
-      const m = /[?&]_=(\d+)/.exec(e.target.src);
-      if (!m || +m[1] !== this._compareGen) return;
+      if (+e.target.dataset.gen !== this._compareGen) return;
       e.target.removeAttribute('src');
       this._compareLoaded++;
       this.compareError = 'Failed to load preview';

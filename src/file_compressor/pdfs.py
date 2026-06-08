@@ -213,7 +213,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         elif cached is not None:
             return cached  # type: ignore[return-value]
         else:
-            if len(_render_cache) >= _RENDER_CACHE_MAX:
+            while len(_render_cache) >= _RENDER_CACHE_MAX:
                 _evict_oldest_result()
             _render_cache[key] = threading.Event()
     if wait_event is not None:
@@ -234,7 +234,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         finally:
             doc.close()
         with _render_cache_lock:
-            if len(_render_cache) >= _RENDER_CACHE_MAX:
+            while len(_render_cache) >= _RENDER_CACHE_MAX:
                 _evict_oldest_result()
             event = _render_cache[key]
             _render_cache[key] = result

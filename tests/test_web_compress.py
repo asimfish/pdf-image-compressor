@@ -27,7 +27,7 @@ def test_compress_and_store_raises_on_no_output(tmp_path: Path):
     with patch("file_compressor.web.compress_path", return_value=fake_summary):
         resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"quality": "50"})
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "Compression failed"
+    assert resp.json()["detail"] == "kaboom"
 
 
 
@@ -399,7 +399,7 @@ def test_batch_compress_reports_compression_errors(tmp_path: Path):
     assert resp.status_code == 200
     data = resp.json()
     errors = [r for r in data["results"] if r["status"] == "error"]
-    assert any(e["error"] == "Compression failed" for e in errors)
+    assert any(e["error"] == "compression exploded" for e in errors)
 
 
 

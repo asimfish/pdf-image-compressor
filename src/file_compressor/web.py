@@ -99,7 +99,9 @@ def _sanitize_error(exc: Exception) -> str:
     if "corrupt" in msg.lower() or "invalid" in msg.lower():
         return "The file appears to be corrupted or invalid"
     sanitized = _PATH_RE.sub("[path]", msg).strip()
-    return sanitized if sanitized and sanitized != str(exc).strip()[:200] else "Compression failed"
+    if sanitized and sanitized != msg:
+        return sanitized
+    return msg if msg else "Compression failed"
 
 
 def init_storage(data_dir: Path) -> None:
