@@ -534,11 +534,11 @@
         <div x-show="compareLoading" class="flex items-center justify-center py-12">
           <svg class="w-8 h-8 text-blue-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
         </div>
-        <div x-show="compareError" class="text-center py-12">
+        <div x-show="compareError && _compareErrors >= 2" class="text-center py-12">
           <p class="text-red-500 text-sm mb-3" x-text="compareError"></p>
           <button x-show="compareRetryable" @click="_resetCompareLoading()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition">Retry</button>
         </div>
-        <div x-show="!compareLoading && !compareError" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
+        <div x-show="!compareLoading && (!compareError || _compareErrors < 2)" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
           x-ref="compareContainer" tabindex="0" role="slider" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(compareSlider)"
           @mousedown="_onCompareMouseDown($event)"
           @dblclick="compareSlider = 50"
@@ -561,6 +561,10 @@
           <!-- Slider handle -->
           <div class="compare-slider-handle" :style="'left:' + compareSlider + '%'">
             <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
+          </div>
+          <!-- Partial failure banner -->
+          <div x-show="compareError && _compareErrors < 2" class="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-100 text-amber-800 shadow-sm">
+            <span x-text="compareError"></span>
           </div>
         </div>
         <div class="flex items-center justify-between mt-2 text-xs text-gray-500">

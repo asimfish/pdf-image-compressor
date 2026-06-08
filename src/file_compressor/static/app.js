@@ -58,6 +58,7 @@ function app() {
     compressing: false,
     compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' },
     compressResult: null,
+    _compressGen: 0,
     // Notes
     batchTargetPdfs: [],
     showNotes: false,
@@ -284,8 +285,8 @@ function app() {
       const valid = pdfs.filter(f => f.size <= MAX);
       const nonPdfCount = all.length - pdfs.length;
       const tooLargeCount = pdfs.length - valid.length;
-      const existing = new Set(this.uploadFiles.map(f => `${f.name}:${f.size}`));
-      const newFiles = valid.filter(f => !existing.has(`${f.name}:${f.size}`));
+      const existing = new Set(this.uploadFiles.map(f => `${f.name}:${f.size}:${f.lastModified}`));
+      const newFiles = valid.filter(f => !existing.has(`${f.name}:${f.size}:${f.lastModified}`));
       const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
       // Build a single toast message
@@ -483,6 +484,7 @@ function app() {
     },
     async doCompress() {
       if (!this.compressTarget) return;
+      const gen = ++this._compressGen;
       const targetId = this.compressTarget.id;
       this.compressing = true;
       this.compressResult = null;
@@ -491,13 +493,15 @@ function app() {
         const res = await fetch(`/api/pdfs/${targetId}/compress`, { method: 'POST', body: fd });
         const ver = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(ver.detail || 'Compression failed');
+        if (gen !== this._compressGen) return;
         this.compressResult = ver;
         this.loadVersions(targetId);
         this.loadLibrary();
       } catch (e) {
-        if (this.compressTarget) this.showToast('Compression failed: ' + e.message, 'error');
+        if (gen !== this._compressGen) return;
+        this.showToast('Compression failed: ' + e.message, 'error');
       }
-      if (this.compressTarget) this.compressing = false;
+      if (gen === this._compressGen) this.compressing = false;
     },
     closeCompress() {
       this.compressing = false;
