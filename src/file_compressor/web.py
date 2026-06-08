@@ -184,7 +184,8 @@ def api_upload_pdf(
     result["warning"] = None
 
     try:
-        ver = _compress_and_store(storage, pdf.id, data, config, label="Initial compression")
+        stored_path = storage.get_pdf_path(pdf.id)
+        ver = _compress_and_store(storage, pdf.id, stored_path, config, label="Initial compression")
         result["best_compressed_size"] = ver.file_size
         result["best_compression_ratio"] = ver.compression_ratio
     except Exception as exc:
@@ -232,19 +233,17 @@ def api_compress_pdf(
     path = storage.get_pdf_path(pdf_id)
     if not path:
         raise HTTPException(404, detail="Original file missing")
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
+    if not path.exists():
         raise HTTPException(404, detail="Original file missing")
     if not label:
         label = _auto_label(config.target_bytes, config.quality, config.pdf_mode)
 
     try:
-        ver = _compress_and_store(storage, pdf_id, data, config, label)
+        ver = _compress_and_store(storage, pdf_id, path, config, label)
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail=_sanitize_error(exc))
-    logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(len(data)), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
+    logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(path.stat().st_size), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
     return asdict(ver)
 
 
@@ -281,15 +280,13 @@ def api_batch_compress(
         if not path:
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
             continue
-        try:
-            data = path.read_bytes()
-        except FileNotFoundError:
+        if not path.exists():
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
             continue
         try:
-            ver = _compress_and_store(storage, pdf.id, data, config, label)
+            ver = _compress_and_store(storage, pdf.id, path, config, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
-                            "original_size": len(data), "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
+                            "original_size": path.stat().st_size, "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
             logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": _sanitize_error(exc)})
@@ -408,7 +405,9 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         raise HTTPException(400, detail="pdf_type must be 'original' or 'version'")
     if not path:
         raise HTTPException(404, detail="Original file missing")
-    if total is not None and (page < 0 or page >= total):
+    if page < 0:
+        raise HTTPException(422, detail=f"Page {page} out of range")
+    if total is not None and page >= total:
         raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
     try:
         png_data = render_page(path, page)
@@ -509,14 +508,14 @@ def compress_upload(
 def _compress_and_store(
     storage: Storage,
     pdf_id: str,
-    original_data: bytes,
+    source_path: Path,
     config: CompressionConfig,
     label: str,
 ) -> VersionRecord:
     with tempfile.TemporaryDirectory(prefix="pdf_compress_") as td:
         td_path = Path(td)
         src = td_path / "input.pdf"
-        src.write_bytes(original_data)
+        shutil.copy2(source_path, src)
         out = td_path / "output.pdf"
         run_config = replace(config, output_dir=td_path)
         summary = compress_path(src, run_config, out)
@@ -533,7 +532,7 @@ def _compress_and_store(
         except Exception:
             ver_page_count = 0
 
-    original_size = len(original_data)
+    original_size = source_path.stat().st_size
     compressed_size = len(compressed_data)
     ratio = 1.0 - (compressed_size / original_size) if original_size > 0 else None
 
