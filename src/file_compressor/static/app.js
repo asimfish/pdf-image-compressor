@@ -74,6 +74,7 @@ function app() {
     _compareDragging: false,
     compareLoading: false,
     compareError: '',
+    compareRetryable: true,
     _compareLoaded: 0,
     _compareErrors: 0,
     _compareGen: 0,
@@ -431,9 +432,7 @@ function app() {
           if (r.status === 'ok' && r.pdf_id) this.loadVersions(r.pdf_id);
         }
       } catch (e) {
-        if (e.name === 'AbortError') {
-          this.showToast('Batch compress cancelled', 'error');
-        } else {
+        if (e.name !== 'AbortError') {
           this.showToast('Batch compress failed: ' + e.message, 'error');
         }
       }
@@ -564,9 +563,11 @@ function app() {
       this.showCompare = true;
       if ((pdf.page_count || 0) === 0) {
         this.compareLoading = false;
+        this.compareRetryable = false;
         this.compareError = 'Cannot compare: original PDF has no readable pages';
       } else if ((version.page_count || 0) === 0) {
         this.compareLoading = false;
+        this.compareRetryable = false;
         this.compareError = 'Cannot compare: compressed version has no readable pages';
       }
     },
@@ -576,6 +577,7 @@ function app() {
       clearTimeout(this._compareTimeout);
       this.compareLoading = true;
       this.compareError = '';
+      this.compareRetryable = true;
       this._compareLoaded = 0;
       this._compareErrors = 0;
       this._compareGen++;

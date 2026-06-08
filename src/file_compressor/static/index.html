@@ -522,7 +522,7 @@
           <a :href="'/api/versions/' + compareVersion?.id + '/download'" target="_blank" class="ml-2 p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition" aria-label="Download compressed version" title="Download compressed">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           </a>
-          <button @click="showCompare = false" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition" aria-label="Close comparison">
+          <button @click="_cleanupCompareListeners(); showCompare = false" class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition" aria-label="Close comparison">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -533,7 +533,7 @@
         </div>
         <div x-show="compareError" class="text-center py-12">
           <p class="text-red-500 text-sm mb-3" x-text="compareError"></p>
-          <button @click="_resetCompareLoading()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition">Retry</button>
+          <button x-show="compareRetryable" @click="_resetCompareLoading()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition">Retry</button>
         </div>
         <div x-show="!compareLoading && !compareError" class="compare-container rounded-xl border border-gray-200 overflow-hidden bg-gray-100"
           x-ref="compareContainer" tabindex="0" role="slider" aria-label="Comparison slider" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="Math.round(compareSlider)"
