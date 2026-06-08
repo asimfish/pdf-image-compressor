@@ -464,7 +464,8 @@
               <svg x-show="r.status !== 'ok'" class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
               <span class="truncate flex-1" x-text="r.filename"></span>
               <span x-show="r.status === 'ok' && r.compression_ratio > 0" class="text-green-600 text-xs font-medium" x-text="'-' + (r.compression_ratio * 100).toFixed(0) + '%'"></span>
-              <span x-show="r.status === 'ok' && r.compression_ratio <= 0" class="text-gray-400 text-xs">no reduction</span>
+              <span x-show="r.status === 'ok' && r.compression_ratio < 0" class="text-amber-600 text-xs font-medium" x-text="'+' + (Math.abs(r.compression_ratio) * 100).toFixed(0) + '% larger'"></span>
+              <span x-show="r.status === 'ok' && r.compression_ratio === 0" class="text-gray-400 text-xs">no change</span>
               <span x-show="r.status !== 'ok'" class="text-red-500 text-xs" x-text="r.error || 'failed'"></span>
             </div>
           </template>
@@ -606,7 +607,7 @@
 
   <div x-show="toast" x-cloak x-transition
     class="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-medium cursor-pointer"
-    :class="toastType === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'"
+    :class="toastType === 'error' ? 'bg-red-600 text-white' : toastType === 'warning' ? 'bg-amber-500 text-white' : 'bg-gray-800 text-white'"
     :role="toastType === 'error' ? 'alert' : 'status'"
     :aria-live="toastType === 'error' ? 'assertive' : 'polite'"
     @click="toast = ''">

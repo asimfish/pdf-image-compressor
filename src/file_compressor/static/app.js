@@ -387,6 +387,9 @@ function app() {
         if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
         this.batchResults = data;
         this.loadLibrary();
+        for (const r of (data.results || [])) {
+          if (r.status === 'ok' && r.pdf_id) this.loadVersions(r.pdf_id);
+        }
       } catch (e) {
         if (e.name === 'AbortError') {
           this.showToast('Batch compress cancelled', 'error');
@@ -657,7 +660,7 @@ function app() {
       this.toastType = type;
       setTimeout(() => {
         if (this.toast === msg) this.toast = '';
-      }, type === 'error' ? 8000 : 3000);
+      }, type === 'error' ? 8000 : type === 'warning' ? 5000 : 3000);
     },
   };
 }
