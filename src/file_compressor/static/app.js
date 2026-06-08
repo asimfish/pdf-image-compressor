@@ -196,6 +196,7 @@ function app() {
         if (!res.ok) throw new Error('Failed to load versions');
         if (this._versionGen[pdfId] === gen) {
           this.versionCache[pdfId] = await res.json();
+          this._filteredCache = null;
         }
       } catch (e) {
         if (this._versionGen[pdfId] === gen) {
@@ -244,6 +245,10 @@ function app() {
       this.dragOver = false;
       this._selectFiles([...e.dataTransfer.files]);
     },
+    _resetDragState() {
+      this._globalDragCounter = 0;
+      this.globalDragActive = false;
+    },
     _onGlobalDragEnter(e) {
       e.preventDefault();
       this._globalDragCounter++;
@@ -272,6 +277,7 @@ function app() {
         this.showToast('Close the current dialog before dropping files', 'error');
         return;
       }
+      this._resetDragState();
       this.showUpload = true;
       this._selectFiles(files);
     },
@@ -421,6 +427,7 @@ function app() {
       this.batchTargetPdfs = targets;
       this._batchTotalAtOpen = this.pdfs.length;
       this.batchResults = null;
+      this._resetDragState();
       this.showBatchCompress = true;
     },
     async doBatchCompress() {
@@ -465,6 +472,7 @@ function app() {
       const base = bv ? bv.file_size : pdf.file_size;
       const target = base ? Math.max(10000, Math.round(base * 0.8)) : 500000;
       this.compressForm = this._defaults({ target_size: this.fmtSize(target), label: '' });
+      this._resetDragState();
       this.showCompress = true;
     },
     reuseSettings(pdf, version) {
@@ -480,6 +488,7 @@ function app() {
         strip_metadata: version.strip_metadata !== false,
         label: '',
       };
+      this._resetDragState();
       this.showCompress = true;
     },
     async doCompress() {
@@ -512,6 +521,7 @@ function app() {
     editNotes(pdf) {
       this.notesTarget = pdf;
       this.notesText = pdf.notes || '';
+      this._resetDragState();
       this.showNotes = true;
     },
     async saveNotes() {
@@ -572,6 +582,7 @@ function app() {
         : Math.min(pdf.page_count, version.page_count);
       this.compareSlider = 50;
       this._resetCompareLoading();
+      this._resetDragState();
       this.showCompare = true;
       if ((pdf.page_count || 0) === 0) {
         this.compareLoading = false;
@@ -647,6 +658,7 @@ function app() {
     },
     _onCompareMouseDown(e) {
       this._cleanupCompareListeners();
+      if (e.touches) e.preventDefault();
       this._compareDragging = true;
       this._updateCompareSlider(e);
       this._onMouseMove = (ev) => { if (this._compareDragging) { if (ev.touches) ev.preventDefault(); this._updateCompareSlider(ev); } };
