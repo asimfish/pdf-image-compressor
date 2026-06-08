@@ -189,23 +189,29 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     return values
 
 
-_render_cache: dict[tuple, object | bytes] = {}
+_render_cache: dict[tuple, object] = {}
 _render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
-_RENDER_PENDING: object = object()
 
 
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
     key = (str(source), page_index, dpi)
+    wait_event: Optional[threading.Event] = None
     with _render_cache_lock:
-        if key in _render_cache:
-            cached = _render_cache[key]
-            if cached is not _RENDER_PENDING:
-                return cached  # type: ignore[return-value]
-            _render_cache[key] = _RENDER_PENDING
+        cached = _render_cache.get(key)
+        if isinstance(cached, threading.Event):
+            wait_event = cached
+        elif cached is not None:
+            return cached  # type: ignore[return-value]
         else:
-            _render_cache[key] = _RENDER_PENDING
+            _render_cache[key] = threading.Event()
+    if wait_event is not None:
+        wait_event.wait()
+        result = _render_cache.get(key)
+        if result is None:
+            raise RuntimeError(f"Render failed for {source} page {page_index}")
+        return result  # type: ignore[return-value]
     try:
         fitz = _fitz()
         doc = fitz.open(source)
@@ -214,19 +220,22 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 raise ValueError(f"Page index {page_index} out of range (0-{len(doc) - 1})")
             page = doc[page_index]
             pix = page.get_pixmap(dpi=dpi, alpha=False)
-            result = pix.tobytes("png")
+            result: object = pix.tobytes("png")
         finally:
             doc.close()
         with _render_cache_lock:
             if len(_render_cache) >= _RENDER_CACHE_MAX:
                 _render_cache.pop(next(iter(_render_cache)))
+            event = _render_cache[key]
             _render_cache[key] = result
-        return result
+            event.set()  # type: ignore[union-attr]
+        return result  # type: ignore[return-value]
     except Exception:
         with _render_cache_lock:
-            _render_cache.pop(key, None)
+            event = _render_cache.pop(key, None)
+            if event is not None:
+                event.set()  # type: ignore[union-attr]
         raise
-    return result
 
 
 def evict_render_cache(source: Path) -> None:
