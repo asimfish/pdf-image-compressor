@@ -421,7 +421,8 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
     except FileNotFoundError:
         raise HTTPException(404, detail="Original file missing" if pdf_type == "original" else "Version file missing")
     except ValueError:
-        raise HTTPException(422, detail=f"Page {page} not available in this version")
+        label = "this PDF" if pdf_type == "original" else "this version"
+        raise HTTPException(422, detail=f"Page {page} not available in {label}")
     except Exception as exc:
         logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, _sanitize_error(exc))
         raise HTTPException(500, detail="Preview render failed")
