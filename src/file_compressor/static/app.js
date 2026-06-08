@@ -515,6 +515,7 @@ function app() {
       if (gen === this._compressGen) this.compressing = false;
     },
     closeCompress() {
+      ++this._compressGen;
       this.compressing = false;
       this.compressResult = null;
       this.showCompress = false;
