@@ -555,9 +555,9 @@ function app() {
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = (version.page_count || 0) === 0
-        ? 1
-        : Math.min(pdf.page_count || 1, version.page_count || 1);
+      this.compareTotalPages = (version.page_count || 0) === 0 || (pdf.page_count || 0) === 0
+        ? 0
+        : Math.min(pdf.page_count, version.page_count);
       this.compareSlider = 50;
       this._resetCompareLoading();
       this.showCompare = true;

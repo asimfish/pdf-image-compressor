@@ -250,7 +250,7 @@ def api_compress_pdf(
     except Exception as exc:
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail=_sanitize_error(exc))
-    logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(path.stat().st_size), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
+    logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(pdf.file_size), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
     return asdict(ver)
 
 
