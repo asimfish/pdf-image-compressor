@@ -354,8 +354,11 @@ function app() {
       this.showUpload = false; this.uploadFiles = [];
       this.uploadForm = this._defaults({ notes: '' });
       this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, errors), errors.length ? 'error' : 'success');
-      this.loadLibrary();
-      if (totalFiles === 1 && succeeded === 1) this.compressPdf(uploadedPdf);
+      await this.loadLibrary();
+      if (totalFiles === 1 && succeeded === 1) {
+        const freshPdf = this.pdfs.find(p => p.id === uploadedPdf.id);
+        if (freshPdf) this.compressPdf(freshPdf);
+      }
     },
     _buildUploadToast(succeeded, compressResults, warnings, errors) {
       const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
