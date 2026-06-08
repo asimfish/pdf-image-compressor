@@ -273,7 +273,7 @@ function app() {
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
       if (this.selectMode || this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare || this.showShortcuts) {
-        this.showToast('Close the current dialog before dropping files', 'error');
+        this.showToast(this.selectMode ? 'Exit selection mode before dropping files' : 'Close the current dialog before dropping files', 'error');
         return;
       }
       this._resetDragState();
@@ -424,6 +424,7 @@ function app() {
       }
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = targets;
+      this._batchTotalAtOpen = this.pdfs.length;
       this._batchIsSubset = targets.length < this.pdfs.length || this.selectMode;
       this.batchResults = null;
       this._resetDragState();
