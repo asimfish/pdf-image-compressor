@@ -74,6 +74,7 @@ function app() {
     compareLoading: false,
     compareError: '',
     _compareLoaded: 0,
+    _compareErrors: 0,
     _compareGen: 0,
     // Toast
     toast: '',
@@ -107,7 +108,9 @@ function app() {
       return '';
     },
     _validateForm(form) {
+      if (isNaN(form.quality)) return 'Quality is required';
       if (!(form.quality >= 1 && form.quality <= 95)) return 'Quality must be between 1 and 95';
+      if (isNaN(form.pdf_dpi)) return 'DPI is required';
       if (!(form.pdf_dpi >= 36 && form.pdf_dpi <= 300)) return 'DPI must be between 36 and 300';
       return this._validTargetSize(form.target_size);
     },
@@ -341,8 +344,11 @@ function app() {
           this.showUpload = false;
           this.uploadForm = this._defaults({ notes: '' });
           this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
-          this.loadLibrary();
-          if (totalFiles === 1 && succeeded === 1) this.compressPdf(uploadedPdf);
+          await this.loadLibrary();
+          if (totalFiles === 1 && succeeded === 1) {
+            const freshPdf = this.pdfs.find(p => p.id === uploadedPdf.id);
+            if (freshPdf) this.compressPdf(freshPdf);
+          }
           return;
         }
         this.uploading = false;
@@ -546,6 +552,7 @@ function app() {
       this.compareLoading = true;
       this.compareError = '';
       this._compareLoaded = 0;
+      this._compareErrors = 0;
       this._compareGen++;
       const gen = this._compareGen;
       setTimeout(() => {
@@ -560,14 +567,16 @@ function app() {
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
-        this.compareError = '';
+        if (this._compareErrors > 0) {
+          this.compareError = this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
+        }
       }
     },
     _onCompareError(e) {
       if (+e.target.dataset.gen !== this._compareGen) return;
       e.target.removeAttribute('src');
       this._compareLoaded++;
-      this.compareError = 'Failed to load preview';
+      this._compareErrors++;
       if (this._compareLoaded >= 2) this.compareLoading = false;
     },
     compareOriginalUrl() {
