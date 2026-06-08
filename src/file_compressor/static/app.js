@@ -348,7 +348,7 @@ function app() {
         this.uploading = false;
         this.uploadProgress = 0;
         this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (${this.uploadFiles.length} remaining)`, 'warning');
-        this.loadLibrary();
+        await this.loadLibrary();
         return;
       }
       this.showUpload = false; this.uploadFiles = [];
