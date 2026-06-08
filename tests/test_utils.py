@@ -90,7 +90,7 @@ def test_format_size_none():
 
 
 def test_format_size_edge_promotes_unit():
-    assert format_size(999999) == "1000.0 KB"
+    assert format_size(999999) == "1.0 MB"
 
 
 def test_format_size_zero():

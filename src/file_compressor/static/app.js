@@ -236,6 +236,7 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
+      if (this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
       this.showUpload = true;
       this._selectFiles(files);
     },

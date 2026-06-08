@@ -171,9 +171,8 @@ def api_upload_pdf(
     except RuntimeError:
         raise HTTPException(500, detail="PDF processing unavailable (PyMuPDF not installed)")
     try:
-        doc = fitz.open(stream=data, filetype="pdf")
-        page_count = len(doc)
-        doc.close()
+        with fitz.open(stream=data, filetype="pdf") as doc:
+            page_count = len(doc)
     except Exception:
         raise HTTPException(400, detail="Invalid PDF file")
     if page_count == 0:
