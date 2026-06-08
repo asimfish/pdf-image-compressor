@@ -106,7 +106,10 @@ function app() {
       if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
-      if (num > 0 && num < 1) return 'Target size must be at least 1 byte';
+      const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
+      const multipliers = { k: 1024, m: 1048576, g: 1073741824, t: 1099511627776 };
+      const bytes = num * (multipliers[unit.charAt(0)] || 1);
+      if (bytes < 1) return 'Target size must be at least 1 byte';
       return '';
     },
     _validateForm(form) {
@@ -213,7 +216,7 @@ function app() {
         this.showToast(`Deleted ${data.deleted} PDFs`);
         ids.forEach(id => this._evictPdfCache(id));
         if (ids.includes(this.expanded)) this.expanded = null;
-        if (this.showCompare && ids.includes(this.comparePdf?.id)) this.showCompare = false;
+        if (this.showCompare && ids.includes(this.comparePdf?.id)) { clearTimeout(this._compareTimeout); this.showCompare = false; }
         this.selectedPdfs = {};
         this.selectMode = false;
         this.loadLibrary();
@@ -514,7 +517,7 @@ function app() {
         const res = await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
-        if (this.showCompare && this.comparePdf?.id === pdf.id) this.showCompare = false;
+        if (this.showCompare && this.comparePdf?.id === pdf.id) { clearTimeout(this._compareTimeout); this.showCompare = false; }
         this._evictPdfCache(pdf.id);
         if (this.selectedPdfs[pdf.id]) {
           const n = { ...this.selectedPdfs };
@@ -532,7 +535,7 @@ function app() {
       try {
         const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
-        if (this.showCompare && this.compareVersion?.id === versionId) this.showCompare = false;
+        if (this.showCompare && this.compareVersion?.id === versionId) { clearTimeout(this._compareTimeout); this.showCompare = false; }
         this._evictPdfCache(pdfId);
         this.loadVersions(pdfId);
         this.loadLibrary();
@@ -560,13 +563,14 @@ function app() {
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
     _resetCompareLoading() {
+      clearTimeout(this._compareTimeout);
       this.compareLoading = true;
       this.compareError = '';
       this._compareLoaded = 0;
       this._compareErrors = 0;
       this._compareGen++;
       const gen = this._compareGen;
-      setTimeout(() => {
+      this._compareTimeout = setTimeout(() => {
         if (gen === this._compareGen && this.compareLoading) {
           this.compareLoading = false;
           this.compareError = 'Loading timed out — try again';
