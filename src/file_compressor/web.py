@@ -391,7 +391,7 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
     except ValueError:
         raise HTTPException(422, detail=f"Page {page} not available in this version")
     except Exception as exc:
-        logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, exc)
+        logger.error("Preview render failed for %s/%s page %d: %s", pdf_type, item_id, page, _sanitize_error(exc))
         raise HTTPException(500, detail="Preview render failed")
 
     return StreamingResponse(BytesIO(png_data), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
