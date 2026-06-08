@@ -107,7 +107,7 @@ class Storage:
         self._versions.mkdir(parents=True, exist_ok=True)
         db_path = self._data_dir / "library.db"
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
@@ -120,12 +120,24 @@ class Storage:
     def close(self) -> None:
         self._conn.close()
 
+    def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+        with self._lock:
+            return self._conn.execute(sql, params)
+
+    def _fetchone(self, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:
+        with self._lock:
+            return self._conn.execute(sql, params).fetchone()
+
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._conn.execute(sql, params).fetchall()
+
     def cleanup_orphans(self) -> int:
         """Remove files on disk that have no database record. Returns count removed."""
         referenced: set[str] = set()
-        for row in self._conn.execute("SELECT file_path FROM pdfs"):
+        for row in self._fetchall("SELECT file_path FROM pdfs"):
             referenced.add(row[0])
-        for row in self._conn.execute("SELECT file_path FROM versions"):
+        for row in self._fetchall("SELECT file_path FROM versions"):
             referenced.add(row[0])
         removed = 0
         for directory in (self._originals, self._versions):
@@ -178,22 +190,22 @@ class Storage:
         return PdfRecord(id=pdf_id, filename=filename, file_size=len(file_data), page_count=page_count, upload_time=now, notes=notes)
 
     def get_pdf(self, pdf_id: str) -> Optional[PdfRecord]:
-        row = self._conn.execute("SELECT * FROM pdfs WHERE id=?", (pdf_id,)).fetchone()
+        row = self._fetchone("SELECT * FROM pdfs WHERE id=?", (pdf_id,))
         return _row_to_pdf(row) if row else None
 
     def list_pdfs(self) -> list[PdfRecord]:
-        rows = self._conn.execute("SELECT * FROM pdfs ORDER BY upload_time DESC").fetchall()
+        rows = self._fetchall("SELECT * FROM pdfs ORDER BY upload_time DESC")
         return [_row_to_pdf(r) for r in rows]
 
     def get_pdfs_by_ids(self, pdf_ids: list[str]) -> list[PdfRecord]:
         if not pdf_ids:
             return []
         placeholders = ",".join("?" for _ in pdf_ids)
-        rows = self._conn.execute(f"SELECT * FROM pdfs WHERE id IN ({placeholders})", pdf_ids).fetchall()
+        rows = self._fetchall(f"SELECT * FROM pdfs WHERE id IN ({placeholders})", pdf_ids)
         return [_row_to_pdf(r) for r in rows]
 
     def list_pdfs_with_stats(self) -> list[PdfWithStats]:
-        rows = self._conn.execute("""
+        rows = self._fetchall("""
             SELECT p.*,
                    COALESCE(vc.cnt, 0) AS version_count,
                    bv.best_id, bv.best_size, bv.best_ratio
@@ -207,7 +219,7 @@ class Storage:
                 ) ranked WHERE rn = 1
             ) bv ON p.id = bv.pdf_id
             ORDER BY p.upload_time DESC
-        """).fetchall()
+        """)
         return [
             PdfWithStats(
                 id=r["id"], filename=r["filename"], file_size=r["file_size"],
@@ -221,7 +233,7 @@ class Storage:
         ]
 
     def get_pdf_path(self, pdf_id: str) -> Optional[Path]:
-        row = self._conn.execute("SELECT file_path FROM pdfs WHERE id=?", (pdf_id,)).fetchone()
+        row = self._fetchone("SELECT file_path FROM pdfs WHERE id=?", (pdf_id,))
         return Path(row["file_path"]) if row else None
 
     def delete_pdf(self, pdf_id: str) -> bool:
@@ -303,15 +315,15 @@ class Storage:
         )
 
     def list_versions(self, pdf_id: str) -> list[VersionRecord]:
-        rows = self._conn.execute("SELECT * FROM versions WHERE pdf_id=? ORDER BY created_at DESC", (pdf_id,)).fetchall()
+        rows = self._fetchall("SELECT * FROM versions WHERE pdf_id=? ORDER BY created_at DESC", (pdf_id,))
         return [_row_to_version(r) for r in rows]
 
     def get_version(self, version_id: str) -> Optional[VersionRecord]:
-        row = self._conn.execute("SELECT * FROM versions WHERE id=?", (version_id,)).fetchone()
+        row = self._fetchone("SELECT * FROM versions WHERE id=?", (version_id,))
         return _row_to_version(row) if row else None
 
     def get_version_path(self, version_id: str) -> Optional[Path]:
-        row = self._conn.execute("SELECT file_path FROM versions WHERE id=?", (version_id,)).fetchone()
+        row = self._fetchone("SELECT file_path FROM versions WHERE id=?", (version_id,))
         return Path(row["file_path"]) if row else None
 
     def delete_version(self, version_id: str) -> bool:
@@ -330,7 +342,7 @@ class Storage:
         return deleted
 
     def stats(self) -> dict:
-        row = self._conn.execute("""
+        row = self._fetchone("""
             SELECT
                 (SELECT COUNT(*) FROM pdfs) AS pdf_count,
                 (SELECT COUNT(*) FROM versions) AS version_count,
@@ -342,7 +354,7 @@ class Storage:
                  FROM pdfs p
                  JOIN (SELECT pdf_id, MIN(file_size) AS best_size FROM versions GROUP BY pdf_id) best
                  ON p.id = best.pdf_id) AS total_saved_bytes
-        """).fetchone()
+        """)
         return {
             "pdf_count": row["pdf_count"],
             "version_count": row["version_count"],
