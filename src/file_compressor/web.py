@@ -377,12 +377,12 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         pdf = storage.get_pdf(ver.pdf_id)
         if not pdf:
             raise HTTPException(404, detail="Parent PDF not found")
-        total = pdf.page_count
+        total = None  # version may have different page count; let render_page validate
     else:
         raise HTTPException(400, detail="pdf_type must be 'original' or 'version'")
     if not path:
         raise HTTPException(404, detail="Original file missing")
-    if page < 0 or page >= total:
+    if total is not None and (page < 0 or page >= total):
         raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
     try:
         png_data = render_page(path, page)

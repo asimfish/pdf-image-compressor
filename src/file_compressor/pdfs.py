@@ -179,7 +179,7 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     return values
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=32)
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
     fitz = _fitz()
