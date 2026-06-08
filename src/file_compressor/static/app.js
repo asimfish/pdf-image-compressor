@@ -520,16 +520,18 @@ function app() {
         }
       }, 15000);
     },
-    _onCompareLoad(gen) {
-      if (gen !== this._compareGen) return;
+    _onCompareLoad(e) {
+      const m = /[?&]_=(\d+)/.exec(e.target.src);
+      if (!m || +m[1] !== this._compareGen) return;
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
         this.compareError = '';
       }
     },
-    _onCompareError(gen) {
-      if (gen !== this._compareGen) return;
+    _onCompareError(e) {
+      const m = /[?&]_=(\d+)/.exec(e.target.src);
+      if (!m || +m[1] !== this._compareGen) return;
       this._compareLoaded++;
       this.compareError = 'Failed to load preview';
       if (this._compareLoaded >= 2) this.compareLoading = false;

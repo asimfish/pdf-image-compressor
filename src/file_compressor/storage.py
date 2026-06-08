@@ -260,12 +260,13 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-            _cleanup_files(file_paths)
+        _cleanup_files(file_paths)
         return deleted
 
     def batch_delete_pdfs(self, pdf_ids: list[str]) -> int:
         if not pdf_ids:
             return 0
+        file_paths: list[Path] = []
         with self._lock:
             try:
                 self._conn.execute("BEGIN")
@@ -273,7 +274,7 @@ class Storage:
                 rows = self._conn.execute(
                     f"SELECT file_path FROM versions WHERE pdf_id IN ({placeholders})", pdf_ids
                 ).fetchall()
-                file_paths: list[Path] = [Path(r["file_path"]) for r in rows]
+                file_paths = [Path(r["file_path"]) for r in rows]
                 pdf_rows = self._conn.execute(
                     f"SELECT file_path FROM pdfs WHERE id IN ({placeholders})", pdf_ids
                 ).fetchall()
@@ -286,7 +287,7 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-            _cleanup_files(file_paths)
+        _cleanup_files(file_paths)
         return deleted
 
     def update_notes(self, pdf_id: str, notes: str) -> bool:
@@ -346,8 +347,8 @@ class Storage:
             except Exception:
                 self._conn.rollback()
                 raise
-            if vpath:
-                _cleanup_files([vpath])
+        if vpath and deleted:
+            _cleanup_files([vpath])
         return deleted
 
     def stats(self) -> dict:

@@ -358,7 +358,7 @@ def api_download_version(version_id: str) -> FileResponse:
     if not path or not path.exists():
         raise HTTPException(404, detail="Version file missing")
     pdf = storage.get_pdf(ver.pdf_id)
-    stem = Path(pdf.filename).stem if pdf else "version"
+    stem = _sanitize_label(Path(pdf.filename).stem) if pdf else "version"
     label = _sanitize_label(ver.label) if ver.label else ""
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
     try:
