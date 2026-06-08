@@ -243,10 +243,6 @@ function app() {
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
       if (this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
-      if (!files.some(f => f.name.toLowerCase().endsWith('.pdf'))) {
-        this.showToast('Only PDF files are supported', 'error');
-        return;
-      }
       this.showUpload = true;
       this._selectFiles(files);
     },
@@ -363,6 +359,7 @@ function app() {
     },
     closeUpload() {
       if (this.uploading) { this.cancelUpload(); }
+      else if (this.uploadFiles.length > 0 && !confirm('Discard selected files?')) return;
       this.showUpload = false;
       this.uploadFiles = [];
     },
