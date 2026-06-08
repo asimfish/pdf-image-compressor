@@ -596,6 +596,8 @@ function app() {
         this.compareLoading = false;
         if (this._compareErrors > 0) {
           this.compareError = this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
+        } else {
+          this.compareError = '';
         }
       }
     },

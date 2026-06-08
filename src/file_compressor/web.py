@@ -274,6 +274,8 @@ def api_batch_compress(
         not_found = [{"pdf_id": pid, "filename": pid[:8] + "…", "status": "not_found", "error": "PDF not found (may have been deleted)"} for pid in id_list if pid not in found_ids]
     else:
         pdfs = storage.list_pdfs()
+        if len(pdfs) > 50:
+            raise HTTPException(422, detail="Too many PDFs (max 50)")
         not_found = []
     if not pdfs and not not_found:
         return {"compressed": 0, "results": []}
