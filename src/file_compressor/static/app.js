@@ -113,7 +113,7 @@ function app() {
       const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
       if (bytes < 1) return 'Target size must be at least 1 byte';
-      if (!unit && bytes < 10000) return 'Include a unit (e.g. 500KB, 2MB) — bare numbers are treated as bytes';
+      if (!unit && bytes < 1000) return 'Include a unit (e.g. 500KB, 2MB) — bare numbers are treated as bytes';
       return '';
     },
     _validateForm(form) {
@@ -233,6 +233,7 @@ function app() {
         this.showToast(`Deleted ${data.deleted} PDFs`);
         ids.forEach(id => this._evictPdfCache(id));
         if (ids.includes(this.expanded)) this.expanded = null;
+        if (this.showCompress && ids.includes(this.compressTarget?.id)) this.closeCompress();
         if (this.showCompare && ids.includes(this.comparePdf?.id)) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this.selectedPdfs = {};
         this.selectMode = false;
@@ -550,6 +551,7 @@ function app() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
+        if (this.showCompress && this.compressTarget?.id === pdf.id) this.closeCompress();
         if (this.showCompare && this.comparePdf?.id === pdf.id) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this._evictPdfCache(pdf.id);
         if (this.selectedPdfs[pdf.id]) {
