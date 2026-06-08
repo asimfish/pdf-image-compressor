@@ -242,7 +242,7 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
-      if (this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
+      if (this.selectMode || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
       this.showUpload = true;
       this._selectFiles(files);
     },
@@ -490,6 +490,8 @@ function app() {
         const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
         if (this.showCompare && this.compareVersion?.id === versionId) this.showCompare = false;
+        const { [pdfId]: _pm, ...rest } = this._pdfMeta;
+        this._pdfMeta = rest;
         this.loadVersions(pdfId);
         this.loadLibrary();
       } catch (e) {
