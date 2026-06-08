@@ -152,7 +152,10 @@ function app() {
         const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         this.pdfs = await pdfsRes.json();
-        this._pdfMeta = {};
+        const newIds = new Set(this.pdfs.map(p => p.id));
+        for (const key of Object.keys(this._pdfMeta)) {
+          if (!newIds.has(key)) delete this._pdfMeta[key];
+        }
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
       } catch (e) {
         this.apiError = true;
@@ -495,6 +498,9 @@ function app() {
         if (this.showCompare && this.compareVersion?.id === versionId) this.showCompare = false;
         const { [pdfId]: _pm, ...rest } = this._pdfMeta;
         this._pdfMeta = rest;
+        if (this.versionCache[pdfId]) {
+          this.versionCache[pdfId] = this.versionCache[pdfId].filter(v => v.id !== versionId);
+        }
         this.loadVersions(pdfId);
         this.loadLibrary();
       } catch (e) {

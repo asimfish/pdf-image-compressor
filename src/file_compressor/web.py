@@ -371,8 +371,10 @@ def api_download_version(version_id: str) -> FileResponse:
 def api_delete_version(version_id: str) -> dict:
     storage = _get_storage()
     ver = storage.get_version(version_id)
-    ver_path = storage.get_version_path(version_id) if ver else None
-    pdf_path = storage.get_pdf_path(ver.pdf_id) if ver else None
+    if ver is None:
+        raise HTTPException(404, detail="Version not found")
+    ver_path = storage.get_version_path(version_id)
+    pdf_path = storage.get_pdf_path(ver.pdf_id)
     if not storage.delete_version(version_id):
         raise HTTPException(404, detail="Version not found")
     if ver_path:
