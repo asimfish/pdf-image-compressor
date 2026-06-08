@@ -467,6 +467,8 @@ function app() {
     closeBatchResults() {
       this.batchResults = null;
       this.showBatchCompress = false;
+      this.selectedPdfs = {};
+      this.selectMode = false;
     },
     compressPdf(pdf) {
       this.compressTarget = pdf;

@@ -138,10 +138,14 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
             mode = "L" if grayscale else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             data = BytesIO()
-            image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
-            rect = page.rect
-            new_page = dst.new_page(width=rect.width, height=rect.height)
-            new_page.insert_image(new_page.rect, stream=data.getvalue())
+            try:
+                image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
+                rect = page.rect
+                new_page = dst.new_page(width=rect.width, height=rect.height)
+                new_page.insert_image(new_page.rect, stream=data.getvalue())
+            finally:
+                image.close()
+                data.close()
         if strip_metadata:
             dst.set_metadata({})
         output.parent.mkdir(parents=True, exist_ok=True)

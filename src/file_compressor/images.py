@@ -40,16 +40,20 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                     edges = [e for e in edges if e is not None]
             for edge in edges:
                 resized = _resize(normalized, edge)
-                for quality in qualities:
-                    data = _render(resized, suffix, quality, exif_bytes)
-                    size = len(data)
-                    if best_size is None or size < best_size:
-                        best_data = data
-                        best_size = size
-                    if config.target_bytes is None or size <= config.target_bytes:
-                        output.parent.mkdir(parents=True, exist_ok=True)
-                        output.write_bytes(data)
-                        return output
+                try:
+                    for quality in qualities:
+                        data = _render(resized, suffix, quality, exif_bytes)
+                        size = len(data)
+                        if best_size is None or size < best_size:
+                            best_data = data
+                            best_size = size
+                        if config.target_bytes is None or size <= config.target_bytes:
+                            output.parent.mkdir(parents=True, exist_ok=True)
+                            output.write_bytes(data)
+                            return output
+                finally:
+                    if resized is not normalized:
+                        resized.close()
         finally:
             normalized.close()
     finally:
