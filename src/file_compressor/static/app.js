@@ -242,7 +242,10 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
-      if (this.selectMode || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) return;
+      if (this.selectMode || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) {
+        this.showToast('Close the current dialog before dropping files', 'error');
+        return;
+      }
       this.showUpload = true;
       this._selectFiles(files);
     },
@@ -543,7 +546,7 @@ function app() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     compareVersionUrl() {
-      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?_=${this._compareGen}`;
+      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?v=${this.compareVersion.created_at || ''}&_=${this._compareGen}`;
     },
     _cleanupCompareListeners() {
       this._compareDragging = false;
