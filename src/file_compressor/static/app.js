@@ -228,12 +228,12 @@ function app() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pdf_ids: ids }),
         });
-        if (!res.ok) throw new Error('Batch delete failed');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Batch delete failed');
         this.showToast(`Deleted ${data.deleted} PDFs`);
         ids.forEach(id => this._evictPdfCache(id));
         if (ids.includes(this.expanded)) this.expanded = null;
-        if (this.showCompare && ids.includes(this.comparePdf?.id)) { clearTimeout(this._compareTimeout); this.showCompare = false; }
+        if (this.showCompare && ids.includes(this.comparePdf?.id)) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this.selectedPdfs = {};
         this.selectMode = false;
         this.loadLibrary();
@@ -546,9 +546,10 @@ function app() {
       if (!confirm(`Delete "${pdf.filename}" and all versions?`)) return;
       try {
         const res = await fetch(`/api/pdfs/${pdf.id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Delete failed');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
-        if (this.showCompare && this.comparePdf?.id === pdf.id) { clearTimeout(this._compareTimeout); this.showCompare = false; }
+        if (this.showCompare && this.comparePdf?.id === pdf.id) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this._evictPdfCache(pdf.id);
         if (this.selectedPdfs[pdf.id]) {
           const n = { ...this.selectedPdfs };
@@ -565,8 +566,9 @@ function app() {
       if (!confirm('Delete this version?')) return;
       try {
         const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Delete failed');
-        if (this.showCompare && this.compareVersion?.id === versionId) { clearTimeout(this._compareTimeout); this.showCompare = false; }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Delete failed');
+        if (this.showCompare && this.compareVersion?.id === versionId) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this._evictPdfCache(pdfId);
         this.loadVersions(pdfId);
         this.loadLibrary();
