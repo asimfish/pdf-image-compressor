@@ -238,7 +238,7 @@
   <div x-show="showUpload" x-cloak role="dialog" aria-modal="true" aria-label="Upload PDF"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="showUpload = false; uploadFiles = []" @keydown.escape.window="if (showUpload) { showUpload = false; uploadFiles = [] }"
-    @keydown.enter.window="if ($event.target.tagName !== 'TEXTAREA' && showUpload && uploadFiles.length > 0 && !uploading && !uploadValidation) doUpload()">
+    @keydown.enter.window="if ($event.target.tagName !== 'INPUT' && $event.target.tagName !== 'TEXTAREA' && showUpload && uploadFiles.length > 0 && !uploading && !uploadValidation) doUpload()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 fade-in" @click.stop x-init="_trapFocus($el)">
       <h2 class="text-xl font-bold mb-4">Upload PDF</h2>
       <div class="drop-zone border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mb-5 transition" :class="dragOver && 'drag-over'" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop($event)" @click="$refs.fileInput.click()">
@@ -320,7 +320,7 @@
   <div x-show="showCompress" x-cloak role="dialog" aria-modal="true" aria-label="Compress PDF"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="closeCompress()" @keydown.escape.window="if (showCompress) closeCompress()"
-    @keydown.enter.window="if (showCompress && !compressing && !compressValidation && !compressResult) doCompress()">
+    @keydown.enter.window="if ($event.target.tagName !== 'INPUT' && showCompress && !compressing && !compressValidation && !compressResult) doCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop x-init="_trapFocus($el)">
       <h2 class="text-xl font-bold mb-1">Compress PDF</h2>
       <p class="text-sm text-gray-500 mb-5"><span x-text="compressTarget?.filename"></span> <span class="text-gray-400" x-text="compressTarget ? '(' + fmtSize(compressTarget.file_size) + ')' : ''"></span><span x-show="compressTarget && bestVersion(compressTarget) && !compressResult" class="text-green-600 ml-1" x-text="compressTarget ? '→ best: ' + fmtSize(bestVersion(compressTarget)?.file_size) : ''"></span></p>
@@ -401,7 +401,7 @@
   <div x-show="showBatchCompress" x-cloak role="dialog" aria-modal="true" aria-label="Batch Compress"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
     @click.self="cancelBatchCompress()" @keydown.escape.window="if (showBatchCompress) cancelBatchCompress()"
-    @keydown.enter.window="if (showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
+    @keydown.enter.window="if ($event.target.tagName !== 'INPUT' && showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop x-init="_trapFocus($el)">
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>
       <p class="text-sm text-gray-500 mb-5"><span x-text="'Compress ' + _plural(batchTargetPdfs.length, 'PDF') + (batchTargetPdfs.length < pdfs.length ? ' (filtered)' : '')"></span> <span class="text-gray-400" x-text="'(' + fmtSize(batchTargetPdfs.reduce((s, p) => s + p.file_size, 0)) + ' total)'"></span>
