@@ -20,7 +20,7 @@ from starlette.background import BackgroundTask
 
 from .core import compress_path
 from .models import CompressionConfig
-from .pdfs import _fitz, render_page
+from .pdfs import _fitz, evict_render_cache, render_page
 from .storage import Storage, VersionParams, VersionRecord
 from .utils import clamp_quality, format_size, parse_size, unique_path
 
@@ -308,9 +308,14 @@ def api_update_notes(pdf_id: str, body: NotesUpdate) -> dict:
 @app.delete("/api/pdfs/{pdf_id}")
 def api_delete_pdf(pdf_id: str) -> dict:
     storage = _get_storage()
+    paths = [p for v in storage.list_versions(pdf_id) if (p := storage.get_version_path(v.id))]
+    pdf_path = storage.get_pdf_path(pdf_id)
+    if pdf_path:
+        paths.append(pdf_path)
     if not storage.delete_pdf(pdf_id):
         raise HTTPException(404, detail="PDF not found")
-    render_page.cache_clear()
+    for p in paths:
+        evict_render_cache(p)
     logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
@@ -322,9 +327,19 @@ class BatchDeleteRequest(BaseModel):
 @app.post("/api/pdfs/batch-delete")
 def api_batch_delete(body: BatchDeleteRequest) -> dict:
     storage = _get_storage()
+    evict_paths: list[Path] = []
+    for pid in body.pdf_ids:
+        for v in storage.list_versions(pid):
+            vp = storage.get_version_path(v.id)
+            if vp:
+                evict_paths.append(vp)
+        pp = storage.get_pdf_path(pid)
+        if pp:
+            evict_paths.append(pp)
     deleted = storage.batch_delete_pdfs(body.pdf_ids)
     if deleted > 0:
-        render_page.cache_clear()
+        for p in evict_paths:
+            evict_render_cache(p)
     return {"deleted": deleted}
 
 
@@ -352,9 +367,15 @@ def api_download_version(version_id: str) -> FileResponse:
 @app.delete("/api/versions/{version_id}")
 def api_delete_version(version_id: str) -> dict:
     storage = _get_storage()
+    ver = storage.get_version(version_id)
+    ver_path = storage.get_version_path(version_id) if ver else None
+    pdf_path = storage.get_pdf_path(ver.pdf_id) if ver else None
     if not storage.delete_version(version_id):
         raise HTTPException(404, detail="Version not found")
-    render_page.cache_clear()
+    if ver_path:
+        evict_render_cache(ver_path)
+    if pdf_path:
+        evict_render_cache(pdf_path)
     return {"ok": True}
 
 

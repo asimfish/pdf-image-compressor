@@ -113,6 +113,11 @@ function app() {
     get uploadValidation() { return this._validateForm(this.uploadForm); },
     get compressValidation() { return this._validateForm(this.compressForm); },
     get batchCompressValidation() { return this._validateForm(this.batchForm); },
+    get allFilteredSelected() {
+      const fids = new Set(this.filteredPdfs.map(p => p.id));
+      const sids = new Set(Object.keys(this.selectedPdfs));
+      return fids.size > 0 && fids.size === sids.size && [...fids].every(id => sids.has(id));
+    },
     get filteredPdfs() {
       let list = this.pdfs;
       if (this.search.trim()) {
@@ -184,10 +189,7 @@ function app() {
       this.selectedPdfs = n;
     },
     selectAll() {
-      const filteredIds = new Set(this.filteredPdfs.map(p => p.id));
-      const selectedIds = new Set(Object.keys(this.selectedPdfs));
-      const allSelected = filteredIds.size === selectedIds.size && [...filteredIds].every(id => selectedIds.has(id));
-      this.selectedPdfs = allSelected ? {} : Object.fromEntries(this.filteredPdfs.map(p => [p.id, true]));
+      this.selectedPdfs = this.allFilteredSelected ? {} : Object.fromEntries(this.filteredPdfs.map(p => [p.id, true]));
     },
     async batchDelete() {
       const ids = Object.keys(this.selectedPdfs);

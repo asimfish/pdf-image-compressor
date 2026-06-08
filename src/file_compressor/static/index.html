@@ -81,7 +81,7 @@
         Delete (<span x-text="Object.keys(selectedPdfs).length"></span>)
       </button>
       <button x-show="selectMode" @click="selectAll()" class="text-sm text-blue-600 hover:text-blue-800 font-medium"
-        x-text="Object.keys(selectedPdfs).length === filteredPdfs.length ? 'Deselect All' : 'Select All (' + filteredPdfs.length + ')'"></button>
+        x-text="allFilteredSelected ? 'Deselect All' : 'Select All (' + filteredPdfs.length + ')'"></button>
     </div>
   </header>
   <div class="mb-6 flex gap-3">

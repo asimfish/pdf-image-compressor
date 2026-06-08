@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
 import shutil
 from io import BytesIO
 from pathlib import Path
@@ -179,9 +178,15 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     return values
 
 
-@lru_cache(maxsize=32)
+_render_cache: dict[tuple, bytes] = {}
+_RENDER_CACHE_MAX = 32
+
+
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
+    key = (str(source), page_index, dpi)
+    if key in _render_cache:
+        return _render_cache[key]
     fitz = _fitz()
     doc = fitz.open(source)
     try:
@@ -189,9 +194,20 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             raise ValueError(f"Page index {page_index} out of range (0-{len(doc) - 1})")
         page = doc[page_index]
         pix = page.get_pixmap(dpi=dpi, alpha=False)
-        return pix.tobytes("png")
+        result = pix.tobytes("png")
     finally:
         doc.close()
+    if len(_render_cache) >= _RENDER_CACHE_MAX:
+        _render_cache.pop(next(iter(_render_cache)))
+    _render_cache[key] = result
+    return result
+
+
+def evict_render_cache(source: Path) -> None:
+    """Remove all cached renders for a specific source file."""
+    prefix = str(source)
+    for key in [k for k in _render_cache if k[0] == prefix]:
+        del _render_cache[key]
 
 
 def _fitz():
