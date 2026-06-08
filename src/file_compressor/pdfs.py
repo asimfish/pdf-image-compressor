@@ -218,7 +218,9 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
-        result = _render_cache.get(key)
+        if hasattr(wait_event, '_render_exc'):
+            raise wait_event._render_exc  # type: ignore[attr-defined]
+        result = getattr(wait_event, '_render_result', None)
         if result is None:
             raise RuntimeError(f"Render failed for {source} page {page_index}")
         return result  # type: ignore[return-value]
@@ -238,13 +240,15 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 _evict_oldest_result()
             event = _render_cache[key]
             _render_cache[key] = result
-            event.set()  # type: ignore[union-attr]
+            event._render_result = result  # type: ignore[attr-defined]
+            event.set()
         return result  # type: ignore[return-value]
-    except Exception:
+    except Exception as exc:
         with _render_cache_lock:
             event = _render_cache.pop(key, None)
             if event is not None:
-                event.set()  # type: ignore[union-attr]
+                event._render_exc = exc  # type: ignore[attr-defined]
+                event.set()
         raise
 
 

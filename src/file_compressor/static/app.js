@@ -244,7 +244,7 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
-      if (this.selectMode || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) {
+      if (this.selectMode || this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) {
         this.showToast('Close the current dialog before dropping files', 'error');
         return;
       }
