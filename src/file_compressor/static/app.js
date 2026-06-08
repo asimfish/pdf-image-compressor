@@ -428,7 +428,7 @@ function app() {
       this._batchAbort = new AbortController();
       try {
         const fd = this._buildCompressFd(this.batchForm);
-        if (this.batchTargetPdfs.length < this.pdfs.length) {
+        if (this.batchTargetPdfs.length < this._batchTotalAtOpen) {
           fd.append('pdf_ids', this.batchTargetPdfs.map(p => p.id).join(','));
         }
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd, signal: this._batchAbort.signal });
