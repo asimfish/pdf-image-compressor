@@ -297,7 +297,7 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
-      let succeeded = 0; const errors = []; const warnings = []; const compressResults = []; let uploadedPdf = null;
+      let succeeded = 0; const errors = []; const warnings = []; const compressResults = []; let uploadedPdf = null; const totalFiles = this.uploadFiles.length;
       const { notes, ...formFields } = this.uploadForm;
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
@@ -327,7 +327,7 @@ function app() {
       this.uploadForm = this._defaults({ notes: '' });
       this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, errors), errors.length ? 'error' : 'success');
       this.loadLibrary();
-      if (succeeded === 1) this.compressPdf(uploadedPdf);
+      if (totalFiles === 1 && succeeded === 1) this.compressPdf(uploadedPdf);
     },
     _buildUploadToast(succeeded, compressResults, warnings, errors) {
       const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
