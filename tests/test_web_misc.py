@@ -166,6 +166,58 @@ def test_sanitize_label_truncates_long():
     assert len(_sanitize_label(long)) <= 500
 
 
+# ── _sanitize_error ──
+
+
+def test_sanitize_error_no_output():
+    from file_compressor.web import _sanitize_error
+
+    assert "no output" in _sanitize_error(RuntimeError("Compression produced no output"))
+
+
+def test_sanitize_error_corrupt():
+    from file_compressor.web import _sanitize_error
+
+    assert "corrupted" in _sanitize_error(RuntimeError("File is corrupt"))
+
+
+def test_sanitize_error_invalid():
+    from file_compressor.web import _sanitize_error
+
+    assert "corrupted" in _sanitize_error(RuntimeError("Invalid PDF structure"))
+
+
+def test_sanitize_error_strips_paths():
+    from file_compressor.web import _sanitize_error
+
+    result = _sanitize_error(RuntimeError("failed to open /Users/alice/docs/file.pdf"))
+    assert "/Users" not in result
+    assert "[path]" in result
+
+
+def test_sanitize_error_fallback():
+    from file_compressor.web import _sanitize_error
+
+    assert _sanitize_error(RuntimeError("out of memory")) == "Compression failed"
+
+
+def test_sanitize_error_preserves_non_path_text():
+    from file_compressor.web import _sanitize_error
+
+    result = _sanitize_error(RuntimeError("render failed for /Users/alice/doc.pdf page 5"))
+    assert "[path]" in result
+    assert "render failed" in result
+    assert "page 5" in result
+
+
+def test_sanitize_error_multiline_truncated():
+    from file_compressor.web import _sanitize_error
+
+    msg = "first line\nsecond line\nthird line"
+    result = _sanitize_error(RuntimeError(msg))
+    assert "second line" not in result
+
+
 # ── Preview endpoint error paths ──
 
 
