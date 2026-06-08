@@ -189,9 +189,10 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     return values
 
 
-_render_cache: dict[tuple, bytes] = {}
+_render_cache: dict[tuple, object | bytes] = {}
 _render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
+_RENDER_PENDING: object = object()
 
 
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
@@ -199,21 +200,32 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     key = (str(source), page_index, dpi)
     with _render_cache_lock:
         if key in _render_cache:
-            return _render_cache[key]
-    fitz = _fitz()
-    doc = fitz.open(source)
+            cached = _render_cache[key]
+            if cached is not _RENDER_PENDING:
+                return cached  # type: ignore[return-value]
+            _render_cache[key] = _RENDER_PENDING
+        else:
+            _render_cache[key] = _RENDER_PENDING
     try:
-        if page_index < 0 or page_index >= len(doc):
-            raise ValueError(f"Page index {page_index} out of range (0-{len(doc) - 1})")
-        page = doc[page_index]
-        pix = page.get_pixmap(dpi=dpi, alpha=False)
-        result = pix.tobytes("png")
-    finally:
-        doc.close()
-    with _render_cache_lock:
-        if len(_render_cache) >= _RENDER_CACHE_MAX:
-            _render_cache.pop(next(iter(_render_cache)))
-        _render_cache[key] = result
+        fitz = _fitz()
+        doc = fitz.open(source)
+        try:
+            if page_index < 0 or page_index >= len(doc):
+                raise ValueError(f"Page index {page_index} out of range (0-{len(doc) - 1})")
+            page = doc[page_index]
+            pix = page.get_pixmap(dpi=dpi, alpha=False)
+            result = pix.tobytes("png")
+        finally:
+            doc.close()
+        with _render_cache_lock:
+            if len(_render_cache) >= _RENDER_CACHE_MAX:
+                _render_cache.pop(next(iter(_render_cache)))
+            _render_cache[key] = result
+        return result
+    except Exception:
+        with _render_cache_lock:
+            _render_cache.pop(key, None)
+        raise
     return result
 
 

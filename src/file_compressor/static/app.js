@@ -506,11 +506,7 @@ function app() {
         const res = await fetch(`/api/versions/${versionId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Delete failed');
         if (this.showCompare && this.compareVersion?.id === versionId) this.showCompare = false;
-        const { [pdfId]: _pm, ...rest } = this._pdfMeta;
-        this._pdfMeta = rest;
-        if (this.versionCache[pdfId]) {
-          this.versionCache[pdfId] = this.versionCache[pdfId].filter(v => v.id !== versionId);
-        }
+        this._evictPdfCache(pdfId);
         this.loadVersions(pdfId);
         this.loadLibrary();
       } catch (e) {
