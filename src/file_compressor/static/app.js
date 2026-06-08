@@ -112,6 +112,7 @@ function app() {
       const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
       if (bytes < 1) return 'Target size must be at least 1 byte';
+      if (!unit && bytes < 10000) return 'Please include a unit (e.g. 500KB, 2MB)';
       return '';
     },
     _validateForm(form) {
@@ -170,10 +171,9 @@ function app() {
         if (gen !== this._libraryGen) return;
         const newPdfs = await pdfsRes.json();
         const oldIds = new Set(this.pdfs.map(p => p.id));
-        const changed = newPdfs.length !== this.pdfs.length || newPdfs.some(p => !oldIds.has(p.id) || p.version_count !== (this.pdfs.find(op => op.id === p.id) || {}).version_count);
         this.pdfs = newPdfs;
         this._filteredCache = null;
-        if (changed) this._pdfMeta = {};
+        this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
         fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
