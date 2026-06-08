@@ -453,11 +453,7 @@ def compress_upload(
     upload_dir.mkdir(parents=True, exist_ok=True)
     try:
         _save_upload_files(files, upload_dir)
-    except HTTPException:
-        shutil.rmtree(temp_path, True)
-        raise
-    config = replace(config, max_edge=max_edge, to_webp=to_webp, output_dir=output_dir, archive=archive)
-    try:
+        config = replace(config, max_edge=max_edge, to_webp=to_webp, output_dir=output_dir, archive=archive)
         if len(files) > 1 or archive == "zip":
             source = upload_dir
         else:
@@ -474,7 +470,7 @@ def compress_upload(
         raise
     except Exception as exc:
         shutil.rmtree(temp_path, True)
-        logger.error("Legacy compress failed: %s", exc)
+        logger.error("Legacy compress failed: %s", _sanitize_error(exc))
         raise HTTPException(500, detail="Compression failed")
     response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
     response.background = BackgroundTask(shutil.rmtree, temp_path, True)

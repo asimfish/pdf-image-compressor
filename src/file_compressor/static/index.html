@@ -511,10 +511,10 @@
           <template x-if="compareTotalPages > 1">
             <div class="flex items-center gap-3">
               <button @click="comparePrev()" :disabled="comparePage <= 0"
-                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">&larr; Prev <kbd class="ml-1 text-xs text-gray-400">&larr;</kbd></button>
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">&larr; Prev</button>
               <span class="text-sm text-gray-600 font-medium" x-text="(comparePage + 1) + ' / ' + compareTotalPages"></span>
               <button @click="compareNext()" :disabled="comparePage >= compareTotalPages - 1"
-                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed"><kbd class="mr-1 text-xs text-gray-400">&rarr;</kbd> Next &rarr;</button>
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">Next &rarr;</button>
             </div>
           </template>
           <a :href="'/api/versions/' + compareVersion?.id + '/download'" target="_blank" class="ml-2 p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition" aria-label="Download compressed version" title="Download compressed">
@@ -562,7 +562,7 @@
           <span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded"><span x-text="fmtSize(compareVersion?.file_size)"></span> <span class="text-purple-500" x-text="compareVersion ? fmtSettings(compareVersion) : ''"></span></span>
           <span x-show="compareVersion?.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="fmtTarget(compareVersion?.target_bytes)"></span>
           <span x-show="compareVersion?.compression_ratio > 0" class="text-green-600 font-medium" x-text="'-' + (compareVersion.compression_ratio * 100).toFixed(1) + '% saved'"></span>
-          <span class="text-gray-400 italic">double-click to reset · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">←</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">→</kbd> pages · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">Home</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">End</kbd> slider</span>
+          <span class="text-gray-400 italic">double-click to reset · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">←</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">→</kbd> slider · <kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic">Home</kbd><kbd class="px-1 py-0.5 bg-gray-100 rounded text-gray-500 not-italic ml-0.5">End</kbd> edges</span>
           <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Original: <span x-text="fmtSize(comparePdf?.file_size)"></span></span>
         </div>
       </div>

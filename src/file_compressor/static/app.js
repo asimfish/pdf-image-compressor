@@ -128,7 +128,7 @@ function app() {
       switch (this.sortBy) {
         case 'name': sorted.sort((a, b) => a.filename.localeCompare(b.filename)); break;
         case 'size': sorted.sort((a, b) => b.file_size - a.file_size); break;
-        case 'savings': sorted.sort((a, b) => this.bestSaving(b) - this.bestSaving(a)); break;
+        case 'savings': sorted.sort((a, b) => (this.pdfMeta(b).saving || 0) - (this.pdfMeta(a).saving || 0)); break;
         default: sorted.sort((a, b) => b.upload_time.localeCompare(a.upload_time)); break;
       }
       return sorted;
