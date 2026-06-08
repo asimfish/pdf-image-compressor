@@ -101,7 +101,7 @@ function app() {
     },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
-      if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b\s*$/i.test(v)) return 'Enter a size with unit (e.g. 500KB, 2MB)';
+      if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
       return '';
@@ -488,6 +488,7 @@ function app() {
         });
         if (!res.ok) throw new Error('Failed to save notes');
         this.showNotes = false;
+        this.notesTarget = null;
         this.loadLibrary();
       } catch (e) {
         this.showToast('Save failed: ' + e.message, 'error');
