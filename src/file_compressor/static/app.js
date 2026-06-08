@@ -258,7 +258,7 @@ function app() {
       this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
       if (!files.length) return;
-      if (this.selectMode || this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare) {
+      if (this.selectMode || this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare || this.showShortcuts) {
         this.showToast('Close the current dialog before dropping files', 'error');
         return;
       }
@@ -476,20 +476,21 @@ function app() {
     },
     async doCompress() {
       if (!this.compressTarget) return;
+      const targetId = this.compressTarget.id;
       this.compressing = true;
       this.compressResult = null;
       try {
         const fd = this._buildCompressFd(this.compressForm);
-        const res = await fetch(`/api/pdfs/${this.compressTarget.id}/compress`, { method: 'POST', body: fd });
+        const res = await fetch(`/api/pdfs/${targetId}/compress`, { method: 'POST', body: fd });
         const ver = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(ver.detail || 'Compression failed');
         this.compressResult = ver;
-        this.loadVersions(this.compressTarget.id);
+        this.loadVersions(targetId);
         this.loadLibrary();
       } catch (e) {
-        this.showToast('Compression failed: ' + e.message, 'error');
+        if (this.compressTarget) this.showToast('Compression failed: ' + e.message, 'error');
       }
-      this.compressing = false;
+      if (this.compressTarget) this.compressing = false;
     },
     closeCompress() {
       this.compressResult = null;
@@ -554,7 +555,9 @@ function app() {
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = Math.min(pdf.page_count || 1, version.page_count || pdf.page_count || 1);
+      this.compareTotalPages = (version.page_count || 0) === 0
+        ? 1
+        : Math.min(pdf.page_count || 1, version.page_count || 1);
       this.compareSlider = 50;
       this._resetCompareLoading();
       this.showCompare = true;
