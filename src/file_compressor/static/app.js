@@ -128,7 +128,7 @@ function app() {
       switch (this.sortBy) {
         case 'name': sorted.sort((a, b) => a.filename.localeCompare(b.filename)); break;
         case 'size': sorted.sort((a, b) => b.file_size - a.file_size); break;
-        case 'savings': sorted.sort((a, b) => (this.pdfMeta(b).saving || 0) - (this.pdfMeta(a).saving || 0)); break;
+        case 'savings': sorted.sort((a, b) => this.bestSaving(b) - this.bestSaving(a)); break;
         default: sorted.sort((a, b) => b.upload_time.localeCompare(a.upload_time)); break;
       }
       return sorted;
@@ -140,7 +140,8 @@ function app() {
       return this.pdfs.filter(p => (p.version_count || 0) > 0).length;
     },
     async loadLibrary() {
-      this.loading = true;
+      const isInitial = !this._libraryLoaded;
+      this.loading = isInitial;
       this.apiError = false;
       try {
         const pdfsRes = await fetch('/api/pdfs');
@@ -151,6 +152,7 @@ function app() {
         this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
       }
+      this._libraryLoaded = true;
       this.loading = false;
     },
     async loadVersions(pdfId) {
@@ -300,6 +302,7 @@ function app() {
     },
     async doUpload() {
       if (!this.uploadFiles.length) return;
+      this._uploadCancelled = false;
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
@@ -321,12 +324,18 @@ function app() {
         }
         if (!this.uploading) break;
       }
-      if (succeeded === 0 && !this.uploading) {
+      if (succeeded === 0 && this._uploadCancelled) {
         this.showUpload = false; this.uploadFiles = []; this.showToast('Upload cancelled', 'error'); return;
       }
       this.uploadProgress = 100; this.uploading = false;
       if (succeeded === 0 && errors.length > 0) {
         this.showToast(`Upload failed: ${errors.join('; ')}`, 'error');
+        return;
+      }
+      if (this._uploadCancelled && succeeded > 0) {
+        const remaining = totalFiles - succeeded;
+        this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (cancelled, ${remaining} remaining)`, 'warning');
+        this.loadLibrary();
         return;
       }
       this.showUpload = false; this.uploadFiles = [];
@@ -344,6 +353,7 @@ function app() {
       return parts.join(', ');
     },
     cancelUpload() {
+      this._uploadCancelled = true;
       this.uploading = false;
       if (this._currentXhr) { this._currentXhr.abort(); this._currentXhr = null; }
     },
