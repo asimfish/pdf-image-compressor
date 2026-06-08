@@ -143,8 +143,11 @@ class Storage:
         for directory in (self._originals, self._versions):
             for f in directory.iterdir():
                 if f.is_file() and str(f) not in referenced:
-                    f.unlink()
-                    removed += 1
+                    try:
+                        f.unlink()
+                        removed += 1
+                    except OSError:
+                        pass
         return removed
 
     def __enter__(self) -> Storage:
