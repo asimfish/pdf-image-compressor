@@ -33,6 +33,8 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
 
     normalized = _normalize_mode(raw, suffix)
+    best_fit_data: Optional[bytes] = None
+    best_fit_quality: Optional[int] = None
     for edge in edges:
         resized = _resize(normalized, edge)
         for quality in qualities:
@@ -41,15 +43,20 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
             if best_size is None or size < best_size:
                 best_data = data
                 best_size = size
-            if config.target_bytes is None or size <= config.target_bytes:
+            if config.target_bytes is not None:
+                if size <= config.target_bytes and (best_fit_quality is None or quality > best_fit_quality):
+                    best_fit_data = data
+                    best_fit_quality = quality
+            else:
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_bytes(data)
                 return output
 
-    if best_data is None:
+    result = best_fit_data if best_fit_data is not None else best_data
+    if result is None:
         raise RuntimeError("Image compression produced no output")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(best_data)
+    output.write_bytes(result)
     return output
 
 
