@@ -132,7 +132,7 @@ function app() {
       return fids.size > 0 && fids.size === sids.size && [...fids].every(id => sids.has(id));
     },
     get filteredPdfs() {
-      const key = `${this.pdfs.length}|${this.search}|${this.filterTab}|${this.sortBy}`;
+      const key = `${this._libraryGen}|${this.search}|${this.filterTab}|${this.sortBy}`;
       if (this._filteredKey === key && this._filteredCache) return this._filteredCache;
       this._filteredKey = key;
       let list = this.pdfs;
@@ -424,7 +424,7 @@ function app() {
       }
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = targets;
-      this._batchTotalAtOpen = this.pdfs.length;
+      this._batchIsSubset = targets.length < this.pdfs.length || this.selectMode;
       this.batchResults = null;
       this._resetDragState();
       this.showBatchCompress = true;
@@ -435,7 +435,7 @@ function app() {
       this._batchAbort = new AbortController();
       try {
         const fd = this._buildCompressFd(this.batchForm);
-        if (this.batchTargetPdfs.length < this._batchTotalAtOpen) {
+        if (this._batchIsSubset) {
           fd.append('pdf_ids', this.batchTargetPdfs.map(p => p.id).join(','));
         }
         const res = await fetch('/api/pdfs/batch-compress', { method: 'POST', body: fd, signal: this._batchAbort.signal });
