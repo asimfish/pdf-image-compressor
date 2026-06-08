@@ -48,6 +48,7 @@ class VersionParams:
     strip_metadata: bool
     target_bytes: Optional[int]
     compression_ratio: Optional[float]
+    page_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class VersionRecord:
     target_bytes: Optional[int]
     compression_ratio: Optional[float]
     created_at: str
+    page_count: int = 0
 
 
 _SCHEMA = """
@@ -90,7 +92,8 @@ CREATE TABLE IF NOT EXISTS versions (
     strip_metadata INTEGER NOT NULL DEFAULT 1,
     target_bytes INTEGER,
     compression_ratio REAL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    page_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_versions_pdf ON versions(pdf_id);
@@ -158,6 +161,7 @@ class Storage:
 
     _EXPECTED_COLUMNS: tuple[tuple[str, str], ...] = (
         ("versions", "strip_metadata INTEGER NOT NULL DEFAULT 1"),
+        ("versions", "page_count INTEGER NOT NULL DEFAULT 0"),
     )
 
     def _migrate(self) -> None:
@@ -301,10 +305,11 @@ class Storage:
         with self._lock:
             try:
                 self._conn.execute(
-                    "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO versions (id,pdf_id,label,file_path,file_size,quality,pdf_mode,pdf_dpi,pdf_grayscale,strip_metadata,target_bytes,compression_ratio,created_at,page_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ver_id, params.pdf_id, params.label, str(file_path), len(params.file_data),
                      params.quality, params.pdf_mode, params.pdf_dpi, int(params.pdf_grayscale),
-                     int(params.strip_metadata), params.target_bytes, params.compression_ratio, now),
+                     int(params.strip_metadata), params.target_bytes, params.compression_ratio, now,
+                     params.page_count),
                 )
                 self._conn.commit()
             except Exception:
@@ -315,6 +320,7 @@ class Storage:
             quality=params.quality, pdf_mode=params.pdf_mode, pdf_dpi=params.pdf_dpi,
             pdf_grayscale=params.pdf_grayscale, strip_metadata=params.strip_metadata,
             target_bytes=params.target_bytes, compression_ratio=params.compression_ratio, created_at=now,
+            page_count=params.page_count,
         )
 
     def list_versions(self, pdf_id: str) -> list[VersionRecord]:
@@ -392,6 +398,7 @@ def _row_to_version(row: sqlite3.Row) -> VersionRecord:
         target_bytes=row["target_bytes"],
         compression_ratio=row["compression_ratio"],
         created_at=row["created_at"],
+        page_count=row["page_count"],
     )
 
 

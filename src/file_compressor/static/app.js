@@ -500,7 +500,7 @@ function app() {
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = pdf.page_count || 1;
+      this.compareTotalPages = Math.min(pdf.page_count || 1, version.page_count || pdf.page_count || 1);
       this.compareSlider = 50;
       this._resetCompareLoading();
       this.showCompare = true;

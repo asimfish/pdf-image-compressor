@@ -312,10 +312,12 @@ def api_delete_pdf(pdf_id: str) -> dict:
     pdf_path = storage.get_pdf_path(pdf_id)
     if pdf_path:
         paths.append(pdf_path)
-    if not storage.delete_pdf(pdf_id):
-        raise HTTPException(404, detail="PDF not found")
-    for p in paths:
-        evict_render_cache(p)
+    try:
+        if not storage.delete_pdf(pdf_id):
+            raise HTTPException(404, detail="PDF not found")
+    finally:
+        for p in paths:
+            evict_render_cache(p)
     logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
@@ -336,8 +338,9 @@ def api_batch_delete(body: BatchDeleteRequest) -> dict:
         pp = storage.get_pdf_path(pid)
         if pp:
             evict_paths.append(pp)
-    deleted = storage.batch_delete_pdfs(body.pdf_ids)
-    if deleted > 0:
+    try:
+        deleted = storage.batch_delete_pdfs(body.pdf_ids)
+    finally:
         for p in evict_paths:
             evict_render_cache(p)
     return {"deleted": deleted}
@@ -521,6 +524,12 @@ def _compress_and_store(
             logger.error("Compression produced no output for pdf %s: %s", pdf_id, detail)
             raise RuntimeError(detail)
         compressed_data = out.read_bytes()
+        try:
+            fitz = _fitz()
+            with fitz.open(stream=compressed_data, filetype="pdf") as cdoc:
+                ver_page_count = len(cdoc)
+        except Exception:
+            ver_page_count = 0
 
     original_size = len(original_data)
     compressed_size = len(compressed_data)
@@ -537,6 +546,7 @@ def _compress_and_store(
         strip_metadata=config.strip_metadata,
         target_bytes=config.target_bytes,
         compression_ratio=ratio,
+        page_count=ver_page_count,
     )
     return storage.add_version(params)
 
