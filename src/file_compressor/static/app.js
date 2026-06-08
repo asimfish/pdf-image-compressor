@@ -171,6 +171,7 @@ function app() {
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         if (gen !== this._libraryGen) return;
         const newPdfs = await pdfsRes.json();
+        if (gen !== this._libraryGen) return;
         this.pdfs = newPdfs;
         this._filteredCache = null;
         this._pdfMeta = {};
@@ -457,6 +458,7 @@ function app() {
     },
     cancelBatchCompress() {
       if (this._batchAbort) this._batchAbort.abort();
+      this.batchCompressing = false;
       this.showBatchCompress = false;
       this.batchResults = null;
       this.loadLibrary();
@@ -614,6 +616,7 @@ function app() {
     },
     _onCompareLoad(e) {
       if (+e.target.dataset.gen !== this._compareGen) return;
+      if (this.compareTotalPages === 0) return;
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
@@ -626,6 +629,7 @@ function app() {
     },
     _onCompareError(e) {
       if (+e.target.dataset.gen !== this._compareGen) return;
+      if (this.compareTotalPages === 0) return;
       e.target.removeAttribute('src');
       this._compareLoaded++;
       this._compareErrors++;
