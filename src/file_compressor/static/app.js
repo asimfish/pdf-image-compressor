@@ -628,6 +628,7 @@ function app() {
       return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?v=${this.compareVersion.created_at || ''}&_=${this._compareGen}`;
     },
     _cleanupCompareListeners() {
+      clearTimeout(this._compareTimeout);
       this._compareDragging = false;
       if (this._onMouseMove) {
         window.removeEventListener('mousemove', this._onMouseMove);
@@ -686,7 +687,8 @@ function app() {
       const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
       const parts = [];
       if (saved > 0) parts.push('Saved ' + this.fmtSize(saved) + ' total');
-      else parts.push('No size reduction');
+      else if (saved < 0) parts.push('Files grew by ' + this.fmtSize(Math.abs(saved)));
+      else parts.push('No size change');
       if (errors.length > 0) parts.push(errors.length + ' failed');
       return parts.join(', ');
     },
