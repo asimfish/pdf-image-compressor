@@ -398,6 +398,7 @@ function app() {
       if (this._batchAbort) this._batchAbort.abort();
       this.showBatchCompress = false;
       this.batchResults = null;
+      this.loadLibrary();
     },
     closeBatchResults() {
       this.batchResults = null;
@@ -526,7 +527,7 @@ function app() {
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
-        this.compareError = '';
+        if (!this.compareError) this.compareError = '';
       }
     },
     _onCompareError(e) {

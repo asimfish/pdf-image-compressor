@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -189,14 +190,16 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
 
 
 _render_cache: dict[tuple, bytes] = {}
+_render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
 
 
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
     key = (str(source), page_index, dpi)
-    if key in _render_cache:
-        return _render_cache[key]
+    with _render_cache_lock:
+        if key in _render_cache:
+            return _render_cache[key]
     fitz = _fitz()
     doc = fitz.open(source)
     try:
@@ -207,17 +210,19 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         result = pix.tobytes("png")
     finally:
         doc.close()
-    if len(_render_cache) >= _RENDER_CACHE_MAX:
-        _render_cache.pop(next(iter(_render_cache)))
-    _render_cache[key] = result
+    with _render_cache_lock:
+        if len(_render_cache) >= _RENDER_CACHE_MAX:
+            _render_cache.pop(next(iter(_render_cache)))
+        _render_cache[key] = result
     return result
 
 
 def evict_render_cache(source: Path) -> None:
     """Remove all cached renders for a specific source file."""
     prefix = str(source)
-    for key in [k for k in _render_cache if k[0] == prefix]:
-        del _render_cache[key]
+    with _render_cache_lock:
+        for key in [k for k in _render_cache if k[0] == prefix]:
+            del _render_cache[key]
 
 
 def _fitz():
