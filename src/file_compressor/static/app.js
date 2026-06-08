@@ -152,10 +152,7 @@ function app() {
         const pdfsRes = await fetch('/api/pdfs');
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         this.pdfs = await pdfsRes.json();
-        const newIds = new Set(this.pdfs.map(p => p.id));
-        for (const key of Object.keys(this._pdfMeta)) {
-          if (!newIds.has(key)) delete this._pdfMeta[key];
-        }
+        this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
       } catch (e) {
         this.apiError = true;
@@ -310,7 +307,7 @@ function app() {
       this.uploading = true;
       this.uploadProgress = 0;
       this.uploadStatus = 'Uploading...';
-      let succeeded = 0; const errors = []; const warnings = []; const compressResults = []; let uploadedPdf = null; const totalFiles = this.uploadFiles.length;
+      let succeeded = 0; const succeededIndices = new Set(); const errors = []; const warnings = []; const compressResults = []; let uploadedPdf = null; const totalFiles = this.uploadFiles.length;
       const { notes, ...formFields } = this.uploadForm;
       for (let i = 0; i < this.uploadFiles.length; i++) {
         const fd = this._buildCompressFd(formFields, { file: this.uploadFiles[i], notes });
@@ -321,7 +318,7 @@ function app() {
           if (data.file_size && data.best_compressed_size) {
             compressResults.push({ original: data.file_size, compressed: data.best_compressed_size });
           }
-          uploadedPdf = data; succeeded++;
+          uploadedPdf = data; succeeded++; succeededIndices.add(i);
         } catch (e) {
           if (!this.uploading) break;
           errors.push(`${this.uploadFiles[i].name}: ${e.message}`);
@@ -337,7 +334,7 @@ function app() {
         return;
       }
       if (this._uploadCancelled && succeeded > 0) {
-        this.uploadFiles = this.uploadFiles.slice(succeeded);
+        this.uploadFiles = this.uploadFiles.filter((_, idx) => !succeededIndices.has(idx));
         this.uploading = false;
         this.uploadProgress = 0;
         this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (cancelled, ${this.uploadFiles.length} remaining)`, 'warning');
@@ -538,7 +535,7 @@ function app() {
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
-        if (!this.compareError) this.compareError = '';
+        this.compareError = '';
       }
     },
     _onCompareError(e) {
