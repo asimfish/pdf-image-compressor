@@ -108,9 +108,7 @@ def _quality_candidates(start: int) -> list[int]:
     start = clamp_quality(start)
     if start <= 15:
         return [start]
-    values = list(range(start, 14, -5))
-    if values[-1] != 15:
-        values.append(15)
+    values = sorted(set(list(range(start, 14, -5)) + [15]), reverse=True)
     return values
 
 
