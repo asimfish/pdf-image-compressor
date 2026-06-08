@@ -85,7 +85,8 @@ function app() {
     _buildCompressFd(form, extras) {
       const fd = new FormData();
       for (const [k, v] of Object.entries(form)) {
-        if (v !== '' && v != null) fd.append(k, v);
+        const val = typeof v === 'string' ? v.trim() : v;
+        if (val !== '' && val != null) fd.append(k, val);
       }
       if (extras) {
         for (const [k, v] of Object.entries(extras)) fd.append(k, v);
@@ -580,7 +581,12 @@ function app() {
       e.target.removeAttribute('src');
       this._compareLoaded++;
       this._compareErrors++;
-      if (this._compareLoaded >= 2) this.compareLoading = false;
+      if (this._compareLoaded >= 2) {
+        this.compareLoading = false;
+        this.compareError = this._compareErrors >= 2
+          ? 'Both previews failed to load'
+          : 'One preview failed to load';
+      }
     },
     compareOriginalUrl() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}?_=${this._compareGen}`;
