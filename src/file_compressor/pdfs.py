@@ -195,12 +195,30 @@ _render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
 
 
-def _evict_oldest_result() -> None:
-    """Evict the oldest completed (non-Event) cache entry. Caller must hold _render_cache_lock."""
+def _evict_oldest_result() -> bool:
+    """Evict the oldest completed (non-Event) cache entry. Caller must hold _render_cache_lock.
+    Returns True if an entry was evicted, False if all entries are in-flight Events."""
     for k in list(_render_cache):
         if not isinstance(_render_cache[k], threading.Event):
             del _render_cache[k]
-            return
+            return True
+    return False
+
+
+def _try_make_cache_room() -> bool:
+    """Try to evict entries to make room in the cache. Caller must hold _render_cache_lock.
+    Returns True if there is room (or room was made), False if cache is full of Events."""
+    for _ in range(5):
+        if len(_render_cache) < _RENDER_CACHE_MAX:
+            return True
+        if _evict_oldest_result():
+            return True
+        _render_cache_lock.release()
+        try:
+            time.sleep(0.05)
+        finally:
+            _render_cache_lock.acquire()
+    return len(_render_cache) < _RENDER_CACHE_MAX
 
 
 def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
@@ -214,20 +232,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         elif cached is not None:
             return cached  # type: ignore[return-value]
         else:
-            for _attempt in range(20):
-                evicted = False
-                for k in list(_render_cache):
-                    if not isinstance(_render_cache[k], threading.Event):
-                        del _render_cache[k]
-                        evicted = True
-                        break
-                if evicted or len(_render_cache) < _RENDER_CACHE_MAX:
-                    break
-                _render_cache_lock.release()
-                try:
-                    time.sleep(0.05)
-                finally:
-                    _render_cache_lock.acquire()
+            _try_make_cache_room()
             _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
@@ -249,20 +254,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         finally:
             doc.close()
         with _render_cache_lock:
-            for _attempt in range(20):
-                evicted = False
-                for k in list(_render_cache):
-                    if not isinstance(_render_cache[k], threading.Event):
-                        del _render_cache[k]
-                        evicted = True
-                        break
-                if evicted or len(_render_cache) < _RENDER_CACHE_MAX:
-                    break
-                _render_cache_lock.release()
-                try:
-                    time.sleep(0.05)
-                finally:
-                    _render_cache_lock.acquire()
+            _try_make_cache_room()
             event = _render_cache[key]
             _render_cache[key] = result
             event._render_result = result  # type: ignore[attr-defined]
