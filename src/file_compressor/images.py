@@ -33,6 +33,10 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
 
     normalized = _normalize_mode(raw, suffix)
+    if config.target_bytes and None in edges:
+        pixels = normalized.width * normalized.height
+        if pixels > config.target_bytes * 100:
+            edges = [e for e in edges if e is not None]
     for edge in edges:
         resized = _resize(normalized, edge)
         for quality in qualities:
