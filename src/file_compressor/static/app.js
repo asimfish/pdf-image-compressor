@@ -686,8 +686,8 @@ function app() {
     },
     bestSaving(pdf) {
       const versions = this.versionCache[pdf.id] || [];
-      if (versions.length > 0) return Math.max(...versions.map(v => v.compression_ratio || 0));
-      return pdf.best_compression_ratio || 0;
+      if (versions.length > 0) return Math.max(...versions.map(v => v.compression_ratio ?? 0));
+      return pdf.best_compression_ratio ?? 0;
     },
     fmtSaving(r) {
       if (r == null || r === 0) return '';

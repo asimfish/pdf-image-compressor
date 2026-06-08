@@ -367,6 +367,8 @@ def api_download_version(version_id: str) -> FileResponse:
     stem = _sanitize_label(Path(pdf.filename).stem) if pdf else "version"
     label = _sanitize_label(ver.label) if ver.label else ""
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
+    if len(download_name.encode("utf-8")) > 200:
+        download_name = stem[:96] + ".pdf"
     try:
         return FileResponse(path, filename=download_name, media_type="application/pdf")
     except FileNotFoundError:

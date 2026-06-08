@@ -30,25 +30,30 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
         raw = ImageOps.exif_transpose(Image.open(source))
     except UnidentifiedImageError as exc:
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
-    exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
-
-    normalized = _normalize_mode(raw, suffix)
-    if config.target_bytes and None in edges:
-        pixels = normalized.width * normalized.height
-        if pixels > config.target_bytes * 100:
-            edges = [e for e in edges if e is not None]
-    for edge in edges:
-        resized = _resize(normalized, edge)
-        for quality in qualities:
-            data = _render(resized, suffix, quality, exif_bytes)
-            size = len(data)
-            if best_size is None or size < best_size:
-                best_data = data
-                best_size = size
-            if config.target_bytes is None or size <= config.target_bytes:
-                output.parent.mkdir(parents=True, exist_ok=True)
-                output.write_bytes(data)
-                return output
+    try:
+        exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
+        normalized = _normalize_mode(raw, suffix)
+        try:
+            if config.target_bytes and None in edges:
+                pixels = normalized.width * normalized.height
+                if pixels > config.target_bytes * 100:
+                    edges = [e for e in edges if e is not None]
+            for edge in edges:
+                resized = _resize(normalized, edge)
+                for quality in qualities:
+                    data = _render(resized, suffix, quality, exif_bytes)
+                    size = len(data)
+                    if best_size is None or size < best_size:
+                        best_data = data
+                        best_size = size
+                    if config.target_bytes is None or size <= config.target_bytes:
+                        output.parent.mkdir(parents=True, exist_ok=True)
+                        output.write_bytes(data)
+                        return output
+        finally:
+            normalized.close()
+    finally:
+        raw.close()
 
     if best_data is None:
         raise RuntimeError("Image compression produced no output")
