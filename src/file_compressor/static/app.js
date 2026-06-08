@@ -22,6 +22,7 @@ function app() {
     versionLoading: {},
     _pdfMeta: {},
     stats: null,
+    _maxUploadBytes: 500 * 1024 * 1024,
     search: '',
     sortBy: 'date',
     filterTab: 'All',
@@ -154,6 +155,7 @@ function app() {
         this.pdfs = await pdfsRes.json();
         this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d) this.stats = d; }).catch(() => {});
+        fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
         this.apiError = true;
         this.showToast('Failed to load library: ' + e.message, 'error');
@@ -253,7 +255,7 @@ function app() {
       this._selectFiles([...files]);
     },
     _selectFiles(all) {
-      const MAX = 500 * 1024 * 1024;
+      const MAX = this._maxUploadBytes;
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (!pdfs.length) { this.showToast('Only PDF files are supported', 'error'); return; }
       const valid = pdfs.filter(f => f.size <= MAX);
@@ -335,9 +337,17 @@ function app() {
       }
       if (this._uploadCancelled && succeeded > 0) {
         this.uploadFiles = this.uploadFiles.filter((_, idx) => !succeededIndices.has(idx));
+        if (this.uploadFiles.length === 0) {
+          this.showUpload = false;
+          this.uploadForm = this._defaults({ notes: '' });
+          this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
+          this.loadLibrary();
+          if (totalFiles === 1 && succeeded === 1) this.compressPdf(uploadedPdf);
+          return;
+        }
         this.uploading = false;
         this.uploadProgress = 0;
-        this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (cancelled, ${this.uploadFiles.length} remaining)`, 'warning');
+        this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (${this.uploadFiles.length} remaining)`, 'warning');
         this.loadLibrary();
         return;
       }
@@ -544,6 +554,7 @@ function app() {
     _onCompareError(e) {
       const m = /[?&]_=(\d+)/.exec(e.target.src);
       if (!m || +m[1] !== this._compareGen) return;
+      e.target.removeAttribute('src');
       this._compareLoaded++;
       this.compareError = 'Failed to load preview';
       if (this._compareLoaded >= 2) this.compareLoading = false;

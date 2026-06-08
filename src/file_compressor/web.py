@@ -145,6 +145,11 @@ def api_stats() -> dict:
     return _get_storage().stats()
 
 
+@app.get("/api/config")
+def api_config() -> dict:
+    return {"max_upload_bytes": _MAX_UPLOAD_BYTES}
+
+
 # ── PDF CRUD ──
 
 @app.get("/api/pdfs")
