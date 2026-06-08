@@ -265,7 +265,7 @@ def api_batch_compress(
             raise HTTPException(422, detail="Too many PDF IDs (max 50)")
         pdfs = storage.get_pdfs_by_ids(id_list)
         found_ids = {p.id for p in pdfs}
-        not_found = [{"pdf_id": pid, "filename": "", "status": "not_found"} for pid in id_list if pid not in found_ids]
+        not_found = [{"pdf_id": pid, "filename": pid[:8] + "…", "status": "not_found", "error": "PDF not found (may have been deleted)"} for pid in id_list if pid not in found_ids]
     else:
         pdfs = storage.list_pdfs()
         not_found = []
