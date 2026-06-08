@@ -182,8 +182,10 @@ function app() {
       this.selectedPdfs = n;
     },
     selectAll() {
-      const all = Object.fromEntries(this.filteredPdfs.map(p => [p.id, true]));
-      this.selectedPdfs = Object.keys(this.selectedPdfs).length === this.filteredPdfs.length ? {} : all;
+      const filteredIds = new Set(this.filteredPdfs.map(p => p.id));
+      const selectedIds = new Set(Object.keys(this.selectedPdfs));
+      const allSelected = filteredIds.size === selectedIds.size && [...filteredIds].every(id => selectedIds.has(id));
+      this.selectedPdfs = allSelected ? {} : Object.fromEntries(this.filteredPdfs.map(p => [p.id, true]));
     },
     async batchDelete() {
       const ids = Object.keys(this.selectedPdfs);
