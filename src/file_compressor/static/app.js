@@ -107,7 +107,7 @@ function app() {
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
       const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
-      const multipliers = { k: 1024, m: 1048576, g: 1073741824, t: 1099511627776 };
+      const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
       if (bytes < 1) return 'Target size must be at least 1 byte';
       return '';

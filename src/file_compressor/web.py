@@ -414,7 +414,7 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         raise HTTPException(404, detail="Original file missing")
     if page < 0:
         raise HTTPException(422, detail=f"Page {page} out of range")
-    if total is not None and page >= total:
+    if total is not None and total > 0 and page >= total:
         raise HTTPException(422, detail=f"Page {page} out of range (0-{total - 1})")
     try:
         png_data = render_page(path, page)
