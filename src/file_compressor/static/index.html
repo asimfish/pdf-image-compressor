@@ -496,7 +496,7 @@
   <!-- Compare Modal -->
   <div x-show="showCompare" x-cloak role="dialog" aria-modal="true" aria-label="Compare PDFs"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    @click.self="_cleanupCompareListeners(); showCompare = false" @keydown.escape.window="if (showCompare) { _cleanupCompareListeners(); showCompare = false }" @keydown.left.window="if (showCompare) comparePrev()" @keydown.right.window="if (showCompare) compareNext()">
+    @click.self="_cleanupCompareListeners(); showCompare = false" @keydown.escape.window="if (showCompare) { _cleanupCompareListeners(); showCompare = false }">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-4 p-6 fade-in max-h-[90vh] flex flex-col" @click.stop x-init="_trapFocus($el)">
       <div class="flex items-center justify-between mb-4">
         <div>
