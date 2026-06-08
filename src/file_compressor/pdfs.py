@@ -75,8 +75,8 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     over_target_path: Optional[Path] = None
     over_target_size: Optional[int] = None
     over_target_diff: Optional[int] = None
-    # Number of entries before quality starts decreasing monotonically
-    _high_dpi_count = len(_HIGH_DPI_OFFSETS) + len(_MID_DPI_ENTRIES) + 1 + len(_MID_QUALITY_ENTRIES)
+    start_quality = clamp_quality(config.quality) if config.target_bytes is not None else 0
+    _high_dpi_count = sum(1 for _, q in candidates if q >= start_quality)
 
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)

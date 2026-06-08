@@ -171,7 +171,6 @@ function app() {
         if (!pdfsRes.ok) throw new Error('Failed to load PDFs');
         if (gen !== this._libraryGen) return;
         const newPdfs = await pdfsRes.json();
-        const oldIds = new Set(this.pdfs.map(p => p.id));
         this.pdfs = newPdfs;
         this._filteredCache = null;
         this._pdfMeta = {};
