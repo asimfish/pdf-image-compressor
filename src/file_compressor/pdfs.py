@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -213,8 +214,20 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         elif cached is not None:
             return cached  # type: ignore[return-value]
         else:
-            while len(_render_cache) >= _RENDER_CACHE_MAX:
-                _evict_oldest_result()
+            for _attempt in range(20):
+                evicted = False
+                for k in list(_render_cache):
+                    if not isinstance(_render_cache[k], threading.Event):
+                        del _render_cache[k]
+                        evicted = True
+                        break
+                if evicted or len(_render_cache) < _RENDER_CACHE_MAX:
+                    break
+                _render_cache_lock.release()
+                try:
+                    time.sleep(0.05)
+                finally:
+                    _render_cache_lock.acquire()
             _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
@@ -236,8 +249,20 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         finally:
             doc.close()
         with _render_cache_lock:
-            while len(_render_cache) >= _RENDER_CACHE_MAX:
-                _evict_oldest_result()
+            for _attempt in range(20):
+                evicted = False
+                for k in list(_render_cache):
+                    if not isinstance(_render_cache[k], threading.Event):
+                        del _render_cache[k]
+                        evicted = True
+                        break
+                if evicted or len(_render_cache) < _RENDER_CACHE_MAX:
+                    break
+                _render_cache_lock.release()
+                try:
+                    time.sleep(0.05)
+                finally:
+                    _render_cache_lock.acquire()
             event = _render_cache[key]
             _render_cache[key] = result
             event._render_result = result  # type: ignore[attr-defined]

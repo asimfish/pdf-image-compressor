@@ -377,6 +377,10 @@ function app() {
       this.uploadFiles = [];
     },
     batchCompress() {
+      if (this.filteredPdfs.length > 50) {
+        this.showToast(`Select at most 50 PDFs for batch compress (currently ${this.filteredPdfs.length})`, 'error');
+        return;
+      }
       this.batchForm = this._defaults({ label: '' });
       this.batchTargetPdfs = this.filteredPdfs;
       this._batchTotalAtOpen = this.pdfs.length;
@@ -494,6 +498,11 @@ function app() {
         if (this.expanded === pdf.id) this.expanded = null;
         if (this.showCompare && this.comparePdf?.id === pdf.id) this.showCompare = false;
         this._evictPdfCache(pdf.id);
+        if (this.selectedPdfs[pdf.id]) {
+          const n = { ...this.selectedPdfs };
+          delete n[pdf.id];
+          this.selectedPdfs = n;
+        }
         this.showToast('Deleted');
         this.loadLibrary();
       } catch (e) {
