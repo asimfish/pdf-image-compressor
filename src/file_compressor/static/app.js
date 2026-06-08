@@ -269,7 +269,7 @@ function app() {
       const parts = [];
       const skipped = [];
       if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
-      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} over 500MB limit`);
+      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} over ${this.fmtSize(this._maxUploadBytes)} limit`);
       if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
       if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
       if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
