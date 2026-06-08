@@ -449,9 +449,10 @@
       <!-- Batch Results -->
       <div x-show="batchResults" class="mt-4">
         <div class="flex items-center gap-3 mb-3">
-          <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="batchResults?.results?.some(r => r.status !== 'ok') ? 'bg-amber-100' : 'bg-green-100'">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="batchResults?.results?.some(r => r.status === 'error') ? 'bg-red-100' : batchResults?.results?.some(r => r.status !== 'ok') ? 'bg-amber-100' : 'bg-green-100'">
             <svg x-show="!batchResults?.results?.some(r => r.status !== 'ok')" class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            <svg x-show="batchResults?.results?.some(r => r.status !== 'ok')" class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            <svg x-show="batchResults?.results?.some(r => r.status === 'not_found') && !batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            <svg x-show="batchResults?.results?.some(r => r.status === 'error')" class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </div>
           <div>
             <p class="font-medium text-gray-800" x-text="'Compressed ' + _plural(batchResults?.compressed || 0, 'PDF')"></p>
@@ -460,14 +461,16 @@
         </div>
         <div class="max-h-48 overflow-y-auto space-y-1.5 mb-4">
           <template x-for="r in (batchResults?.results || [])" :key="r.pdf_id">
-            <div class="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg" :class="r.status === 'ok' ? 'bg-green-50' : 'bg-red-50'">
+            <div class="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg" :class="r.status === 'ok' ? 'bg-green-50' : r.status === 'not_found' ? 'bg-amber-50' : 'bg-red-50'">
               <svg x-show="r.status === 'ok'" class="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              <svg x-show="r.status !== 'ok'" class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              <svg x-show="r.status === 'not_found'" class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+              <svg x-show="r.status === 'error'" class="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
               <span class="truncate flex-1" x-text="r.filename"></span>
               <span x-show="r.status === 'ok' && r.compression_ratio > 0" class="text-green-600 text-xs font-medium" x-text="'-' + (r.compression_ratio * 100).toFixed(0) + '%'"></span>
               <span x-show="r.status === 'ok' && r.compression_ratio < 0" class="text-amber-600 text-xs font-medium" x-text="'+' + (Math.abs(r.compression_ratio) * 100).toFixed(0) + '% larger'"></span>
               <span x-show="r.status === 'ok' && r.compression_ratio === 0" class="text-gray-400 text-xs">no change</span>
-              <span x-show="r.status !== 'ok'" class="text-red-500 text-xs" x-text="r.error || 'failed'"></span>
+              <span x-show="r.status === 'not_found'" class="text-amber-600 text-xs">not found</span>
+              <span x-show="r.status === 'error'" class="text-red-500 text-xs" x-text="r.error || 'failed'"></span>
             </div>
           </template>
         </div>

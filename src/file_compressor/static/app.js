@@ -170,8 +170,9 @@ function app() {
         if (gen !== this._libraryGen) return;
         const newPdfs = await pdfsRes.json();
         const oldIds = new Set(this.pdfs.map(p => p.id));
-        const changed = newPdfs.length !== this.pdfs.length || newPdfs.some(p => !oldIds.has(p.id));
+        const changed = newPdfs.length !== this.pdfs.length || newPdfs.some(p => !oldIds.has(p.id) || p.version_count !== (this.pdfs.find(op => op.id === p.id) || {}).version_count);
         this.pdfs = newPdfs;
+        this._filteredCache = null;
         if (changed) this._pdfMeta = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
         fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
