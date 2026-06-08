@@ -657,9 +657,16 @@ function app() {
       return 'target ' + this.fmtSize(bytes);
     },
     batchSavedText() {
-      const ok = (this.batchResults?.results || []).filter(r => r.status === 'ok');
+      const results = this.batchResults?.results || [];
+      const ok = results.filter(r => r.status === 'ok');
+      const errors = results.filter(r => r.status !== 'ok');
+      if (ok.length === 0 && errors.length > 0) return 'All compressions failed';
       const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
-      return saved > 0 ? 'Saved ' + this.fmtSize(saved) + ' total' : 'No size reduction';
+      const parts = [];
+      if (saved > 0) parts.push('Saved ' + this.fmtSize(saved) + ' total');
+      else parts.push('No size reduction');
+      if (errors.length > 0) parts.push(errors.length + ' failed');
+      return parts.join(', ');
     },
     bestVersion(pdf) {
       const versions = this.versionCache[pdf.id] || [];
