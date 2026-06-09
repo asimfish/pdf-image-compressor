@@ -58,6 +58,7 @@ function app() {
     compressing: false,
     compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' },
     compressResult: null,
+    compressError: '',
     _compressGen: 0,
     // Notes
     batchTargetPdfs: [],
@@ -466,13 +467,13 @@ function app() {
       } catch (e) {
         if (e.name === 'AbortError') return;
         this.showToast('Batch compress failed: ' + e.message, 'error');
+      } finally {
+        this._batchAbort = null;
+        this.batchCompressing = false;
       }
-      this._batchAbort = null;
-      this.batchCompressing = false;
     },
     cancelBatchCompress() {
       if (this._batchAbort) this._batchAbort.abort();
-      this.batchCompressing = false;
       this.showBatchCompress = false;
       this.batchResults = null;
       this.loadLibrary();
@@ -515,6 +516,7 @@ function app() {
       const targetId = this.compressTarget.id;
       this.compressing = true;
       this.compressResult = null;
+      this.compressError = '';
       try {
         const fd = this._buildCompressFd(this.compressForm);
         const res = await fetch(`/api/pdfs/${targetId}/compress`, { method: 'POST', body: fd });
@@ -529,6 +531,7 @@ function app() {
         }
       } catch (e) {
         if (gen !== this._compressGen) return;
+        this.compressError = e.message;
         this.showToast('Compression failed: ' + e.message, 'error');
       }
       if (gen === this._compressGen) this.compressing = false;
@@ -537,6 +540,7 @@ function app() {
       ++this._compressGen;
       this.compressing = false;
       this.compressResult = null;
+      this.compressError = '';
       this.showCompress = false;
       this.compressTarget = null;
     },
