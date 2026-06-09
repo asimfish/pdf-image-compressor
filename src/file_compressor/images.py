@@ -127,12 +127,16 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
     elif suffix == ".png":
         if quality < 95 and image.mode in {"RGB", "RGBA", "L"}:
             save_img = image.convert("RGB") if image.mode == "RGBA" else image
-            colors = max(16, min(256, int(quality / 95 * 256)))
-            quantized = save_img.quantize(colors=colors)
             try:
-                quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+                colors = max(16, min(256, int(quality / 95 * 256)))
+                quantized = save_img.quantize(colors=colors)
+                try:
+                    quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+                finally:
+                    quantized.close()
             finally:
-                quantized.close()
+                if save_img is not image:
+                    save_img.close()
         else:
             image.save(buffer, format="PNG", optimize=True, compress_level=9)
     else:
@@ -150,6 +154,7 @@ def _quality_candidates(start: int) -> list[int]:
 def _edge_candidates(max_edge: Optional[int]) -> list[Optional[int]]:
     if max_edge is not None and max_edge > 0:
         values = [max_edge, int(max_edge * 0.9), int(max_edge * 0.8), int(max_edge * 0.7), int(max_edge * 0.6)]
-        clamped = [max(320, v) if v != max_edge else v for v in values]
-        return list(dict.fromkeys(v for v in clamped if v <= max_edge))
+        floor = min(320, max_edge)
+        clamped = [max(floor, v) for v in values]
+        return list(dict.fromkeys(clamped))
     return [None, 2400, 2000, 1800, 1600, 1400, 1200, 1000, 800, 640]

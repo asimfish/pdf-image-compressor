@@ -385,7 +385,7 @@ function app() {
         if (this.uploadFiles.length === 0) {
           this.showUpload = false;
           this.uploadForm = this._defaults({ notes: '' });
-          this.showToast(`Upload cancelled — ${succeeded} of ${totalFiles} PDFs uploaded`, 'warning');
+          this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
           await this.loadLibrary();
           if (totalFiles === 1 && succeeded === 1) {
             const freshPdf = this.pdfs.find(p => p.id === uploadedPdf.id);
