@@ -142,11 +142,9 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
     start = clamp_quality(start)
     if target_bytes is None:
         return [start]
-    if start <= 20:
+    if start <= 16:
         return [start]
-    values = list(range(start, 19, -8))
-    if values[-1] != 20:
-        values.append(20)
+    values = sorted(set(list(range(start, 19, -8)) + [20, 16]), reverse=True)
     return values
 
 

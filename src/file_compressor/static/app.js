@@ -175,6 +175,9 @@ function app() {
         this.pdfs = newPdfs;
         this._filteredCache = null;
         this._pdfMeta = {};
+        this.versionCache = {};
+        this.versionLoading = {};
+        this._versionGen = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
         fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
@@ -450,9 +453,8 @@ function app() {
           if (r.status === 'ok' && r.pdf_id) this.loadVersions(r.pdf_id);
         }
       } catch (e) {
-        if (e.name !== 'AbortError') {
-          this.showToast('Batch compress failed: ' + e.message, 'error');
-        }
+        if (e.name === 'AbortError') return;
+        this.showToast('Batch compress failed: ' + e.message, 'error');
       }
       this._batchAbort = null;
       this.batchCompressing = false;
