@@ -149,6 +149,6 @@ def _quality_candidates(start: int) -> list[int]:
 def _edge_candidates(max_edge: Optional[int]) -> list[Optional[int]]:
     if max_edge is not None and max_edge > 0:
         values = [max_edge, int(max_edge * 0.9), int(max_edge * 0.8), int(max_edge * 0.7), int(max_edge * 0.6)]
-        clamped = [max(320, value) for value in values]
+        clamped = [max(320, v) if v != max_edge else v for v in values]
         return list(dict.fromkeys(clamped))
     return [None, 2400, 2000, 1800, 1600, 1400, 1200, 1000, 800, 640]
