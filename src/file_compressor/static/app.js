@@ -131,6 +131,9 @@ function app() {
       const sids = new Set(Object.keys(this.selectedPdfs));
       return fids.size > 0 && fids.size === sids.size && [...fids].every(id => sids.has(id));
     },
+    get anyModalOpen() {
+      return this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare || this.showShortcuts;
+    },
     get filteredPdfs() {
       const key = `${this._libraryGen}|${this.search}|${this.filterTab}|${this.sortBy}`;
       if (this._filteredKey === key && this._filteredCache) return this._filteredCache;
@@ -384,6 +387,7 @@ function app() {
         }
         this.uploading = false;
         this.uploadProgress = 0;
+        this.uploadStatus = `Uploaded ${succeeded}/${totalFiles} PDFs — ${this.uploadFiles.length} remaining`;
         this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (${this.uploadFiles.length} remaining)`, 'warning');
         await this.loadLibrary();
         return;
