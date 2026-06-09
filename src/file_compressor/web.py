@@ -385,10 +385,10 @@ def api_delete_version(version_id: str) -> dict:
     if ver is None:
         raise HTTPException(404, detail="Version not found")
     ver_path = storage.get_version_path(version_id)
-    if not storage.delete_version(version_id):
-        raise HTTPException(404, detail="Version not found")
     if ver_path:
         evict_render_cache(ver_path)
+    if not storage.delete_version(version_id):
+        raise HTTPException(404, detail="Version not found")
     return {"ok": True}
 
 

@@ -251,6 +251,11 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 _render_cache[key] = threading.Event()
     if wait_event is not None:
         if not wait_event.wait(timeout=30):
+            result = getattr(wait_event, '_render_result', None)
+            with _render_cache_lock:
+                _render_cache.pop(key, None)
+            if result is not None:
+                return result  # type: ignore[return-value]
             raise RuntimeError(f"Render timed out for {source} page {page_index}")
         if getattr(wait_event, '_render_cancelled', False):
             if not source.exists():
