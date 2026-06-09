@@ -33,6 +33,10 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     try:
         exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
         normalized = _normalize_mode(raw, suffix)
+        raw_closed = False
+        if normalized is not raw:
+            raw.close()
+            raw_closed = True
         try:
             if config.target_bytes and None in edges:
                 pixels = normalized.width * normalized.height
@@ -55,9 +59,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                     if resized is not normalized:
                         resized.close()
         finally:
-            normalized.close()
+            if normalized is not raw:
+                normalized.close()
     finally:
-        raw.close()
+        if not raw_closed:
+            raw.close()
 
     if best_data is None:
         raise RuntimeError("Image compression produced no output")
@@ -100,7 +106,7 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
             return image.convert("RGB")
     if suffix == ".webp" and image.mode not in {"RGB", "RGBA"}:
         return image.convert("RGBA" if "A" in image.getbands() else "RGB")
-    return image.copy()
+    return image
 
 
 def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_bytes: Optional[bytes] = None) -> None:

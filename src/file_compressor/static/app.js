@@ -191,6 +191,9 @@ function app() {
       if (gen === this._libraryGen) {
         this._libraryLoaded = true;
         this.loading = false;
+        if (this.expanded && this.versionCache[this.expanded] === undefined) {
+          this.loadVersions(this.expanded);
+        }
       }
     },
     async loadVersions(pdfId) {
