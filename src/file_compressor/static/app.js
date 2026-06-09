@@ -342,7 +342,7 @@ function app() {
         };
         xhr.onerror = () => { this._currentXhr = null; reject(new Error('Network error')); };
         xhr.onabort = () => { this._currentXhr = null; reject(new Error('Upload cancelled')); };
-        xhr.timeout = 120000;
+        xhr.timeout = 600000;
         xhr.ontimeout = () => { this._currentXhr = null; reject(new Error('Server timed out')); };
         xhr.send(fd);
       });

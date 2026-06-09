@@ -125,14 +125,7 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
     elif suffix == ".webp":
         image.save(buffer, format="WEBP", quality=quality, method=6)
     elif suffix == ".png":
-        if quality < 95 and image.mode in {"RGB", "RGBA"}:
-            colors = max(16, min(256, int(quality / 95 * 256)))
-            quantized = image.quantize(colors=colors)
-            try:
-                quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
-            finally:
-                quantized.close()
-        elif quality < 95 and image.mode == "L":
+        if quality < 95 and image.mode in {"RGB", "RGBA", "L"}:
             colors = max(16, min(256, int(quality / 95 * 256)))
             quantized = image.quantize(colors=colors)
             try:
