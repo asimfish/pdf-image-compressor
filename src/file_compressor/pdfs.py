@@ -241,16 +241,14 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
         elif cached is not None:
             return cached  # type: ignore[return-value]
         else:
-            has_room = _try_make_cache_room()
-            if has_room:
-                cached = _render_cache.get(key)
-                if isinstance(cached, threading.Event):
-                    wait_event = cached
-                elif cached is not None:
-                    return cached  # type: ignore[return-value]
-                else:
-                    _render_cache[key] = threading.Event()
-            # If no room, render without caching (fall through to render path)
+            _try_make_cache_room()
+            cached = _render_cache.get(key)
+            if isinstance(cached, threading.Event):
+                wait_event = cached
+            elif cached is not None:
+                return cached  # type: ignore[return-value]
+            else:
+                _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
         if getattr(wait_event, '_render_cancelled', False):

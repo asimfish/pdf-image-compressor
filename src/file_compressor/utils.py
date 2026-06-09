@@ -16,7 +16,8 @@ def parse_size(value: Optional[str]) -> Optional[int]:
     if not match:
         raise ValueError(f"Invalid size: {value}")
     number = float(match.group(1))
-    unit = (match.group(2) or "b").lower()
+    raw_unit = match.group(2)
+    unit = (raw_unit or "b").lower()
     multipliers = {
         "": 1,
         "b": 1,
@@ -32,6 +33,8 @@ def parse_size(value: Optional[str]) -> Optional[int]:
     result = int(number * multipliers[unit])
     if result <= 0:
         raise ValueError(f"Size must be positive: {value}")
+    if not raw_unit and result < 1000:
+        raise ValueError(f"Bare number below 1000 treated as bytes — did you forget a unit (KB, MB)?")
     return result
 
 

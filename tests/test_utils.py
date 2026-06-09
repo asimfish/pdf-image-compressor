@@ -17,7 +17,9 @@ from file_compressor.utils import (
 # ── parse_size ──
 
 def test_parse_size_plain_bytes():
-    assert parse_size("500") == 500
+    assert parse_size("1500") == 1500
+    with pytest.raises(ValueError, match="Bare number"):
+        parse_size("500")
 
 
 def test_parse_size_kb():

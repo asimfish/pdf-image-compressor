@@ -751,8 +751,8 @@ function app() {
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       let v = bytes, u = 0;
       while (v >= 1000 && u < 4) { v /= 1000; u++; }
-      const fixed = v.toFixed(u === 0 ? 0 : 1);
-      return fixed === '1000.0' && u < 4 ? '1.0 ' + units[u + 1] : fixed + ' ' + units[u];
+      if (v >= 999.95 && u < 4) { v /= 1000; u++; }
+      return v.toFixed(u === 0 ? 0 : 1) + ' ' + units[u];
     },
     fmtDate(iso) {
       if (!iso) return '';
