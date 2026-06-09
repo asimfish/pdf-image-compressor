@@ -54,6 +54,8 @@ def run_compress(args: argparse.Namespace) -> None:
         raise SystemExit("quality must be between 1 and 95")
     if not 36 <= args.pdf_dpi <= 300:
         raise SystemExit("pdf_dpi must be between 36 and 300")
+    if args.max_edge is not None and not (100 <= args.max_edge <= 10000):
+        raise SystemExit("max_edge must be between 100 and 10000")
     config = CompressionConfig(
         quality=args.quality,
         max_edge=args.max_edge,

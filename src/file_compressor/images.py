@@ -126,8 +126,9 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
         image.save(buffer, format="WEBP", quality=quality, method=6)
     elif suffix == ".png":
         if quality < 95 and image.mode in {"RGB", "RGBA", "L"}:
+            save_img = image.convert("RGB") if image.mode == "RGBA" else image
             colors = max(16, min(256, int(quality / 95 * 256)))
-            quantized = image.quantize(colors=colors)
+            quantized = save_img.quantize(colors=colors)
             try:
                 quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
             finally:
