@@ -368,7 +368,10 @@ def api_download_version(version_id: str) -> FileResponse:
     label = _sanitize_label(ver.label) if ver.label else ""
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
     if len(download_name.encode("utf-8")) > 200:
-        download_name = stem[:96] + ".pdf"
+        if label:
+            download_name = f"{stem[:80]}_{label[:40]}.pdf"
+        else:
+            download_name = stem[:96] + ".pdf"
     try:
         return FileResponse(path, filename=download_name, media_type="application/pdf")
     except FileNotFoundError:
@@ -382,13 +385,10 @@ def api_delete_version(version_id: str) -> dict:
     if ver is None:
         raise HTTPException(404, detail="Version not found")
     ver_path = storage.get_version_path(version_id)
-    pdf_path = storage.get_pdf_path(ver.pdf_id)
     if not storage.delete_version(version_id):
         raise HTTPException(404, detail="Version not found")
     if ver_path:
         evict_render_cache(ver_path)
-    if pdf_path:
-        evict_render_cache(pdf_path)
     return {"ok": True}
 
 
