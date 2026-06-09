@@ -408,7 +408,7 @@
   <!-- Batch Compress Modal -->
   <div x-show="showBatchCompress" x-cloak role="dialog" aria-modal="true" aria-label="Batch Compress"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    @click.self="cancelBatchCompress()" @keydown.escape.window="if (showBatchCompress) cancelBatchCompress()"
+    @click.self="cancelBatchCompress()" @keydown.escape.window="if (showBatchCompress) { batchResults ? closeBatchResults() : cancelBatchCompress() }"
     @keydown.enter.window="if (!['INPUT','TEXTAREA','SELECT','BUTTON'].includes($event.target.tagName) && showBatchCompress && !batchCompressing && !batchCompressValidation && !batchResults) doBatchCompress()">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in" @click.stop x-effect="if (showBatchCompress) $nextTick(() => _trapFocus($el))">
       <h2 class="text-xl font-bold mb-1">Batch Compress</h2>

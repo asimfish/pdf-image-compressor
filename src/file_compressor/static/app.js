@@ -107,7 +107,7 @@ function app() {
     },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
-      if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
+      if (!/^\s*\d+(\.\d+)?\s*[kmgt]?b?\s*$/i.test(v) || /\.$/.test(v.trim())) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
       const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
@@ -647,6 +647,7 @@ function app() {
       if (this.compareTotalPages === 0) return;
       this._compareLoaded++;
       if (this._compareLoaded >= 2) {
+        clearTimeout(this._compareTimeout);
         this.compareLoading = false;
         if (this._compareErrors > 0) {
           this.compareError = this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
