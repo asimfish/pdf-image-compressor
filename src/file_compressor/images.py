@@ -85,8 +85,16 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
     if suffix in {".jpg", ".jpeg"}:
         if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
             base = Image.new("RGB", image.size, "white")
-            alpha = image.convert("RGBA").split()[-1]
-            base.paste(image.convert("RGB"), mask=alpha)
+            rgba = image.convert("RGBA")
+            try:
+                alpha = rgba.split()[-1]
+                rgb = image.convert("RGB")
+                try:
+                    base.paste(rgb, mask=alpha)
+                finally:
+                    rgb.close()
+            finally:
+                rgba.close()
             return base
         if image.mode != "RGB":
             return image.convert("RGB")
@@ -107,8 +115,13 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
     elif suffix == ".png":
         if quality < 95 and image.mode in {"RGB", "RGBA"}:
             colors = max(16, min(256, int(quality / 95 * 256)))
-            image = image.quantize(colors=colors)
-        image.save(buffer, format="PNG", optimize=True, compress_level=9)
+            quantized = image.quantize(colors=colors)
+            try:
+                quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+            finally:
+                quantized.close()
+        else:
+            image.save(buffer, format="PNG", optimize=True, compress_level=9)
     else:
         raise ValueError(f"Unsupported image format: {suffix}")
 
