@@ -388,9 +388,8 @@ function app() {
           this.uploadForm = this._defaults({ notes: '' });
           this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
           await this.loadLibrary();
-          if (totalFiles === 1 && succeeded === 1) {
-            const freshPdf = this.pdfs.find(p => p.id === uploadedPdf.id);
-            if (freshPdf) this.compressPdf(freshPdf);
+          if (totalFiles === 1 && succeeded === 1 && uploadedPdf) {
+            this.compressPdf(uploadedPdf);
           }
           return;
         }
@@ -405,9 +404,8 @@ function app() {
       this.uploadForm = this._defaults({ notes: '' });
       this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, errors), errors.length ? 'error' : 'success');
       await this.loadLibrary();
-      if (totalFiles === 1 && succeeded === 1) {
-        const freshPdf = this.pdfs.find(p => p.id === uploadedPdf.id);
-        if (freshPdf) this.compressPdf(freshPdf);
+      if (totalFiles === 1 && succeeded === 1 && uploadedPdf) {
+        this.compressPdf(uploadedPdf);
       }
     },
     _buildUploadToast(succeeded, compressResults, warnings, errors) {

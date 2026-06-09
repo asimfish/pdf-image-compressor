@@ -46,7 +46,10 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                 resized = _resize(normalized, edge)
                 try:
                     for quality in qualities:
-                        data = _render(resized, suffix, quality, exif_bytes)
+                        try:
+                            data = _render(resized, suffix, quality, exif_bytes)
+                        except Exception:
+                            continue
                         size = len(data)
                         if best_size is None or size < best_size:
                             best_data = data
