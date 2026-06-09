@@ -292,7 +292,7 @@ def api_batch_compress(
                 continue
             ver = _compress_and_store(storage, pdf.id, path, config, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
-                            "original_size": path.stat().st_size, "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
+                            "original_size": pdf.file_size, "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
         except Exception as exc:
             logger.warning("Batch compress failed for %s: %s", pdf.id, exc)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": _sanitize_error(exc)})
