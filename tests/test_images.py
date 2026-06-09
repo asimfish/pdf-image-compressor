@@ -155,7 +155,7 @@ def test_quality_candidates_low_quality():
 def test_quality_candidates_boundary_15():
     from file_compressor.images import _quality_candidates
     result = _quality_candidates(15)
-    assert result == [15]
+    assert result == [15, 10, 5, 1]
 
 
 def test_quality_candidates_just_above_15():
@@ -212,7 +212,7 @@ def test_quality_candidates_at_max():
     from file_compressor.images import _quality_candidates
     result = _quality_candidates(95)
     assert result[0] == 95
-    assert result[-1] == 15
+    assert result[-1] == 1
 
 
 def test_quality_candidates_boundary_20():

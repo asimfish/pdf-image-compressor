@@ -285,14 +285,11 @@ def api_batch_compress(
     logger.info("Batch compress: %d PDFs, quality=%d, mode=%s", len(pdfs), config.quality, config.pdf_mode)
     results = []
     for pdf in pdfs:
-        path = storage.get_pdf_path(pdf.id)
-        if not path:
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
-            continue
-        if not path.exists():
-            results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
-            continue
         try:
+            path = storage.get_pdf_path(pdf.id)
+            if not path or not path.exists():
+                results.append({"pdf_id": pdf.id, "filename": pdf.filename, "status": "error", "error": "File missing from disk"})
+                continue
             ver = _compress_and_store(storage, pdf.id, path, config, label)
             results.append({"pdf_id": pdf.id, "filename": pdf.filename, "version_id": ver.id, "status": "ok",
                             "original_size": path.stat().st_size, "compressed_size": ver.file_size, "compression_ratio": ver.compression_ratio})
