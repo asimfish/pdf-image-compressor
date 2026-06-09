@@ -373,7 +373,8 @@ function app() {
         if (!this.uploading) break;
       }
       if (succeeded === 0 && this._uploadCancelled) {
-        this.showUpload = false; this.uploadFiles = []; this.showToast('Upload cancelled', 'error'); return;
+        const msg = errors.length > 0 ? `Upload cancelled (${errors.length} failed)` : 'Upload cancelled';
+        this.showUpload = false; this.uploadFiles = []; this.showToast(msg, errors.length ? 'error' : 'warning'); return;
       }
       this.uploadProgress = 100; this.uploading = false;
       if (succeeded === 0 && errors.length > 0) {
