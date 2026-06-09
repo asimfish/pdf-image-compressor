@@ -473,7 +473,7 @@ def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
                 written += len(chunk)
                 if written > _MAX_UPLOAD_BYTES:
                     target.unlink(missing_ok=True)
-                    raise HTTPException(413, detail=f"File too large ({safe_name}). Maximum is {_MAX_UPLOAD_BYTES // (1024*1024)} MB.")
+                    raise HTTPException(413, detail=f"File too large ({safe_name}, {format_size(written)}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
                 handle.write(chunk)
 
 

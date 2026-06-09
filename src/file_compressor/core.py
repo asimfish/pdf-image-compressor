@@ -150,7 +150,8 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
         return [start]
     if start <= 1:
         return [start]
-    values = sorted(set(list(range(start, 19, -8)) + [start, 20, 18, 16, 14, 12, 10, 5, 1]), reverse=True)
+    base = [v for v in [20, 18, 16, 14, 12, 10, 5, 1] if v <= start]
+    values = sorted(set(list(range(start, 19, -8)) + [start] + base), reverse=True)
     return values
 
 
@@ -162,7 +163,10 @@ def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: in
     lower = [d for d in _ARCHIVE_DPI_VALUES if d < config.pdf_dpi]
     higher = [d for d in _ARCHIVE_DPI_VALUES if d > config.pdf_dpi]
     dpi_values = [config.pdf_dpi] + lower + higher
-    fallback_edges = _ARCHIVE_FALLBACK_EDGES
+    if config.max_edge is not None and config.max_edge < 640:
+        fallback_edges: list[Optional[int]] = [None] + [int(config.max_edge * m) for m in (0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)]
+    else:
+        fallback_edges = _ARCHIVE_FALLBACK_EDGES
     dpi = dpi_values[min(attempt, len(dpi_values) - 1)] or config.pdf_dpi
     fallback_edge = fallback_edges[min(attempt, len(fallback_edges) - 1)]
     if config.max_edge is not None:

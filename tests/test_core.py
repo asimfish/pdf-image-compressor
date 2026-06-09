@@ -315,7 +315,7 @@ def test_archive_attempt_config_respects_user_max_edge():
     config = CompressionConfig(max_edge=500, target_bytes=50_000)
     for attempt in range(4):
         result = _archive_attempt_config(config, 82, attempt)
-        assert result.max_edge == 500
+        assert result.max_edge is not None and result.max_edge <= 500
 
 
 def test_archive_attempt_config_large_user_edge_decreases():
