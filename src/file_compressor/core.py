@@ -161,8 +161,7 @@ _ARCHIVE_FALLBACK_EDGES: list[Optional[int]] = [None, 1800, 1600, 1400, 1200, 10
 
 def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: int) -> CompressionConfig:
     lower = [d for d in _ARCHIVE_DPI_VALUES if d < config.pdf_dpi]
-    higher = [d for d in _ARCHIVE_DPI_VALUES if d > config.pdf_dpi]
-    dpi_values = [config.pdf_dpi] + lower + higher
+    dpi_values = [config.pdf_dpi] + lower
     if config.max_edge is not None and config.max_edge < 640:
         fallback_edges: list[Optional[int]] = [None] + [int(config.max_edge * m) for m in (0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)]
     else:
