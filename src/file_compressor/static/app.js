@@ -510,7 +510,7 @@ function app() {
       this.showCompress = true;
     },
     async doCompress() {
-      if (!this.compressTarget) return;
+      if (this.compressing || !this.compressTarget) return;
       const gen = ++this._compressGen;
       const targetId = this.compressTarget.id;
       this.compressing = true;
