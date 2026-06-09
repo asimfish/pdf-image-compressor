@@ -132,6 +132,13 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                 quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
             finally:
                 quantized.close()
+        elif quality < 95 and image.mode == "L":
+            colors = max(16, min(256, int(quality / 95 * 256)))
+            quantized = image.quantize(colors=colors)
+            try:
+                quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+            finally:
+                quantized.close()
         else:
             image.save(buffer, format="PNG", optimize=True, compress_level=9)
     else:
