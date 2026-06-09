@@ -162,7 +162,7 @@ def test_quality_candidates_just_above_15():
     from file_compressor.images import _quality_candidates
     result = _quality_candidates(16)
     assert result[0] == 16
-    assert 15 in result
+    assert 1 in result
 
 
 def test_edge_candidates_without_max_edge():

@@ -395,7 +395,7 @@ function app() {
         }
         this.uploading = false;
         this.uploadProgress = 0;
-        this.uploadStatus = `Uploaded ${succeeded}/${totalFiles} PDFs — ${this.uploadFiles.length} remaining`;
+        this.uploadStatus = `Uploaded ${succeeded}/${totalFiles} PDFs — click Upload to continue with remaining ${this.uploadFiles.length}`;
         this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (${this.uploadFiles.length} remaining)`, 'warning');
         await this.loadLibrary();
         return;
