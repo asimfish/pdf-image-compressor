@@ -283,14 +283,14 @@ function app() {
     _onGlobalDrop(e) {
       e.preventDefault();
       this._globalDragCounter = 0;
-      this.globalDragActive = false;
       const files = [...e.dataTransfer.files];
-      if (!files.length) return;
+      if (!files.length) { this.globalDragActive = false; return; }
       if (this.selectMode || this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare || this.showShortcuts) {
         this.showToast(this.selectMode ? 'Exit selection mode before dropping files' : 'Close the current dialog before dropping files', 'error');
+        setTimeout(() => { this.globalDragActive = false; }, 600);
         return;
       }
-      this._resetDragState();
+      this.globalDragActive = false;
       this.showUpload = true;
       this._selectFiles(files);
     },

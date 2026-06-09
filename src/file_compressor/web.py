@@ -315,12 +315,10 @@ def api_delete_pdf(pdf_id: str) -> dict:
     pdf_path = storage.get_pdf_path(pdf_id)
     if pdf_path:
         paths.append(pdf_path)
-    try:
-        if not storage.delete_pdf(pdf_id):
-            raise HTTPException(404, detail="PDF not found")
-    finally:
-        for p in paths:
-            evict_render_cache(p)
+    if not storage.delete_pdf(pdf_id):
+        raise HTTPException(404, detail="PDF not found")
+    for p in paths:
+        evict_render_cache(p)
     logger.info("Deleted PDF %s", pdf_id)
     return {"ok": True}
 
@@ -341,11 +339,9 @@ def api_batch_delete(body: BatchDeleteRequest) -> dict:
         pp = storage.get_pdf_path(pid)
         if pp:
             evict_paths.append(pp)
-    try:
-        deleted = storage.batch_delete_pdfs(body.pdf_ids)
-    finally:
-        for p in evict_paths:
-            evict_render_cache(p)
+    deleted = storage.batch_delete_pdfs(body.pdf_ids)
+    for p in evict_paths:
+        evict_render_cache(p)
     return {"deleted": deleted}
 
 

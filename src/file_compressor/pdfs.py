@@ -285,13 +285,11 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             if existing is not None and not isinstance(existing, threading.Event):
                 return existing  # type: ignore[return-value]
             event = _render_cache.pop(key, None)
-            if event is None:
-                if len(_render_cache) < _RENDER_CACHE_MAX:
-                    _render_cache[key] = result
-                return result  # type: ignore[return-value]
-            _render_cache[key] = result
-            event._render_result = result  # type: ignore[attr-defined]
-            event.set()
+            if event is not None:
+                event._render_result = result  # type: ignore[attr-defined]
+                event.set()
+            if len(_render_cache) < _RENDER_CACHE_MAX:
+                _render_cache[key] = result
         return result  # type: ignore[return-value]
     except Exception as exc:
         with _render_cache_lock:
