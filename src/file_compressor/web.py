@@ -452,7 +452,12 @@ def _read_upload_with_limit(file: UploadFile) -> bytes:
         if total > _MAX_UPLOAD_BYTES:
             raise HTTPException(413, detail=f"File too large ({format_size(total)}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
         chunks.append(chunk)
-    return b"".join(chunks)
+    buf = bytearray(total)
+    offset = 0
+    for chunk in chunks:
+        buf[offset:offset + len(chunk)] = chunk
+        offset += len(chunk)
+    return bytes(buf)
 
 
 def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
