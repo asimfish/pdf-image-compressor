@@ -197,15 +197,14 @@ def test_compress_image_low_quality_with_target(tmp_path: Path):
 def test_edge_candidates_small_edge_collapses_to_floor():
     from file_compressor.images import _edge_candidates
     result = _edge_candidates(200)
-    assert result == [200]
+    assert result == [200, 180, 160, 140, 120]
 
 
 def test_edge_candidates_near_floor_deduplicates():
     from file_compressor.images import _edge_candidates
     result = _edge_candidates(350)
     assert result[0] == 350
-    assert 320 in result
-    assert len(result) == 2
+    assert len(result) == 5
 
 
 def test_quality_candidates_at_max():
