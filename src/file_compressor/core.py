@@ -172,4 +172,5 @@ def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: in
         pdf_dpi=max(36, int(dpi)),
         max_edge=edge,
         pdf_mode=pdf_mode,
+        archive=None,
     )

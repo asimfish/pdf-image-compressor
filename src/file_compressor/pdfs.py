@@ -177,7 +177,7 @@ _MID_QUALITY_ENTRIES: list[tuple[int, int]] = [
 
 def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     if config.target_bytes is None:
-        return [(config.pdf_dpi, config.quality)]
+        return [(max(_MIN_DPI, config.pdf_dpi), clamp_quality(config.quality))]
     start_dpi = max(_MIN_DPI, config.pdf_dpi)
     start_quality = clamp_quality(config.quality)
     base: list[tuple[int, int]] = []
