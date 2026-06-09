@@ -121,14 +121,14 @@ def test_archive_quality_candidates_with_target():
     candidates = _archive_quality_candidates(82, 500_000)
     assert candidates[0] == 82
     assert 20 in candidates
-    assert all(q >= 16 for q in candidates)
+    assert all(q >= 1 for q in candidates)
     assert len(candidates) > 1
 
 
 def test_archive_quality_candidates_low_start():
     candidates = _archive_quality_candidates(30, 100_000)
     assert candidates[0] == 30
-    assert candidates[-1] == 16
+    assert candidates[-1] == 1
 
 
 def test_archive_quality_candidates_clamped():
@@ -143,7 +143,7 @@ def test_archive_quality_candidates_low_quality_with_target():
 
 def test_archive_quality_candidates_boundary_20():
     candidates = _archive_quality_candidates(20, 50_000)
-    assert candidates == [20, 18, 16]
+    assert candidates == [20, 18, 16, 14, 12, 10, 5, 1]
 
 
 def test_archive_quality_candidates_just_above_20():
@@ -155,7 +155,7 @@ def test_archive_quality_candidates_just_above_20():
 def test_archive_quality_candidates_range_ends_on_20():
     """start=28 → range(28,19,-8)=[28,20] — no append needed (branch 144->146)."""
     candidates = _archive_quality_candidates(28, 50_000)
-    assert candidates == [28, 20, 18, 16]
+    assert candidates == [28, 20, 18, 16, 14, 12, 10, 5, 1]
 
 
 def test_compress_path_zip_with_target(tmp_path: Path):

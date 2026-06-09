@@ -142,13 +142,13 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
     start = clamp_quality(start)
     if target_bytes is None:
         return [start]
-    if start <= 16:
+    if start <= 1:
         return [start]
-    values = sorted(set(list(range(start, 19, -8)) + [start, 20, 18, 16]), reverse=True)
+    values = sorted(set(list(range(start, 19, -8)) + [start, 20, 18, 16, 14, 12, 10, 5, 1]), reverse=True)
     return values
 
 
-_ARCHIVE_DPI_VALUES: list[int] = [140, 120, 110, 100, 90, 80, 72, 65]
+_ARCHIVE_DPI_VALUES: list[int] = [140, 120, 110, 100, 90, 80, 72, 65, 60, 55, 50, 45, 40, 36]
 _ARCHIVE_FALLBACK_EDGES: list[Optional[int]] = [None, 1800, 1600, 1400, 1200, 1000, 800, 640]
 
 
