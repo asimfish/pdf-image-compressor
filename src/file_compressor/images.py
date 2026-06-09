@@ -75,8 +75,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
 
 def _render(image: Image.Image, suffix: str, quality: int, exif_bytes: Optional[bytes] = None) -> bytes:
     buffer = BytesIO()
-    _save(image, buffer, suffix, quality, exif_bytes)
-    return buffer.getvalue()
+    try:
+        _save(image, buffer, suffix, quality, exif_bytes)
+        return buffer.getvalue()
+    finally:
+        buffer.close()
 
 
 def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
