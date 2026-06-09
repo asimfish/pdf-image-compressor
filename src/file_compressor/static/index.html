@@ -68,7 +68,7 @@
       </button>
       <button @click="batchCompress()" :disabled="batchCompressing || (selectMode && (Object.keys(selectedPdfs).length === 0 || Object.keys(selectedPdfs).length > 50)) || (!selectMode && (filteredPdfs.length === 0 || filteredPdfs.length > 50))" title="Ctrl+B"
         class="px-4 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-        <span x-show="!batchCompressing" x-text="selectMode && Object.keys(selectedPdfs).length > 50 ? 'Too many (' + Object.keys(selectedPdfs).length + ') — select up to 50' : selectMode && Object.keys(selectedPdfs).length > 0 ? 'Compress Selected (' + Object.keys(selectedPdfs).length + ')' : !selectMode && filteredPdfs.length > 50 ? 'Too many (' + filteredPdfs.length + ') — select up to 50' : filteredPdfs.length < pdfs.length ? 'Compress Filtered (' + filteredPdfs.length + ')' : 'Compress All'"></span>
+        <span x-show="!batchCompressing" x-text="showBatchCompress ? 'Compress ' + batchTargetPdfs.length + ' PDFs' : selectMode && Object.keys(selectedPdfs).length > 50 ? 'Too many (' + Object.keys(selectedPdfs).length + ') — select up to 50' : selectMode && Object.keys(selectedPdfs).length > 0 ? 'Compress Selected (' + Object.keys(selectedPdfs).length + ')' : !selectMode && filteredPdfs.length > 50 ? 'Too many (' + filteredPdfs.length + ') — select up to 50' : filteredPdfs.length < pdfs.length ? 'Compress Filtered (' + filteredPdfs.length + ')' : 'Compress All'"></span>
         <span x-show="batchCompressing">Compressing...</span>
       </button>
       <button @click="selectMode = !selectMode; selectedPdfs = {}"

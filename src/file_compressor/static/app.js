@@ -522,8 +522,11 @@ function app() {
         if (!res.ok) throw new Error(ver.detail || 'Compression failed');
         if (gen !== this._compressGen) return;
         this.compressResult = ver;
-        this.loadVersions(targetId);
-        this.loadLibrary();
+        await this.loadLibrary();
+        if (gen === this._compressGen && this.compressTarget) {
+          const fresh = this.pdfs.find(p => p.id === targetId);
+          if (fresh) this.compressTarget = fresh;
+        }
       } catch (e) {
         if (gen !== this._compressGen) return;
         this.showToast('Compression failed: ' + e.message, 'error');
