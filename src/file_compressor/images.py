@@ -99,6 +99,7 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
                     base.paste(rgb, mask=alpha)
                 finally:
                     rgb.close()
+                    alpha.close()
             finally:
                 rgba.close()
             return base

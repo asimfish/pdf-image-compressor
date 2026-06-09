@@ -725,14 +725,16 @@ function app() {
     batchSavedText() {
       const results = this.batchResults?.results || [];
       const ok = results.filter(r => r.status === 'ok');
-      const errors = results.filter(r => r.status !== 'ok');
-      if (ok.length === 0 && errors.length > 0) return 'All compressions failed';
+      const errors = results.filter(r => r.status === 'error');
+      const notFound = results.filter(r => r.status === 'not_found');
+      if (ok.length === 0 && errors.length + notFound.length > 0) return 'All compressions failed';
       const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
       const parts = [];
       if (saved > 0) parts.push('Saved ' + this.fmtSize(saved) + ' total');
       else if (saved < 0) parts.push('Files grew by ' + this.fmtSize(Math.abs(saved)));
       else parts.push('No size change');
       if (errors.length > 0) parts.push(errors.length + ' failed');
+      if (notFound.length > 0) parts.push(notFound.length + ' not found');
       return parts.join(', ');
     },
     bestVersion(pdf) {

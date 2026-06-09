@@ -479,7 +479,7 @@
         </div>
       </div>
       <div x-show="batchResults" class="mt-2 mb-1">
-        <button @click="batchResults = null" class="text-sm text-blue-600 hover:text-blue-800 font-medium">+ Compress again with different settings</button>
+        <button @click="batchCompress()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">+ Compress again with different settings</button>
       </div>
       <div class="flex gap-3 mt-5">
         <button @click="batchResults ? closeBatchResults() : cancelBatchCompress()" class="flex-1 py-2.5 rounded-xl border border-gray-200 font-medium hover:bg-gray-50 transition"><span x-text="batchResults ? 'Done' : 'Cancel'"></span> <kbd class="ml-1 text-xs text-gray-400">Esc</kbd></button>
