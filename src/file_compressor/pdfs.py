@@ -247,18 +247,21 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 wait_event = cached
             elif cached is not None:
                 return cached  # type: ignore[return-value]
-            else:
+            elif len(_render_cache) < _RENDER_CACHE_MAX:
                 _render_cache[key] = threading.Event()
     if wait_event is not None:
         wait_event.wait()
         if getattr(wait_event, '_render_cancelled', False):
-            raise FileNotFoundError(f"Source file was removed: {source}")
-        if hasattr(wait_event, '_render_exc'):
+            if not source.exists():
+                raise FileNotFoundError(f"Source file was removed: {source}")
+            # Cache entry was evicted but file still exists — fall through to render
+        elif hasattr(wait_event, '_render_exc'):
             raise wait_event._render_exc  # type: ignore[attr-defined]
-        result = getattr(wait_event, '_render_result', None)
-        if result is None:
-            raise RuntimeError(f"Render failed for {source} page {page_index}")
-        return result  # type: ignore[return-value]
+        else:
+            result = getattr(wait_event, '_render_result', None)
+            if result is None:
+                raise RuntimeError(f"Render failed for {source} page {page_index}")
+            return result  # type: ignore[return-value]
     try:
         fitz = _fitz()
         doc = fitz.open(source)

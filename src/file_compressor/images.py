@@ -105,6 +105,8 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
         if image.mode != "RGB":
             return image.convert("RGB")
     if suffix == ".webp" and image.mode not in {"RGB", "RGBA"}:
+        if image.mode == "P" and "transparency" in image.info:
+            return image.convert("RGBA")
         return image.convert("RGBA" if "A" in image.getbands() else "RGB")
     return image
 
