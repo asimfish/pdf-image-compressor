@@ -602,9 +602,9 @@ function app() {
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = (version.page_count || 0) === 0 || (pdf.page_count || 0) === 0
+      this.compareTotalPages = (pdf.page_count || 0) === 0
         ? 0
-        : Math.min(pdf.page_count, version.page_count);
+        : Math.max(1, Math.min(pdf.page_count || 1, version.page_count || 1));
       this.compareSlider = 50;
       this._resetCompareLoading();
       this._resetDragState();
@@ -613,10 +613,6 @@ function app() {
         this.compareLoading = false;
         this.compareRetryable = false;
         this.compareError = 'Cannot compare: original PDF has no readable pages';
-      } else if ((version.page_count || 0) === 0) {
-        this.compareLoading = false;
-        this.compareRetryable = false;
-        this.compareError = 'Cannot compare: compressed version has no readable pages';
       }
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
