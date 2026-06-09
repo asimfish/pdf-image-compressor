@@ -144,7 +144,7 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
         return [start]
     if start <= 16:
         return [start]
-    values = sorted(set(list(range(start, 19, -8)) + [20, 16]), reverse=True)
+    values = sorted(set(list(range(start, 19, -8)) + [start, 20, 16]), reverse=True)
     return values
 
 

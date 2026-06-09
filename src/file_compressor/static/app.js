@@ -448,7 +448,7 @@ function app() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
         this.batchResults = data;
-        this.loadLibrary();
+        await this.loadLibrary();
         for (const r of (data.results || [])) {
           if (r.status === 'ok' && r.pdf_id) this.loadVersions(r.pdf_id);
         }
