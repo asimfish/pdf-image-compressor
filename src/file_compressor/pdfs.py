@@ -250,7 +250,8 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             elif len(_render_cache) < _RENDER_CACHE_MAX:
                 _render_cache[key] = threading.Event()
     if wait_event is not None:
-        wait_event.wait()
+        if not wait_event.wait(timeout=30):
+            raise RuntimeError(f"Render timed out for {source} page {page_index}")
         if getattr(wait_event, '_render_cancelled', False):
             if not source.exists():
                 raise FileNotFoundError(f"Source file was removed: {source}")

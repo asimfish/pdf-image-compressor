@@ -91,7 +91,7 @@ def print_summary(summary: CompressionSummary) -> None:
 
 
 def _format_result(result: CompressionResult, label: str = "file") -> str:
-    if result.status not in {"ok", "partial", "best_over_target"}:
+    if result.status not in {"ok", "partial", "best_over_target", "best_over_target_partial"}:
         return f"FAILED {label}: {result.source} -> {result.error}"
     ratio = result.compression_ratio
     ratio_text = "-" if ratio is None else f"{ratio * 100:.1f}%"
