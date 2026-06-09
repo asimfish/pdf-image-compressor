@@ -167,7 +167,7 @@ def _archive_attempt_config(config: CompressionConfig, quality: int, attempt: in
         fallback_edges: list[Optional[int]] = [None] + [int(config.max_edge * m) for m in (0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)]
     else:
         fallback_edges = _ARCHIVE_FALLBACK_EDGES
-    dpi = dpi_values[min(attempt, len(dpi_values) - 1)] or config.pdf_dpi
+    dpi = dpi_values[min(attempt, len(dpi_values) - 1)]
     fallback_edge = fallback_edges[min(attempt, len(fallback_edges) - 1)]
     if config.max_edge is not None:
         edge = min(config.max_edge, fallback_edge) if fallback_edge is not None else config.max_edge
