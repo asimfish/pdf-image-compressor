@@ -217,7 +217,7 @@ def _evict_oldest_result() -> bool:
 def _try_make_cache_room() -> bool:
     """Try to evict entries to make room in the cache. Caller must hold _render_cache_lock.
     Returns True if there is room (or room was made), False if cache is full of Events."""
-    for _ in range(5):
+    for _ in range(20):
         if len(_render_cache) < _RENDER_CACHE_MAX:
             return True
         if _evict_oldest_result():

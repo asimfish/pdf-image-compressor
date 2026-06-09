@@ -200,6 +200,8 @@ function app() {
       const gen = (this._versionGen[pdfId] || 0) + 1;
       this._versionGen[pdfId] = gen;
       this.versionLoading[pdfId] = true;
+      const { [pdfId]: _pm, ...restMeta } = this._pdfMeta;
+      this._pdfMeta = restMeta;
       try {
         const res = await fetch(`/api/pdfs/${pdfId}/versions`);
         if (!res.ok) throw new Error('Failed to load versions');
