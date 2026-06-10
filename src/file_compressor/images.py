@@ -97,9 +97,9 @@ def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
     w, h = image.size
     if w <= max_edge and h <= max_edge:
         return image
-    copy = image.copy()
-    copy.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-    return copy
+    ratio = min(max_edge / w, max_edge / h)
+    new_size = (int(w * ratio), int(h * ratio))
+    return image.resize(new_size, Image.Resampling.LANCZOS)
 
 
 def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
