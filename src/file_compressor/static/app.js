@@ -92,7 +92,7 @@ function app() {
       const fd = new FormData();
       for (const [k, v] of Object.entries(form)) {
         const val = typeof v === 'string' ? v.trim() : v;
-        if (val !== '' && val != null) fd.append(k, val);
+        if (val !== '' && val != null && !(typeof val === 'number' && isNaN(val))) fd.append(k, val);
       }
       if (extras) {
         for (const [k, v] of Object.entries(extras)) fd.append(k, v);
@@ -329,16 +329,14 @@ function app() {
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
       // Build a single toast message with skipped file names
       const parts = [];
-      const skipped = [];
       if (nonPdfNames.length > 0) {
         const names = nonPdfNames.slice(0, 3).join(', ') + (nonPdfNames.length > 3 ? ` +${nonPdfNames.length - 3}` : '');
-        skipped.push(`${nonPdfNames.length} non-PDF (${names})`);
+        parts.push(`Skipped ${nonPdfNames.length} non-PDF (${names})`);
       }
       if (tooLargeNames.length > 0) {
         const names = tooLargeNames.slice(0, 3).join(', ') + (tooLargeNames.length > 3 ? ` +${tooLargeNames.length - 3}` : '');
-        skipped.push(`${tooLargeNames.length} over limit (${names})`);
+        parts.push(`Skipped ${tooLargeNames.length} over limit (${names})`);
       }
-      if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
       if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
       if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
       if (!parts.length) { this.showToast('No new files to add', 'error'); return; }
@@ -660,6 +658,8 @@ function app() {
       this._compareTimeout = setTimeout(() => {
         if (gen !== this._compareGen || !this.compareLoading) return;
         this.compareLoading = false;
+        this._compareRetries++;
+        this.compareRetryable = this._compareRetries < 3;
         this.compareError = 'Loading timed out — try again';
       }, 15000);
     },
