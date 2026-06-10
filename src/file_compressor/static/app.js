@@ -515,9 +515,10 @@ function app() {
       this.compressing = true;
       this.compressResult = null;
       this.compressError = '';
+      this._compressAbort = new AbortController();
       try {
         const fd = this._buildCompressFd(this.compressForm);
-        const res = await fetch(`/api/pdfs/${targetId}/compress`, { method: 'POST', body: fd });
+        const res = await fetch(`/api/pdfs/${targetId}/compress`, { method: 'POST', body: fd, signal: this._compressAbort.signal });
         const ver = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(ver.detail || 'Compression failed');
         if (gen !== this._compressGen) return;
@@ -536,6 +537,7 @@ function app() {
       if (gen === this._compressGen) this.compressing = false;
     },
     closeCompress() {
+      if (this._compressAbort) { this._compressAbort.abort(); this._compressAbort = null; }
       ++this._compressGen;
       this.compressing = false;
       this.compressResult = null;
@@ -789,9 +791,10 @@ function app() {
     },
     _plural(n, singular, plural) { return n + ' ' + (n === 1 ? singular : (plural || singular + 's')); },
     showToast(msg, type = 'success') {
+      clearTimeout(this._toastTimer);
       this.toast = msg;
       this.toastType = type;
-      setTimeout(() => {
+      this._toastTimer = setTimeout(() => {
         if (this.toast === msg) this.toast = '';
       }, type === 'error' ? 8000 : type === 'warning' ? 5000 : 3000);
     },
