@@ -398,6 +398,8 @@ def api_preview_page(pdf_type: str, item_id: str, page: int) -> StreamingRespons
         if not pdf:
             raise HTTPException(404, detail="PDF not found")
         path = storage.get_pdf_path(item_id)
+        if not path:
+            raise HTTPException(404, detail="Original file missing")
         total = pdf.page_count
     elif pdf_type == "version":
         ver = storage.get_version(item_id)
