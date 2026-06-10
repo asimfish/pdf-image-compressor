@@ -88,7 +88,7 @@ def _sanitize_label(label: str) -> str:
     return label[:_MAX_LABEL_LEN] or "version"
 
 
-_PATH_RE = re.compile(r"(/[^/\s]+)+|([A-Za-z]:[/\\][^\s]+)")
+_PATH_RE = re.compile(r"(/[^/\s]+(?:\s+[^/\s]+)*)+|([A-Za-z]:[/\\][^\s]+)")
 
 
 def _sanitize_error(exc: Exception) -> str:
@@ -266,7 +266,7 @@ def api_batch_compress(
         raise HTTPException(422, detail=f"label must be {_MAX_LABEL_LEN} characters or fewer")
     storage = _get_storage()
     if pdf_ids is not None:
-        id_list = [s.strip() for s in pdf_ids.split(",") if s.strip()]
+        id_list = list(dict.fromkeys(s.strip() for s in pdf_ids.split(",") if s.strip()))
         if not id_list:
             raise HTTPException(422, detail="pdf_ids is empty")
         if len(id_list) > 50:

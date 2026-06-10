@@ -138,6 +138,9 @@ function app() {
     get anyModalOpen() {
       return this.showUpload || this.showCompress || this.showBatchCompress || this.showNotes || this.showCompare || this.showShortcuts;
     },
+    get batchCompressDisabled() {
+      return this.batchCompressing || (this.selectMode && (Object.keys(this.selectedPdfs).length === 0 || Object.keys(this.selectedPdfs).length > 50)) || (!this.selectMode && (this.filteredPdfs.length === 0 || this.filteredPdfs.length > 50));
+    },
     get filteredPdfs() {
       const key = `${this._libraryGen}|${this.search}|${this.filterTab}|${this.sortBy}`;
       if (this._filteredKey === key && this._filteredCache) return this._filteredCache;

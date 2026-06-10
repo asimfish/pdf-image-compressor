@@ -22,7 +22,7 @@
   <script defer src="/static/vendor/alpine.min.js"></script>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
-<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="if (!anyModalOpen) $refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="if (!anyModalOpen) showUpload = true" @keydown.ctrl.b.window.prevent="if (!anyModalOpen && !batchCompressing) batchCompress()" @keydown.shift.slash.window.prevent="if (!anyModalOpen || showShortcuts) showShortcuts = !showShortcuts" @dragenter="_onGlobalDragEnter($event)" @dragover="_onGlobalDragOver($event)" @dragleave="_onGlobalDragLeave($event)" @drop="_onGlobalDrop($event)" class="max-w-6xl mx-auto px-4 py-8">
+<div x-data="app()" x-init="loadLibrary()" @keydown.ctrl.k.window.prevent="if (!anyModalOpen) $refs.searchInput.focus()" @keydown.ctrl.u.window.prevent="if (!anyModalOpen) showUpload = true" @keydown.ctrl.b.window.prevent="if (!anyModalOpen && !batchCompressDisabled) batchCompress()" @keydown.shift.slash.window.prevent="if (!anyModalOpen || showShortcuts) showShortcuts = !showShortcuts" @dragenter="_onGlobalDragEnter($event)" @dragover="_onGlobalDragOver($event)" @dragleave="_onGlobalDragLeave($event)" @drop="_onGlobalDrop($event)" class="max-w-6xl mx-auto px-4 py-8">
   <!-- Global drag-and-drop overlay -->
   <div x-show="globalDragActive && !selectMode && !showUpload && !showCompress && !showBatchCompress && !showNotes && !showCompare && !showShortcuts" x-cloak x-transition.opacity class="fixed inset-0 z-[60] flex items-center justify-center bg-blue-600/20 backdrop-blur-sm pointer-events-none">
     <div class="bg-white rounded-2xl shadow-2xl p-12 text-center border-2 border-dashed border-blue-400">
@@ -66,7 +66,7 @@
         class="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-sm">
         + Upload PDF
       </button>
-      <button @click="batchCompress()" :disabled="batchCompressing || (selectMode && (Object.keys(selectedPdfs).length === 0 || Object.keys(selectedPdfs).length > 50)) || (!selectMode && (filteredPdfs.length === 0 || filteredPdfs.length > 50))" title="Ctrl+B"
+      <button @click="batchCompress()" :disabled="batchCompressDisabled" title="Ctrl+B"
         class="px-4 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
         <span x-show="!batchCompressing" x-text="showBatchCompress ? 'Compress ' + batchTargetPdfs.length + ' PDFs' : selectMode && Object.keys(selectedPdfs).length > 50 ? 'Too many (' + Object.keys(selectedPdfs).length + ') — select up to 50' : selectMode && Object.keys(selectedPdfs).length > 0 ? 'Compress Selected (' + Object.keys(selectedPdfs).length + ')' : !selectMode && filteredPdfs.length > 50 ? 'Too many (' + filteredPdfs.length + ') — select up to 50' : filteredPdfs.length === 0 ? 'No PDFs to Compress' : filteredPdfs.length < pdfs.length ? 'Compress Filtered (' + filteredPdfs.length + ')' : 'Compress All'"></span>
         <span x-show="batchCompressing">Compressing...</span>
