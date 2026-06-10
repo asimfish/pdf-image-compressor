@@ -442,21 +442,14 @@ _COPY_CHUNK = 1024 * 1024  # 1 MB
 
 def _read_upload_with_limit(file: UploadFile) -> bytes:
     """Read an upload file in chunks, enforcing size limit before full allocation."""
-    chunks: list[bytes] = []
-    total = 0
+    buf = bytearray()
     while True:
         chunk = file.file.read(_COPY_CHUNK)
         if not chunk:
             break
-        total += len(chunk)
-        if total > _MAX_UPLOAD_BYTES:
-            raise HTTPException(413, detail=f"File too large ({format_size(total)}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
-        chunks.append(chunk)
-    buf = bytearray(total)
-    offset = 0
-    for chunk in chunks:
-        buf[offset:offset + len(chunk)] = chunk
-        offset += len(chunk)
+        if len(buf) + len(chunk) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(413, detail=f"File too large ({format_size(len(buf) + len(chunk))}). Maximum is {format_size(_MAX_UPLOAD_BYTES)}.")
+        buf.extend(chunk)
     return bytes(buf)
 
 

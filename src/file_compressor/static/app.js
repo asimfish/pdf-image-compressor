@@ -321,17 +321,23 @@ function app() {
       const pdfs = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
       if (!pdfs.length) { this.showToast('Only PDF files are supported', 'error'); return; }
       const valid = pdfs.filter(f => f.size <= MAX);
-      const nonPdfCount = all.length - pdfs.length;
-      const tooLargeCount = pdfs.length - valid.length;
+      const nonPdfNames = all.filter(f => !f.name.toLowerCase().endsWith('.pdf')).map(f => f.name);
+      const tooLargeNames = pdfs.filter(f => f.size > MAX).map(f => f.name);
       const existing = new Set(this.uploadFiles.map(f => `${f.name}:${f.size}:${f.lastModified}`));
       const newFiles = valid.filter(f => !existing.has(`${f.name}:${f.size}:${f.lastModified}`));
       const dupes = valid.length - newFiles.length;
       this.uploadFiles = [...this.uploadFiles, ...newFiles];
-      // Build a single toast message
+      // Build a single toast message with skipped file names
       const parts = [];
       const skipped = [];
-      if (nonPdfCount > 0) skipped.push(`${nonPdfCount} non-PDF`);
-      if (tooLargeCount > 0) skipped.push(`${tooLargeCount} over ${this.fmtSize(this._maxUploadBytes)} limit`);
+      if (nonPdfNames.length > 0) {
+        const names = nonPdfNames.slice(0, 3).join(', ') + (nonPdfNames.length > 3 ? ` +${nonPdfNames.length - 3}` : '');
+        skipped.push(`${nonPdfNames.length} non-PDF (${names})`);
+      }
+      if (tooLargeNames.length > 0) {
+        const names = tooLargeNames.slice(0, 3).join(', ') + (tooLargeNames.length > 3 ? ` +${tooLargeNames.length - 3}` : '');
+        skipped.push(`${tooLargeNames.length} over limit (${names})`);
+      }
       if (skipped.length) parts.push(`Skipped ${skipped.join(', ')}`);
       if (newFiles.length > 0) parts.push(`Added ${this._plural(newFiles.length, 'PDF')}`);
       if (dupes > 0) parts.push(this._plural(dupes, 'duplicate'));
