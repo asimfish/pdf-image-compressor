@@ -728,7 +728,7 @@ function app() {
     },
     fmtSaving(r) {
       if (r == null || r === 0) return '';
-      return r > 0 ? 'saved ' + (r * 100).toFixed(0) + '%' : '+' + (Math.abs(r) * 100).toFixed(0) + '% larger';
+      return r > 0 ? 'saved ' + (r * 100).toFixed(1) + '%' : '+' + (Math.abs(r) * 100).toFixed(1) + '% larger';
     },
     fmtRatio(r) {
       if (r == null || r === 0) return 'No change';
@@ -746,7 +746,8 @@ function app() {
       const ok = results.filter(r => r.status === 'ok');
       const errors = results.filter(r => r.status === 'error');
       const notFound = results.filter(r => r.status === 'not_found');
-      if (ok.length === 0 && errors.length + notFound.length > 0) return 'All compressions failed';
+      if (ok.length === 0 && errors.length > 0) return 'All compressions failed';
+      if (ok.length === 0 && notFound.length > 0) return notFound.length + ' PDFs not found (may have been deleted)';
       const saved = ok.reduce((s, r) => s + ((r.original_size || 0) - (r.compressed_size || 0)), 0);
       const parts = [];
       if (saved > 0) parts.push('Saved ' + this.fmtSize(saved) + ' total');

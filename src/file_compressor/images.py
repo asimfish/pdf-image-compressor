@@ -104,7 +104,7 @@ def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
 
 def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
     if suffix in {".jpg", ".jpeg"}:
-        if image.mode in {"RGBA", "LA"} or (image.mode == "P" and "transparency" in image.info):
+        if "A" in image.getbands() or (image.mode == "P" and "transparency" in image.info):
             base = Image.new("RGB", image.size, "white")
             rgba = image.convert("RGBA")
             try:
