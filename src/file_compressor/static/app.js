@@ -533,7 +533,7 @@ function app() {
         if (gen === this._compressGen && this.compressTarget) {
           const fresh = this.pdfs.find(p => p.id === targetId);
           if (fresh) this.compressTarget = fresh;
-          this.loadVersions(targetId);
+          await this.loadVersions(targetId);
         }
       } catch (e) {
         if (gen !== this._compressGen) return;

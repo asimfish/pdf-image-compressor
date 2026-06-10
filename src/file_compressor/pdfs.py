@@ -72,9 +72,11 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     best_quality: Optional[int] = None
     under_target_path: Optional[Path] = None
     under_target_size: Optional[int] = None
+    under_target_quality: Optional[int] = None
     over_target_path: Optional[Path] = None
     over_target_size: Optional[int] = None
     over_target_diff: Optional[int] = None
+    over_target_quality: Optional[int] = None
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)
         for index, (dpi, quality) in enumerate(candidates):
@@ -98,17 +100,28 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
                 if under_target_size is None or size > under_target_size:
                     under_target_path = candidate
                     under_target_size = size
+                    under_target_quality = quality
             else:
                 diff = size - config.target_bytes
                 if over_target_diff is None or diff < over_target_diff:
                     over_target_path = candidate
                     over_target_size = size
                     over_target_diff = diff
+                    over_target_quality = quality
         if best_path is None:
-            fallback = under_target_path if under_target_path is not None else over_target_path
-            if fallback is not None:
-                best_path = fallback
-                best_size = under_target_size if under_target_path is not None else over_target_size
+            if under_target_path is not None and over_target_path is not None:
+                if (over_target_quality or 0) > (under_target_quality or 0) + 10:
+                    best_path = over_target_path
+                    best_size = over_target_size
+                else:
+                    best_path = under_target_path
+                    best_size = under_target_size
+            elif under_target_path is not None:
+                best_path = under_target_path
+                best_size = under_target_size
+            else:
+                best_path = over_target_path
+                best_size = over_target_size
         if best_path is None:
             raise RuntimeError("PDF compression produced no output")
         output.parent.mkdir(parents=True, exist_ok=True)
