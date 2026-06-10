@@ -168,17 +168,12 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                     a.close()
                     rgb.close()
             else:
-                save_img = image
+                colors = max(16, min(256, int(quality / 95 * 256)))
+                quantized = image.quantize(colors=colors)
                 try:
-                    colors = max(16, min(256, int(quality / 95 * 256)))
-                    quantized = save_img.quantize(colors=colors)
-                    try:
-                        quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
-                    finally:
-                        quantized.close()
+                    quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
                 finally:
-                    if save_img is not image:
-                        save_img.close()
+                    quantized.close()
         else:
             image.save(buffer, format="PNG", optimize=True, compress_level=9)
     else:
