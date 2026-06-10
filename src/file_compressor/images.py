@@ -106,17 +106,21 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
     if suffix in {".jpg", ".jpeg"}:
         if "A" in image.getbands() or (image.mode == "P" and "transparency" in image.info):
             base = Image.new("RGB", image.size, "white")
-            rgba = image.convert("RGBA")
             try:
-                alpha = rgba.split()[-1]
-                rgb = image.convert("RGB")
+                rgba = image.convert("RGBA")
                 try:
-                    base.paste(rgb, mask=alpha)
+                    alpha = rgba.split()[-1]
+                    rgb = image.convert("RGB")
+                    try:
+                        base.paste(rgb, mask=alpha)
+                    finally:
+                        rgb.close()
+                        alpha.close()
                 finally:
-                    rgb.close()
-                    alpha.close()
-            finally:
-                rgba.close()
+                    rgba.close()
+            except Exception:
+                base.close()
+                raise
             return base
         if image.mode != "RGB":
             return image.convert("RGB")
@@ -149,13 +153,13 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                         result = quantized.convert("RGBA")
                         try:
                             result.putalpha(a)
-                            a.close()
                             result.save(buffer, format="PNG", optimize=True, compress_level=9)
                         finally:
                             result.close()
                     finally:
                         quantized.close()
                 finally:
+                    a.close()
                     rgb.close()
             else:
                 save_img = image
