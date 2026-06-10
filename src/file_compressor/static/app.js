@@ -142,7 +142,7 @@ function app() {
       return this.batchCompressing || (this.selectMode && (Object.keys(this.selectedPdfs).length === 0 || Object.keys(this.selectedPdfs).length > 50)) || (!this.selectMode && (this.filteredPdfs.length === 0 || this.filteredPdfs.length > 50));
     },
     get filteredPdfs() {
-      const key = `${this._libraryGen}|${this.search}|${this.filterTab}|${this.sortBy}`;
+      const key = `${this.search}|${this.filterTab}|${this.sortBy}`;
       if (this._filteredKey === key && this._filteredCache) return this._filteredCache;
       this._filteredKey = key;
       let list = this.pdfs;
