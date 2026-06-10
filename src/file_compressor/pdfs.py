@@ -250,6 +250,7 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
     """Render a single PDF page as PNG bytes."""
     key = (str(source), page_index, dpi)
     wait_event: Optional[threading.Event] = None
+    my_event: Optional[threading.Event] = None
     with _render_cache_lock:
         cached = _render_cache.get(key)
         if isinstance(cached, threading.Event):
@@ -264,7 +265,8 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             elif cached is not None:
                 return cached  # type: ignore[return-value]
             elif len(_render_cache) < _RENDER_CACHE_MAX:
-                _render_cache[key] = threading.Event()
+                my_event = threading.Event()
+                _render_cache[key] = my_event
     if wait_event is not None:
         if not wait_event.wait(timeout=30):
             result = getattr(wait_event, '_render_result', None)
@@ -301,18 +303,22 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
             if existing is not None and not isinstance(existing, threading.Event):
                 return existing  # type: ignore[return-value]
             event = _render_cache.pop(key, None)
-            if event is not None:
-                event._render_result = result  # type: ignore[attr-defined]
-                event.set()
+            # Always signal the event, even if it was already popped from cache
+            # (e.g., by a waiter that timed out during a lock-released window)
+            signal_event = event or my_event
+            if signal_event is not None:
+                signal_event._render_result = result  # type: ignore[attr-defined]
+                signal_event.set()
             if len(_render_cache) < _RENDER_CACHE_MAX:
                 _render_cache[key] = result
         return result  # type: ignore[return-value]
     except Exception as exc:
         with _render_cache_lock:
             event = _render_cache.pop(key, None)
-            if event is not None:
-                event._render_exc = exc  # type: ignore[attr-defined]
-                event.set()
+            signal_event = event or my_event
+            if signal_event is not None:
+                signal_event._render_exc = exc  # type: ignore[attr-defined]
+                signal_event.set()
         raise
 
 
