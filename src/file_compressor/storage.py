@@ -251,9 +251,11 @@ class Storage:
                     "SELECT file_path FROM versions WHERE pdf_id=?", (pdf_id,)
                 ).fetchall()
                 file_paths: list[Path] = [Path(r["file_path"]) for r in vrows]
-                pdf_path = self.get_pdf_path(pdf_id)
-                if pdf_path:
-                    file_paths.append(pdf_path)
+                row = self._conn.execute(
+                    "SELECT file_path FROM pdfs WHERE id=?", (pdf_id,)
+                ).fetchone()
+                if row:
+                    file_paths.append(Path(row["file_path"]))
                 cur = self._conn.execute("DELETE FROM pdfs WHERE id=?", (pdf_id,))
                 deleted = cur.rowcount > 0
                 self._conn.commit()
@@ -340,7 +342,10 @@ class Storage:
         with self._lock:
             try:
                 self._conn.execute("BEGIN")
-                vpath = self.get_version_path(version_id)
+                row = self._conn.execute(
+                    "SELECT file_path FROM versions WHERE id=?", (version_id,)
+                ).fetchone()
+                vpath = Path(row["file_path"]) if row else None
                 cur = self._conn.execute("DELETE FROM versions WHERE id=?", (version_id,))
                 deleted = cur.rowcount > 0
                 self._conn.commit()
