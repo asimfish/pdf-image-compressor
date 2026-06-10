@@ -306,9 +306,9 @@ function app() {
         return;
       }
       this.globalDragActive = false;
-      this.showUpload = true;
+      const prevCount = this.uploadFiles.length;
       this._selectFiles(files);
-      if (this.uploadFiles.length === 0) this.showUpload = false;
+      if (this.uploadFiles.length > prevCount) this.showUpload = true;
     },
     handleFiles(files) {
       this._selectFiles([...files]);
