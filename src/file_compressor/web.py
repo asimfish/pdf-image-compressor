@@ -550,7 +550,8 @@ def _compress_and_store(
             fitz = _fitz()
             with fitz.open(stream=compressed_data, filetype="pdf") as cdoc:
                 ver_page_count = len(cdoc)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to count pages for compressed PDF %s: %s", pdf_id, exc)
             ver_page_count = 0
 
     compressed_size = len(compressed_data)

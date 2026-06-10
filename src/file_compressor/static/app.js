@@ -79,6 +79,7 @@ function app() {
     compareRetryable: true,
     _compareLoaded: 0,
     _compareErrors: 0,
+    _compareRetries: 0,
     _compareGen: 0,
     // Toast
     toast: '',
@@ -489,6 +490,7 @@ function app() {
       if (this._batchAbort) this._batchAbort.abort();
       this.showBatchCompress = false;
       this.batchResults = null;
+      this.loading = true;
       this.loadLibrary();
     },
     closeBatchResults() {
@@ -657,7 +659,11 @@ function app() {
         clearTimeout(this._compareTimeout);
         this.compareLoading = false;
         if (this._compareErrors > 0) {
-          this.compareError = this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
+          this._compareRetries++;
+          this.compareRetryable = this._compareRetries < 3;
+          this.compareError = this._compareRetries >= 3
+            ? 'Preview failed after multiple attempts'
+            : this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
         } else {
           this.compareError = '';
         }
