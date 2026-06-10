@@ -98,7 +98,7 @@ def _resize(image: Image.Image, max_edge: Optional[int]) -> Image.Image:
     if w <= max_edge and h <= max_edge:
         return image
     ratio = min(max_edge / w, max_edge / h)
-    new_size = (int(w * ratio), int(h * ratio))
+    new_size = (max(1, int(w * ratio)), max(1, int(h * ratio)))
     return image.resize(new_size, Image.Resampling.LANCZOS)
 
 

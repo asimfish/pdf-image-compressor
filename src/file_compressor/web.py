@@ -534,6 +534,7 @@ def _compress_and_store(
         td_path = Path(td)
         src = td_path / "input.pdf"
         shutil.copy2(source_path, src)
+        original_size = source_path.stat().st_size
         out = td_path / "output.pdf"
         run_config = replace(config, output_dir=td_path)
         summary = compress_path(src, run_config, out)
@@ -550,7 +551,6 @@ def _compress_and_store(
         except Exception:
             ver_page_count = 0
 
-    original_size = source_path.stat().st_size
     compressed_size = len(compressed_data)
     ratio = 1.0 - (compressed_size / original_size) if original_size > 0 else None
 
