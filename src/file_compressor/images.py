@@ -25,6 +25,8 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     suffix = output.suffix.lower()
     best_data: Optional[bytes] = None
     best_size: Optional[int] = None
+    under_target_data: Optional[bytes] = None
+    under_target_size: Optional[int] = None
 
     try:
         raw = ImageOps.exif_transpose(Image.open(source))
@@ -60,7 +62,12 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                         if best_size is None or size < best_size:
                             best_data = data
                             best_size = size
-                        if config.target_bytes is None or size <= config.target_bytes:
+                        if config.target_bytes is not None:
+                            if size <= config.target_bytes and (under_target_size is None or size > under_target_size):
+                                under_target_data = data
+                                under_target_size = size
+                        else:
+                            # No target — first result (highest quality, largest edge) is best
                             output.parent.mkdir(parents=True, exist_ok=True)
                             output.write_bytes(data)
                             return output
@@ -74,10 +81,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
         if not raw_closed:
             raw.close()
 
-    if best_data is None:
+    result = under_target_data or best_data
+    if result is None:
         raise RuntimeError("Image compression produced no output")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(best_data)
+    output.write_bytes(result)
     return output
 
 

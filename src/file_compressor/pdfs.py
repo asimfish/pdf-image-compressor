@@ -220,11 +220,12 @@ _render_cache_lock = threading.Lock()
 _RENDER_CACHE_MAX = 32
 
 
-def _evict_oldest_result() -> bool:
-    """Evict the oldest completed (non-Event) cache entry. Caller must hold _render_cache_lock.
-    Returns True if an entry was evicted, False if all entries are in-flight Events."""
+def _evict_oldest_result(allow_events: bool = False) -> bool:
+    """Evict the oldest cache entry. Caller must hold _render_cache_lock.
+    By default only evicts completed (non-Event) entries.
+    If allow_events=True, evicts the oldest entry regardless of type."""
     for k in list(_render_cache):
-        if not isinstance(_render_cache[k], threading.Event):
+        if allow_events or not isinstance(_render_cache[k], threading.Event):
             del _render_cache[k]
             return True
     return False
@@ -264,16 +265,21 @@ def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
                 wait_event = cached
             elif cached is not None:
                 return cached  # type: ignore[return-value]
-            elif len(_render_cache) < _RENDER_CACHE_MAX:
+            else:
+                if len(_render_cache) >= _RENDER_CACHE_MAX:
+                    _evict_oldest_result(allow_events=True)
                 my_event = threading.Event()
                 _render_cache[key] = my_event
     if wait_event is not None:
         if not wait_event.wait(timeout=30):
             result = getattr(wait_event, '_render_result', None)
+            exc = getattr(wait_event, '_render_exc', None)
             with _render_cache_lock:
                 _render_cache.pop(key, None)
             if result is not None:
                 return result  # type: ignore[return-value]
+            if exc is not None:
+                raise exc  # type: ignore[misc]
             raise RuntimeError(f"Render timed out for {source} page {page_index}")
         if getattr(wait_event, '_render_cancelled', False):
             if not source.exists():
