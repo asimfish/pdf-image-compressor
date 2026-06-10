@@ -691,6 +691,9 @@ function app() {
       clearTimeout(this._compareTimeout);
       this._compareDragging = false;
       this.compareLoading = false;
+      this.compareError = '';
+      this._compareLoaded = 0;
+      this._compareErrors = 0;
       if (this._onMouseMove) {
         window.removeEventListener('mousemove', this._onMouseMove);
         window.removeEventListener('touchmove', this._onMouseMove);

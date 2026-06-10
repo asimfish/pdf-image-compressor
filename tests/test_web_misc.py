@@ -192,7 +192,7 @@ def test_sanitize_error_strips_paths():
 
     result = _sanitize_error(RuntimeError("failed to open /Users/alice/docs/file.pdf"))
     assert "/Users" not in result
-    assert "failed to open" in result
+    assert result == "Compression failed"
 
 
 def test_sanitize_error_fallback():
@@ -206,7 +206,7 @@ def test_sanitize_error_preserves_non_path_text():
 
     result = _sanitize_error(RuntimeError("render failed for /Users/alice/doc.pdf page 5"))
     assert "/Users" not in result
-    assert "render failed" in result
+    assert result == "Compression failed"
 
 
 def test_sanitize_error_multiline_truncated():

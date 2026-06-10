@@ -95,14 +95,15 @@ def _sanitize_error(exc: Exception) -> str:
     """Return a user-friendly error message without leaking internal details."""
     msg = str(exc).split("\n")[0][:200]
     sanitized = _PATH_RE.sub("[path]", msg)
-    if isinstance(exc, (FileNotFoundError, PermissionError, OSError)):
-        if sanitized != msg:
+    if sanitized != msg:
+        if isinstance(exc, (FileNotFoundError, PermissionError, OSError)):
             return "File access error"
+        return "Compression failed"
     if "no output" in msg.lower():
         return "Compression produced no output — the file may be corrupted"
     if "corrupt" in msg.lower() or "invalid" in msg.lower():
         return "The file appears to be corrupted or invalid"
-    return sanitized if sanitized != msg else (msg if msg else "Compression failed")
+    return msg if msg else "Compression failed"
 
 
 def init_storage(data_dir: Path) -> None:
