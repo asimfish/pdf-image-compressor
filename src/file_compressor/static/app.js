@@ -393,14 +393,16 @@ function app() {
         const msg = errors.length > 0 ? `Upload cancelled (${errors.length} failed)` : 'Upload cancelled';
         this.showUpload = false; this.uploadFiles = []; this.showToast(msg, errors.length ? 'error' : 'warning'); return;
       }
-      this.uploadProgress = 100; this.uploading = false;
+      this.uploading = false;
       if (succeeded === 0 && errors.length > 0) {
+        this.uploadProgress = 0;
         this.showToast(`Upload failed: ${errors.join('; ')}`, 'error');
         return;
       }
       if (this._uploadCancelled && succeeded > 0) {
         this.uploadFiles = this.uploadFiles.filter((_, idx) => !succeededIndices.has(idx));
         if (this.uploadFiles.length === 0) {
+          this.uploadProgress = 100;
           this.showUpload = false;
           this.uploadForm = this._defaults({ notes: '' });
           this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
@@ -410,8 +412,7 @@ function app() {
           }
           return;
         }
-        this.uploading = false;
-        this.uploadProgress = 0;
+        this.uploadProgress = Math.round((succeeded / totalFiles) * 100);
         this.uploadStatus = `Uploaded ${succeeded}/${totalFiles} PDFs — click Upload to continue with remaining ${this.uploadFiles.length}`;
         this.showToast(`Uploaded ${succeeded}/${totalFiles} PDFs (${this.uploadFiles.length} remaining)`, 'warning');
         await this.loadLibrary();
@@ -629,6 +630,7 @@ function app() {
       this.comparePage = 0;
       this.compareTotalPages = Math.max(1, Math.min(pdf.page_count || 1, version.page_count || 1));
       this.compareSlider = 50;
+      this._compareRetries = 0;
       this._resetCompareLoading();
       this._resetDragState();
       this.showCompare = true;
