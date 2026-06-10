@@ -40,6 +40,7 @@ function app() {
     showBatchCompress: false,
     batchForm: { quality: 82, target_size: '', pdf_mode: 'auto', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, label: '' },
     batchResults: null,
+    batchCompressError: '',
     selectMode: false,
     selectedPdfs: {},
     // Upload
@@ -468,6 +469,7 @@ function app() {
     async doBatchCompress() {
       this.batchCompressing = true;
       this.batchResults = null;
+      this.batchCompressError = '';
       this._batchAbort = new AbortController();
       try {
         const fd = this._buildCompressFd(this.batchForm);
@@ -482,6 +484,7 @@ function app() {
         await this.loadLibrary();
       } catch (e) {
         if (e.name === 'AbortError') return;
+        this.batchCompressError = e.message;
         this.showToast('Batch compress failed: ' + e.message, 'error');
       } finally {
         this._batchAbort = null;
@@ -497,6 +500,7 @@ function app() {
     },
     closeBatchResults() {
       this.batchResults = null;
+      this.batchCompressError = '';
       this.showBatchCompress = false;
     },
     compressPdf(pdf) {
@@ -682,9 +686,11 @@ function app() {
       this._compareErrors++;
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
-        this.compareError = this._compareErrors >= 2
-          ? 'Both previews failed to load'
-          : 'One preview failed to load';
+        this._compareRetries++;
+        this.compareRetryable = this._compareRetries < 3;
+        this.compareError = this._compareRetries >= 3
+          ? 'Preview failed after multiple attempts'
+          : this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
       }
     },
     compareOriginalUrl() {

@@ -454,6 +454,10 @@
         <p class="text-sm text-gray-500 mt-1 text-center" x-text="'Compressing ' + _plural(batchTargetPdfs.length, 'PDF') + '...'"></p>
       </div>
       <div x-show="batchCompressValidation" class="mt-3 text-sm text-red-600" x-text="batchCompressValidation"></div>
+      <!-- Batch Error -->
+      <div x-show="batchCompressError" class="mt-2 p-3 bg-red-50 border border-red-200 rounded-xl">
+        <p class="text-red-600 text-sm" x-text="batchCompressError"></p>
+      </div>
       <!-- Batch Results -->
       <div x-show="batchResults" class="mt-4">
         <div class="flex items-center gap-3 mb-3">
