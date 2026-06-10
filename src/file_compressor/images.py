@@ -108,15 +108,17 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
             base = Image.new("RGB", image.size, "white")
             try:
                 rgba = image.convert("RGBA")
+                alpha = None
+                rgb = None
                 try:
                     alpha = rgba.split()[-1]
                     rgb = image.convert("RGB")
-                    try:
-                        base.paste(rgb, mask=alpha)
-                    finally:
-                        rgb.close()
-                        alpha.close()
+                    base.paste(rgb, mask=alpha)
                 finally:
+                    if rgb is not None:
+                        rgb.close()
+                    if alpha is not None:
+                        alpha.close()
                     rgba.close()
             except Exception:
                 base.close()
@@ -151,18 +153,18 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                     r.close(); g.close(); b.close(); a.close()
                     raise
                 r.close(); g.close(); b.close()
+                quantized = None
+                result = None
                 try:
                     quantized = rgb.quantize(colors=colors)
-                    try:
-                        result = quantized.convert("RGBA")
-                        try:
-                            result.putalpha(a)
-                            result.save(buffer, format="PNG", optimize=True, compress_level=9)
-                        finally:
-                            result.close()
-                    finally:
-                        quantized.close()
+                    result = quantized.convert("RGBA")
+                    result.putalpha(a)
+                    result.save(buffer, format="PNG", optimize=True, compress_level=9)
                 finally:
+                    if result is not None:
+                        result.close()
+                    if quantized is not None:
+                        quantized.close()
                     a.close()
                     rgb.close()
             else:
