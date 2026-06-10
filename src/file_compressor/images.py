@@ -134,7 +134,11 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
         if quality < 95 and image.mode in {"RGB", "RGBA", "L"}:
             if image.mode == "RGBA":
                 base = Image.new("RGB", image.size, "white")
-                base.paste(image, mask=image.split()[-1])
+                alpha = image.split()[-1]
+                try:
+                    base.paste(image, mask=alpha)
+                finally:
+                    alpha.close()
                 save_img = base
             else:
                 save_img = image

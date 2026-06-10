@@ -208,7 +208,6 @@ function app() {
         if (!res.ok) throw new Error('Failed to load versions');
         if (this._versionGen[pdfId] === gen) {
           this.versionCache[pdfId] = await res.json();
-          this._filteredCache = null;
         }
       } catch (e) {
         if (this._versionGen[pdfId] === gen) {
