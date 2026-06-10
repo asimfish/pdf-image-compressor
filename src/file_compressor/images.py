@@ -38,8 +38,8 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
             exif_bytes = exif_obj.tobytes() if exif_obj else None
         else:
             exif_bytes = None
-        normalized = _normalize_mode(raw, suffix)
         raw_closed = False
+        normalized = _normalize_mode(raw, suffix)
         if normalized is not raw:
             raw.close()
             raw_closed = True
