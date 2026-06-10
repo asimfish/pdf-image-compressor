@@ -421,7 +421,7 @@ function app() {
       const totalSaved = compressResults.reduce((s, r) => s + (r.original - r.compressed), 0);
       const parts = [`Uploaded ${this._plural(succeeded, 'PDF')}`];
       if (totalSaved > 0) parts.push(`saved ${this.fmtSize(totalSaved)}`);
-      if (warnings.length) parts.push(this._plural(warnings.length, 'warning'));
+      if (warnings.length) parts.push(warnings.join('; '));
       if (errors.length) parts.push(`${errors.length} failed: ${errors.join('; ')}`);
       return parts.join(', ');
     },
