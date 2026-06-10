@@ -655,6 +655,7 @@ function app() {
       }, 15000);
     },
     _onCompareLoad(e) {
+      if (!this.showCompare) return;
       if (+e.target.dataset.gen !== this._compareGen) return;
       if (this.compareTotalPages === 0) return;
       this._compareLoaded++;
@@ -669,6 +670,7 @@ function app() {
       }
     },
     _onCompareError(e) {
+      if (!this.showCompare) return;
       if (+e.target.dataset.gen !== this._compareGen) return;
       if (this.compareTotalPages === 0) return;
       e.target.removeAttribute('src');
@@ -690,6 +692,7 @@ function app() {
     _cleanupCompareListeners() {
       clearTimeout(this._compareTimeout);
       this._compareDragging = false;
+      this.compareLoading = false;
       if (this._onMouseMove) {
         window.removeEventListener('mousemove', this._onMouseMove);
         window.removeEventListener('touchmove', this._onMouseMove);

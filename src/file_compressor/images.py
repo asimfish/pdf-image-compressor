@@ -142,12 +142,14 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                 colors = max(16, min(256, int(quality / 95 * 256)))
                 r, g, b, a = image.split()
                 rgb = Image.merge("RGB", (r, g, b))
+                r.close(); g.close(); b.close()
                 try:
                     quantized = rgb.quantize(colors=colors)
                     try:
                         result = quantized.convert("RGBA")
                         try:
                             result.putalpha(a)
+                            a.close()
                             result.save(buffer, format="PNG", optimize=True, compress_level=9)
                         finally:
                             result.close()
