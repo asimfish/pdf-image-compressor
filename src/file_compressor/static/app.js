@@ -108,7 +108,7 @@ function app() {
     },
     _validTargetSize(v) {
       if (!v || !v.trim()) return '';
-      if (!/^\s*\d+(?:\.\d+)?\s*(?:[kmgt]b?)?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
+      if (!/^\s*\d+(?:\.\d+)?\s*(?:[kmgtb]b?)?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
       const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
