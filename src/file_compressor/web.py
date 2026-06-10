@@ -94,13 +94,13 @@ _PATH_RE = re.compile(r"(/[^/\s]+)+|([A-Za-z]:\\[^\s]+)")
 def _sanitize_error(exc: Exception) -> str:
     """Return a user-friendly error message without leaking internal details."""
     msg = str(exc).split("\n")[0][:200]
+    sanitized = _PATH_RE.sub("[path]", msg).strip()
+    if sanitized and sanitized != msg:
+        return "File access error"
     if "no output" in msg.lower():
         return "Compression produced no output — the file may be corrupted"
     if "corrupt" in msg.lower() or "invalid" in msg.lower():
         return "The file appears to be corrupted or invalid"
-    sanitized = _PATH_RE.sub("[path]", msg).strip()
-    if sanitized and sanitized != msg:
-        return "File access error"
     return msg if msg else "Compression failed"
 
 
