@@ -122,7 +122,7 @@ def _normalize_mode(image: Image.Image, suffix: str) -> Image.Image:
                 base.close()
                 raise
             return base
-        if image.mode != "RGB":
+        if image.mode not in {"RGB", "L"}:
             return image.convert("RGB")
     if suffix == ".webp" and image.mode not in {"RGB", "RGBA"}:
         if image.mode == "P" and "transparency" in image.info:
@@ -145,7 +145,11 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
             if image.mode == "RGBA":
                 colors = max(16, min(256, int(quality / 95 * 256)))
                 r, g, b, a = image.split()
-                rgb = Image.merge("RGB", (r, g, b))
+                try:
+                    rgb = Image.merge("RGB", (r, g, b))
+                except Exception:
+                    r.close(); g.close(); b.close(); a.close()
+                    raise
                 r.close(); g.close(); b.close()
                 try:
                     quantized = rgb.quantize(colors=colors)
