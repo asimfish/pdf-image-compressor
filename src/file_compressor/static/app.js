@@ -305,6 +305,7 @@ function app() {
       this.globalDragActive = false;
       this.showUpload = true;
       this._selectFiles(files);
+      if (this.uploadFiles.length === 0) this.showUpload = false;
     },
     handleFiles(files) {
       this._selectFiles([...files]);
@@ -541,6 +542,8 @@ function app() {
         if (gen !== this._compressGen) return;
         this.compressError = e.message;
         this.showToast('Compression failed: ' + e.message, 'error');
+      } finally {
+        this._compressAbort = null;
       }
       if (gen === this._compressGen) this.compressing = false;
     },
@@ -612,21 +615,18 @@ function app() {
     },
     // Compare
     openCompare(pdf, version) {
+      if ((pdf.page_count || 0) === 0) {
+        this.showToast('Cannot compare: original PDF has no readable pages', 'error');
+        return;
+      }
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = (pdf.page_count || 0) === 0
-        ? 0
-        : Math.max(1, Math.min(pdf.page_count || 1, version.page_count || 1));
+      this.compareTotalPages = Math.max(1, Math.min(pdf.page_count || 1, version.page_count || 1));
       this.compareSlider = 50;
       this._resetCompareLoading();
       this._resetDragState();
       this.showCompare = true;
-      if ((pdf.page_count || 0) === 0) {
-        this.compareLoading = false;
-        this.compareRetryable = false;
-        this.compareError = 'Cannot compare: original PDF has no readable pages';
-      }
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
