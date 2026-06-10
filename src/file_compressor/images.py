@@ -48,10 +48,10 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                 pixels = normalized.width * normalized.height
                 if pixels > config.target_bytes * 100:
                     edges = [e for e in edges if e is not None]
-            for edge in edges:
-                resized = _resize(normalized, edge)
-                try:
-                    for quality in qualities:
+            for quality in qualities:
+                for edge in edges:
+                    resized = _resize(normalized, edge)
+                    try:
                         try:
                             data = _render(resized, suffix, quality, exif_bytes)
                         except Exception:
@@ -64,9 +64,9 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                             output.parent.mkdir(parents=True, exist_ok=True)
                             output.write_bytes(data)
                             return output
-                finally:
-                    if resized is not normalized:
-                        resized.close()
+                    finally:
+                        if resized is not normalized:
+                            resized.close()
         finally:
             if normalized is not raw:
                 normalized.close()
