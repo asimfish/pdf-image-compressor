@@ -529,6 +529,7 @@
                 class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">Next &rarr;</button>
             </div>
           </template>
+          <span x-show="compareVersion?.page_count === 0" class="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">Page count unavailable</span>
           <a :href="'/api/versions/' + compareVersion?.id + '/download'" target="_blank" class="ml-2 p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition" aria-label="Download compressed version" title="Download compressed">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
           </a>
