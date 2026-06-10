@@ -30,7 +30,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
-        if opt_size <= config.target_bytes * 1.02:
+        if opt_size <= config.target_bytes:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
