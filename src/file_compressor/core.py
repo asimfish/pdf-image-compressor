@@ -77,7 +77,7 @@ def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[P
     if not archive_output.is_absolute():
         archive_output = (Path.cwd() / archive_output).resolve()
     archive_output = unique_path(archive_output, config.overwrite)
-    if config.pdf_mode == "optimize" and config.target_bytes is not None:
+    if config.target_bytes is None:
         qualities = [config.quality]
     else:
         qualities = _archive_quality_candidates(config.quality, config.target_bytes)
