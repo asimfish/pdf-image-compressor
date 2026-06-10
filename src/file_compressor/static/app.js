@@ -124,7 +124,10 @@ function app() {
       if (!(form.pdf_dpi >= 36 && form.pdf_dpi <= 300)) return 'DPI must be between 36 and 300';
       return this._validTargetSize(form.target_size);
     },
-    get uploadValidation() { return this._validateForm(this.uploadForm); },
+    get uploadValidation() {
+      if (this.uploadFiles.length === 0) return 'Select PDF files to upload';
+      return this._validateForm(this.uploadForm);
+    },
     get compressValidation() { return this._validateForm(this.compressForm); },
     get batchCompressValidation() { return this._validateForm(this.batchForm); },
     get allFilteredSelected() {
