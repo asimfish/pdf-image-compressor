@@ -107,10 +107,8 @@ def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[P
                 best_summary = summary
                 best_archive = candidate
                 best_size = size
-            if config.target_bytes is None or size <= config.target_bytes:
-                archive_output.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(candidate, archive_output)
-                return summary
+            if config.target_bytes is not None and size <= config.target_bytes:
+                break
         if best_summary is None or best_archive is None:
             raise RuntimeError("Archive compression produced no output")
         archive_output.parent.mkdir(parents=True, exist_ok=True)
@@ -155,7 +153,7 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
     return values
 
 
-_ARCHIVE_DPI_VALUES: list[int] = [140, 120, 110, 100, 90, 80, 72, 65, 60, 55, 50, 45, 40, 36]
+_ARCHIVE_DPI_VALUES: list[int] = [140, 120, 110, 100, 90, 80, 72, 65, 60, 55, 50, 45, 40, 36, 30, 24, 20]
 _ARCHIVE_FALLBACK_EDGES: list[Optional[int]] = [None, 1800, 1600, 1400, 1200, 1000, 800, 640]
 
 
