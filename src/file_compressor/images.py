@@ -31,7 +31,13 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
     except UnidentifiedImageError as exc:
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
     try:
-        exif_bytes = raw.info.get("exif") if not config.strip_metadata else None
+        if not config.strip_metadata:
+            exif_obj = raw.getexif()
+            if 0x0112 in exif_obj:
+                del exif_obj[0x0112]
+            exif_bytes = exif_obj.tobytes() if exif_obj else None
+        else:
+            exif_bytes = None
         normalized = _normalize_mode(raw, suffix)
         raw_closed = False
         if normalized is not raw:
@@ -133,25 +139,34 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
     elif suffix == ".png":
         if quality < 95 and image.mode in {"RGB", "RGBA", "L"}:
             if image.mode == "RGBA":
-                base = Image.new("RGB", image.size, "white")
-                alpha = image.split()[-1]
+                colors = max(16, min(256, int(quality / 95 * 256)))
+                r, g, b, a = image.split()
+                rgb = Image.merge("RGB", (r, g, b))
                 try:
-                    base.paste(image, mask=alpha)
+                    quantized = rgb.quantize(colors=colors)
+                    try:
+                        result = quantized.convert("RGBA")
+                        try:
+                            result.putalpha(a)
+                            result.save(buffer, format="PNG", optimize=True, compress_level=9)
+                        finally:
+                            result.close()
+                    finally:
+                        quantized.close()
                 finally:
-                    alpha.close()
-                save_img = base
+                    rgb.close()
             else:
                 save_img = image
-            try:
-                colors = max(16, min(256, int(quality / 95 * 256)))
-                quantized = save_img.quantize(colors=colors)
                 try:
-                    quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+                    colors = max(16, min(256, int(quality / 95 * 256)))
+                    quantized = save_img.quantize(colors=colors)
+                    try:
+                        quantized.save(buffer, format="PNG", optimize=True, compress_level=9)
+                    finally:
+                        quantized.close()
                 finally:
-                    quantized.close()
-            finally:
-                if save_img is not image:
-                    save_img.close()
+                    if save_img is not image:
+                        save_img.close()
         else:
             image.save(buffer, format="PNG", optimize=True, compress_level=9)
     else:
