@@ -766,7 +766,7 @@ function app() {
       const cached = this._pdfMeta[pdf.id];
       if (cached && cached.ts === vc) return cached;
       const meta = { bv: this.bestVersion(pdf), saving: this.bestSaving(pdf), ts: vc };
-      this._pdfMeta = { ...this._pdfMeta, [pdf.id]: meta };
+      this._pdfMeta[pdf.id] = meta;
       return meta;
     },
     fmtSize(bytes) {

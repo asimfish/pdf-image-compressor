@@ -91,7 +91,7 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
                     best_path = candidate
                     best_size = size
                     best_quality = quality
-                elif quality == best_quality and size <= config.target_bytes and best_size is not None and best_size > config.target_bytes:
+                elif quality == best_quality and best_size is not None and size < best_size:
                     best_path = candidate
                     best_size = size
             if size <= config.target_bytes:
