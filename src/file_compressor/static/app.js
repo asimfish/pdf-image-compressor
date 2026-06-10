@@ -468,6 +468,7 @@ function app() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || 'Batch compress failed');
         this.batchResults = data;
+        this.batchCompressing = false;
         await this.loadLibrary();
       } catch (e) {
         if (e.name === 'AbortError') return;
