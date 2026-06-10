@@ -88,7 +88,7 @@ def _sanitize_label(label: str) -> str:
     return label[:_MAX_LABEL_LEN] or "version"
 
 
-_PATH_RE = re.compile(r"(/[^/\s]+)+|([A-Za-z]:\\[^\s]+)")
+_PATH_RE = re.compile(r"(/[^/\s]+)+|([A-Za-z]:[/\\][^\s]+)")
 
 
 def _sanitize_error(exc: Exception) -> str:

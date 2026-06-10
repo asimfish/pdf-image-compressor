@@ -148,8 +148,8 @@ def _archive_quality_candidates(start: int, target_bytes: Optional[int]) -> list
         return [start]
     if start <= 1:
         return [start]
-    base = [v for v in [20, 18, 16, 14, 12, 10, 5, 1] if v <= start]
-    values = sorted(set(list(range(start, 19, -8)) + [start] + base), reverse=True)
+    base = [v for v in [20, 18, 16] if v <= start]
+    values = sorted(set(list(range(start, 15, -4)) + [start] + base), reverse=True)
     return values
 
 

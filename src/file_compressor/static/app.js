@@ -639,17 +639,8 @@ function app() {
       const gen = this._compareGen;
       this._compareTimeout = setTimeout(() => {
         if (gen !== this._compareGen || !this.compareLoading) return;
-        if (this._compareLoaded > 0 && this._compareErrors === 0) {
-          this._compareTimeout = setTimeout(() => {
-            if (gen === this._compareGen && this.compareLoading) {
-              this.compareLoading = false;
-              this.compareError = 'Loading timed out — try again';
-            }
-          }, 15000);
-        } else {
-          this.compareLoading = false;
-          this.compareError = 'Loading timed out — try again';
-        }
+        this.compareLoading = false;
+        this.compareError = 'Loading timed out — try again';
       }, 15000);
     },
     _onCompareLoad(e) {
