@@ -208,7 +208,7 @@ def _pdf_candidates(config: CompressionConfig) -> list[tuple[int, int]]:
     seen: set[tuple[int, int]] = set()
     values: list[tuple[int, int]] = []
     for dpi, quality in base:
-        item = (max(_MIN_DPI, int(dpi)), clamp_quality(int(quality)))
+        item = (max(_MIN_DPI, int(dpi)), max(_MIN_QUALITY, clamp_quality(int(quality))))
         if item not in seen:
             seen.add(item)
             values.append(item)

@@ -262,6 +262,7 @@ function app() {
         ids.forEach(id => this._evictPdfCache(id));
         if (ids.includes(this.expanded)) this.expanded = null;
         if (this.showCompress && ids.includes(this.compressTarget?.id)) this.closeCompress();
+        if (this.showNotes && ids.includes(this.notesTarget?.id)) { this.showNotes = false; this.notesTarget = null; }
         if (this.showCompare && ids.includes(this.comparePdf?.id)) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this.selectedPdfs = {};
         this.selectMode = false;
@@ -592,6 +593,7 @@ function app() {
         if (!res.ok) throw new Error(data.detail || 'Delete failed');
         if (this.expanded === pdf.id) this.expanded = null;
         if (this.showCompress && this.compressTarget?.id === pdf.id) this.closeCompress();
+        if (this.showNotes && this.notesTarget?.id === pdf.id) { this.showNotes = false; this.notesTarget = null; }
         if (this.showCompare && this.comparePdf?.id === pdf.id) { clearTimeout(this._compareTimeout); this._cleanupCompareListeners(); this.showCompare = false; }
         this._evictPdfCache(pdf.id);
         if (this.selectedPdfs[pdf.id]) {

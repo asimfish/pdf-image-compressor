@@ -114,14 +114,16 @@ def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[P
         archive_output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(best_archive, archive_output)
         partial = not all(r.status == "ok" for r in best_summary.results)
-        prefix = "best_over_target" if config.target_bytes else ""
-        suffix = "_partial" if partial else ""
+        if config.target_bytes:
+            status = "best_over_target_partial" if partial else "best_over_target"
+        else:
+            status = "partial" if partial else "ok"
         best_summary.archive = CompressionResult(
             source=source,
             output=archive_output,
             original_size=sum(result.original_size for result in best_summary.results),
             compressed_size=archive_output.stat().st_size,
-            status=(prefix + suffix) or "ok",
+            status=status,
         )
         return best_summary
 
