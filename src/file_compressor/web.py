@@ -253,7 +253,10 @@ def api_compress_pdf(
         logger.error("Compression failed for pdf %s: %s", pdf_id, exc)
         raise HTTPException(500, detail=_sanitize_error(exc))
     logger.info("Compressed pdf %s: %s → %s (%.1f%% reduction)", pdf_id, format_size(pdf.file_size), format_size(ver.file_size), (ver.compression_ratio or 0) * 100)
-    return asdict(ver)
+    result = asdict(ver)
+    if config.target_bytes and ver.file_size > config.target_bytes:
+        result["warning"] = f"Target {format_size(config.target_bytes)} not achievable — smallest result is {format_size(ver.file_size)}"
+    return result
 
 
 @app.post("/api/pdfs/batch-compress")

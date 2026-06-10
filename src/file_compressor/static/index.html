@@ -397,6 +397,9 @@
           <span x-show="compressResult?.target_bytes" class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600" x-text="compressResult ? fmtTarget(compressResult.target_bytes) : ''"></span>
           <span x-show="compressResult?.label" class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 truncate" x-text="compressResult?.label"></span>
         </div>
+        <div x-show="compressResult?.warning" class="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <p class="text-amber-700 text-sm" x-text="compressResult?.warning"></p>
+        </div>
         <button @click="compressResult = null; compressError = ''; compressForm = _defaults({ label: '' })" class="text-sm text-blue-600 hover:text-blue-800 font-medium mt-1">+ Compress again with different settings</button>
       </div>
       <div x-show="compressValidation && !compressResult" class="mt-3 text-sm text-red-600" x-text="compressValidation"></div>

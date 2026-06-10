@@ -510,7 +510,7 @@ function app() {
       this.compressTarget = pdf;
       this.compressResult = null;
       const base = pdf.file_size;
-      const target = base ? Math.min(base, Math.max(10000, Math.round(base * 0.8))) : 500000;
+      const target = base ? Math.min(base, Math.max(1000, Math.round(base * 0.8))) : 500000;
       this.compressForm = this._defaults({ target_size: this.fmtSize(target), label: '' });
       this._resetDragState();
       this.showCompress = true;
@@ -796,7 +796,7 @@ function app() {
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       let v = bytes, u = 0;
       while (v >= 1000 && u < 4) { v /= 1000; u++; }
-      if (v >= 999.95 && u < 4) { v /= 1000; u++; }
+      if (v >= 999.5 && u < 4) { v /= 1000; u++; }
       return v.toFixed(u === 0 ? 0 : 1) + ' ' + units[u];
     },
     fmtDate(iso) {

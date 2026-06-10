@@ -47,7 +47,7 @@ def format_size(size: Optional[int]) -> str:
         if value >= 1000 and i < len(units) - 1:
             value /= 1000
             continue
-        if unit != "B" and value >= 999.95 and i < len(units) - 1:
+        if unit != "B" and value >= 999.5 and i < len(units) - 1:
             return f"{value / 1000:.1f} {units[i + 1]}"
         return f"{int(value)} B" if unit == "B" else f"{value:.1f} {unit}"
     return f"{value:.1f} PB"
