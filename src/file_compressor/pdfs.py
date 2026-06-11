@@ -56,12 +56,16 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
+        raster_size = rasterized.stat().st_size
         if optimized is not None:
-            best = rasterized if rasterized.stat().st_size < opt_size else optimized
+            best = rasterized if raster_size < opt_size else optimized
         else:
-            best = rasterized
+            best = rasterized if raster_size < original_size else None
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(best, output)
+        if best is not None:
+            shutil.copy2(best, output)
+        else:
+            shutil.copy2(source, output)
         return output
 
 

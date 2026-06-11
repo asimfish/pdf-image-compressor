@@ -102,7 +102,8 @@ def _sanitize_error(exc: Exception) -> str:
         return "The file appears to be corrupted or invalid"
     sanitized = _PATH_RE.sub("[path]", msg)
     if sanitized != msg:
-        return "Compression failed"
+        # Path was present — return sanitized message without internal paths
+        return sanitized if sanitized else "Compression failed"
     return "Compression failed"
 
 

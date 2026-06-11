@@ -113,6 +113,7 @@ function app() {
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
       const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
+      if (unit && !/^[kmgt]?b?$/.test(unit)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
       if (bytes < 1) return 'Target size must be at least 1 byte';
