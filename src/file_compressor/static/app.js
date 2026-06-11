@@ -488,6 +488,7 @@ function app() {
       if (this._batchAbort) this._batchAbort.abort();
       this.showBatchCompress = false;
       this.batchResults = null;
+      this.batchCompressError = '';
       this.batchCompressing = false;
       this.loading = true;
       this.loadLibrary();

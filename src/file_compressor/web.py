@@ -169,6 +169,7 @@ def api_upload_pdf(
     config: CompressionConfig = Depends(_compress_form),
     notes: str = Form(""),
 ):
+    notes = notes.strip()
     if len(notes) > _MAX_NOTES_LEN:
         raise HTTPException(422, detail=f"notes must be {_MAX_NOTES_LEN} characters or fewer")
     storage = _get_storage()
