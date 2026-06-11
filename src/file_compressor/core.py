@@ -115,7 +115,10 @@ def _compress_to_zip(source: Path, config: CompressionConfig, output: Optional[P
         shutil.copy2(best_archive, archive_output)
         partial = not all(r.status == "ok" for r in best_summary.results)
         if config.target_bytes is not None:
-            status = "best_over_target_partial" if partial else "best_over_target"
+            if best_size is not None and best_size > config.target_bytes:
+                status = "best_over_target_partial" if partial else "best_over_target"
+            else:
+                status = "partial" if partial else "ok"
         else:
             status = "partial" if partial else "ok"
         best_summary.archive = CompressionResult(

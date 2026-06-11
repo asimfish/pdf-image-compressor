@@ -116,7 +116,7 @@ function app() {
       const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
       if (bytes < 1) return 'Target size must be at least 1 byte';
-      if (!unit && bytes < 1000) return 'Include a unit (e.g. 500KB, 2MB) — bare numbers are treated as bytes';
+      if (!unit && bytes < 1000) return 'Bare numbers under 1000 need a unit (e.g. 500KB, 2MB)';
       return '';
     },
     _validateForm(form) {

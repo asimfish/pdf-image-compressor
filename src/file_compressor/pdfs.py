@@ -23,14 +23,25 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         return rasterize_pdf_to_target(source, output, config)
 
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
-        optimized = Path(temp_dir) / "optimized.pdf"
-        optimize_pdf(source, optimized, config)
-        opt_size = optimized.stat().st_size
+        original_size = source.stat().st_size
+        # Skip optimize pass if target is very aggressive (< 30% of original)
+        skip_optimize = config.target_bytes is not None and original_size > 0 and config.target_bytes < original_size * 0.3
+        if skip_optimize:
+            optimized = None
+            opt_size = original_size
+        else:
+            optimized = Path(temp_dir) / "optimized.pdf"
+            optimize_pdf(source, optimized, config)
+            opt_size = optimized.stat().st_size
         if config.target_bytes is None:
+            if optimized is None:
+                return rasterize_pdf_to_target(source, output, config)
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
         if opt_size <= config.target_bytes:
+            if optimized is None:
+                return rasterize_pdf_to_target(source, output, config)
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
@@ -38,10 +49,15 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         try:
             rasterize_pdf_to_target(source, rasterized, config)
         except Exception:
+            if optimized is None:
+                raise
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(optimized, output)
             return output
-        best = rasterized if rasterized.stat().st_size < opt_size else optimized
+        if optimized is not None:
+            best = rasterized if rasterized.stat().st_size < opt_size else optimized
+        else:
+            best = rasterized
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(best, output)
         return output
