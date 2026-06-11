@@ -650,7 +650,7 @@ function app() {
         if (gen !== this._compareGen || !this.compareLoading) return;
         this.compareLoading = false;
         this._compareRetries++;
-        this.compareRetryable = this._compareRetries < 3;
+        this.compareRetryable = this._compareRetries < 2;
         this.compareError = 'Loading timed out — try again';
       }, 15000);
     },
@@ -664,8 +664,8 @@ function app() {
         this.compareLoading = false;
         if (this._compareErrors > 0) {
           this._compareRetries++;
-          this.compareRetryable = this._compareRetries < 3;
-          this.compareError = this._compareRetries >= 3
+          this.compareRetryable = this._compareRetries < 2;
+          this.compareError = this._compareRetries >= 2
             ? 'Preview failed after multiple attempts'
             : this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
         } else {
@@ -683,8 +683,8 @@ function app() {
       if (this._compareLoaded >= 2) {
         this.compareLoading = false;
         this._compareRetries++;
-        this.compareRetryable = this._compareRetries < 3;
-        this.compareError = this._compareRetries >= 3
+        this.compareRetryable = this._compareRetries < 2;
+        this.compareError = this._compareRetries >= 2
           ? 'Preview failed after multiple attempts'
           : this._compareErrors >= 2 ? 'Both previews failed to load' : 'One preview failed to load';
       }

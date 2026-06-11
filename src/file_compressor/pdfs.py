@@ -34,10 +34,12 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             optimize_pdf(source, optimized, config)
             opt_size = optimized.stat().st_size
         if config.target_bytes is None:
-            if optimized is None:
-                return rasterize_pdf_to_target(source, output, config)
+            if optimized is not None and opt_size < original_size:
+                output.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(optimized, output)
+                return output
             output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(optimized, output)
+            shutil.copy2(source, output)
             return output
         if opt_size <= config.target_bytes:
             if optimized is None:
