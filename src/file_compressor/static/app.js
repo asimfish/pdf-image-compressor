@@ -500,8 +500,9 @@ function app() {
       this.compressTarget = pdf;
       this.compressResult = null;
       const base = pdf.file_size;
-      const target = base ? Math.min(base, Math.max(1000, Math.round(base * 0.8))) : 500000;
-      this.compressForm = this._defaults({ target_size: this.fmtSize(target), label: '' });
+      const pct = base ? Math.round(base * 0.8) : 0;
+      const target = pct >= 1000 ? Math.min(base, pct) : null;
+      this.compressForm = this._defaults({ target_size: target ? this.fmtSize(target) : '', label: '' });
       this._resetDragState();
       this.showCompress = true;
     },

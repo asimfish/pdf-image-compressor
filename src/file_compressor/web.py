@@ -103,7 +103,7 @@ def _sanitize_error(exc: Exception) -> str:
     sanitized = _PATH_RE.sub("[path]", msg)
     if sanitized != msg:
         return "Compression failed"
-    return msg if msg else "Compression failed"
+    return "Compression failed"
 
 
 def init_storage(data_dir: Path) -> None:
@@ -368,11 +368,11 @@ def api_download_version(version_id: str) -> FileResponse:
     download_name = f"{stem}_{label}.pdf" if label else f"{stem}.pdf"
     if len(download_name.encode("utf-8")) > 200:
         if label:
-            stem_b = stem.encode("utf-8")[:150].decode("utf-8", errors="ignore")
-            label_b = label.encode("utf-8")[:40].decode("utf-8", errors="ignore")
+            stem_b = stem.encode("utf-8")[:150].decode("utf-8", errors="replace")
+            label_b = label.encode("utf-8")[:40].decode("utf-8", errors="replace")
             download_name = f"{stem_b}_{label_b}.pdf"
         else:
-            stem_b = stem.encode("utf-8")[:190].decode("utf-8", errors="ignore")
+            stem_b = stem.encode("utf-8")[:190].decode("utf-8", errors="replace")
             download_name = stem_b + ".pdf"
     try:
         return FileResponse(path, filename=download_name, media_type="application/pdf")

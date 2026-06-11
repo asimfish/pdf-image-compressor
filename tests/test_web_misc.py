@@ -198,7 +198,7 @@ def test_sanitize_error_strips_paths():
 def test_sanitize_error_fallback():
     from file_compressor.web import _sanitize_error
 
-    assert _sanitize_error(RuntimeError("out of memory")) == "out of memory"
+    assert _sanitize_error(RuntimeError("out of memory")) == "Compression failed"
 
 
 def test_sanitize_error_preserves_non_path_text():
