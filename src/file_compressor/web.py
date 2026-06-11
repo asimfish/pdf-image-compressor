@@ -94,7 +94,11 @@ _PATH_RE = re.compile(r"(/[^/\s]+(?:\s+[^/\s]+)*)+|([A-Za-z]:[/\\][^\s]+)")
 def _sanitize_error(exc: Exception) -> str:
     """Return a user-friendly error message without leaking internal details."""
     msg = str(exc).split("\n")[0][:200]
-    if isinstance(exc, (FileNotFoundError, PermissionError, OSError)):
+    if isinstance(exc, FileNotFoundError):
+        return "The file is no longer available on disk"
+    if isinstance(exc, PermissionError):
+        return "Insufficient permissions to access the file"
+    if isinstance(exc, OSError):
         return "File access error"
     if "no output" in msg.lower():
         return "Compression produced no output — the file may be corrupted"
@@ -574,7 +578,7 @@ def _compress_and_store(
 
 def _auto_label(target_bytes: Optional[int], quality: int, pdf_mode: str) -> str:
     parts = []
-    if target_bytes:
+    if target_bytes is not None and target_bytes > 0:
         parts.append(format_size(target_bytes))
     parts.append(f"Q{quality}")
     parts.append(pdf_mode)

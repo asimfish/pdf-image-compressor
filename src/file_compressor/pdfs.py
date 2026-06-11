@@ -161,6 +161,7 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
             pix = page.get_pixmap(dpi=dpi, colorspace=colorspace, alpha=False, annots=True)
             mode = "L" if grayscale else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+            pix = None  # release native pixmap buffer immediately
             data = BytesIO()
             try:
                 image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
