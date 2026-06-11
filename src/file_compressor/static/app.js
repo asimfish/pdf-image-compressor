@@ -627,7 +627,7 @@ function app() {
       this.comparePdf = pdf;
       this.compareVersion = version;
       this.comparePage = 0;
-      this.compareTotalPages = Math.max(1, Math.min(pdf.page_count || 1, version.page_count || 1));
+      this.compareTotalPages = Math.max(1, (version.page_count > 0 ? version.page_count : null) || pdf.page_count || 1);
       this.compareSlider = 50;
       this._compareRetries = 0;
       this._resetCompareLoading();
@@ -641,6 +641,7 @@ function app() {
       this.compareLoading = true;
       this.compareError = '';
       this.compareRetryable = true;
+      this._compareRetries = 0;
       this._compareLoaded = 0;
       this._compareErrors = 0;
       this._compareGen++;
