@@ -411,7 +411,7 @@ function app() {
           this.uploadProgress = 100;
           this.showUpload = false;
           this.uploadForm = this._defaults({ notes: '' });
-          this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, []));
+          this.showToast(this._buildUploadToast(succeeded, compressResults, warnings, errors));
           await this.loadLibrary();
           if (totalFiles === 1 && succeeded === 1 && uploadedPdf) {
             this.compressPdf(uploadedPdf);
@@ -498,6 +498,7 @@ function app() {
       if (this._batchAbort) this._batchAbort.abort();
       this.showBatchCompress = false;
       this.batchResults = null;
+      this.batchCompressing = false;
       this.loading = true;
       this.loadLibrary();
     },
