@@ -186,19 +186,9 @@ function app() {
         this.pdfs = newPdfs;
         this._filteredCache = null;
         this._pdfMeta = {};
-        if (this.expanded) {
-          const expandedId = this.expanded;
-          const { [expandedId]: _vc, ...restVersions } = this.versionCache;
-          this.versionCache = restVersions;
-          const { [expandedId]: _vl, ...restLoading } = this.versionLoading;
-          this.versionLoading = restLoading;
-          const { [expandedId]: _vg, ...restGen } = this._versionGen;
-          this._versionGen = restGen;
-        } else {
-          this.versionCache = {};
-          this.versionLoading = {};
-          this._versionGen = {};
-        }
+        this.versionCache = {};
+        this.versionLoading = {};
+        this._versionGen = {};
         fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => { if (d && gen === this._libraryGen) this.stats = d; }).catch(() => {});
         fetch('/api/config').then(r => r.ok ? r.json() : null).then(d => { if (d && d.max_upload_bytes && gen === this._libraryGen) this._maxUploadBytes = d.max_upload_bytes; }).catch(() => {});
       } catch (e) {
@@ -582,7 +572,7 @@ function app() {
         const res = await fetch(`/api/pdfs/${this.notesTarget.id}/notes`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: this.notesText }),
+          body: JSON.stringify({ notes: this.notesText.trim() }),
         });
         if (!res.ok) throw new Error('Failed to save notes');
         this.showNotes = false;

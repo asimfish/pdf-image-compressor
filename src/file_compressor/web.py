@@ -120,6 +120,7 @@ class NotesUpdate(BaseModel):
     @field_validator("notes")
     @classmethod
     def notes_not_too_long(cls, v: str) -> str:
+        v = v.strip()
         if len(v) > _MAX_NOTES_LEN:
             raise ValueError(f"notes must be {_MAX_NOTES_LEN} characters or fewer")
         return v
