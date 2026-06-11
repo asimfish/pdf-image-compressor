@@ -175,8 +175,7 @@ function app() {
     },
     async loadLibrary() {
       const gen = ++this._libraryGen;
-      const isInitial = !this._libraryLoaded;
-      this.loading = isInitial;
+      this.loading = true;
       this.apiError = false;
       try {
         const pdfsRes = await fetch('/api/pdfs');
@@ -703,7 +702,7 @@ function app() {
       return `/api/preview/original/${this.comparePdf.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     compareVersionUrl() {
-      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?v=${this.compareVersion.created_at || ''}&_=${this._compareGen}`;
+      return `/api/preview/version/${this.compareVersion.id}/${this.comparePage}?_=${this._compareGen}`;
     },
     _cleanupCompareListeners() {
       clearTimeout(this._compareTimeout);
