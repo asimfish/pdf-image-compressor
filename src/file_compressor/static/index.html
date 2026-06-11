@@ -15,7 +15,7 @@
     .compare-container { position: relative; user-select: none; cursor: col-resize; overflow: hidden; }
     .compare-container img { display: block; width: 100%; height: auto; pointer-events: none; }
     .compare-overlay { position: absolute; top: 0; left: 0; height: 100%; overflow: hidden; }
-    .compare-overlay img { display: block; height: 100%; width: 100%; object-fit: cover; object-position: left top; pointer-events: none; }
+    .compare-overlay img { display: block; height: auto; pointer-events: none; }
     .compare-slider-line { position: absolute; top: 0; bottom: 0; width: 3px; background: white; box-shadow: 0 0 8px rgba(0,0,0,0.4); z-index: 10; pointer-events: none; }
     .compare-slider-handle { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 11; pointer-events: none; display: flex; align-items: center; justify-content: center; }
   </style>
@@ -568,7 +568,7 @@
           <img :src="compareOriginalUrl()" :data-gen="_compareGen" alt="Original" class="w-full" draggable="false" @load="_onCompareLoad($event)" @error="_onCompareError($event)">
           <!-- Compressed (left side, clipped) -->
           <div class="compare-overlay" :style="'width:' + compareSlider + '%'">
-            <img :src="compareVersionUrl()" :data-gen="_compareGen" alt="Compressed" draggable="false" @load="_onCompareLoad($event)" @error="_onCompareError($event)">
+            <img :src="compareVersionUrl()" :data-gen="_compareGen" alt="Compressed" draggable="false" :style="'width:' + (compareSlider > 0 ? Math.round(10000 / compareSlider) : 100) + '%'" @load="_onCompareLoad($event)" @error="_onCompareError($event)">
           </div>
           <!-- Labels -->
           <div x-show="compareSlider > 15" class="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-600 text-white shadow-sm pointer-events-none transition-opacity">Compressed</div>
