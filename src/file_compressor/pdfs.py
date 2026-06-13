@@ -263,7 +263,7 @@ def _try_make_cache_room() -> bool:
     return len(_render_cache) < _RENDER_CACHE_MAX
 
 
-def render_page(source: Path, page_index: int, dpi: int = 150) -> bytes:
+def render_page(source: Path, page_index: int, dpi: int = 100) -> bytes:
     """Render a single PDF page as PNG bytes."""
     key = (str(source), page_index, dpi)
     wait_event: Optional[threading.Event] = None

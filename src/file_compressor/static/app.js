@@ -71,9 +71,11 @@ function app() {
     showCompare: false,
     comparePdf: null,
     compareVersion: null,
+    compareVersions: [],
     comparePage: 0,
     compareTotalPages: 1,
     compareSlider: 50,
+    compareGridMode: false,
     _compareDragging: false,
     compareLoading: false,
     compareError: '',
@@ -112,7 +114,7 @@ function app() {
       if (!/^\s*\d+(?:\.\d+)?\s*(?:\s*[kmgt]?b?)?\s*$/i.test(v)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const num = parseFloat(v);
       if (num === 0) return 'Target size must be greater than zero';
-      const unit = v.trim().replace(/[\d.\s]/g, '').toLowerCase();
+      const unit = v.trim().replace(/[\d.]/g, '').toLowerCase().trim();
       if (unit && !/^[kmgt]?b?$/.test(unit)) return 'Enter a size (e.g. 500KB, 2MB, 1.5M)';
       const multipliers = { k: 1000, m: 1000000, g: 1000000000, t: 1000000000000 };
       const bytes = num * (multipliers[unit.charAt(0)] || 1);
@@ -629,6 +631,8 @@ function app() {
       }
       this.comparePdf = pdf;
       this.compareVersion = version;
+      this.compareVersions = [];
+      this.compareGridMode = false;
       this.comparePage = 0;
       this.compareTotalPages = Math.max(1, (version.page_count > 0 ? version.page_count : null) || pdf.page_count || 1);
       this.compareSlider = 50;
@@ -636,6 +640,20 @@ function app() {
       this._resetCompareLoading();
       this._resetDragState();
       this.showCompare = true;
+      // Load all versions for grid mode
+      fetch(`/api/pdfs/${pdf.id}/versions`).then(r => r.ok ? r.json() : []).then(vs => {
+        if (this.showCompare && this.comparePdf?.id === pdf.id) {
+          this.compareVersions = vs;
+        }
+      }).catch(() => {});
+    },
+    switchCompareVersion(version) {
+      if (version.id === this.compareVersion?.id) return;
+      this.compareVersion = version;
+      this.compareTotalPages = Math.max(1, (version.page_count > 0 ? version.page_count : null) || this.comparePdf?.page_count || 1);
+      this.comparePage = Math.min(this.comparePage, this.compareTotalPages - 1);
+      this._compareRetries = 0;
+      this._resetCompareLoading();
     },
     comparePrev() { if (this.comparePage > 0) { this.comparePage--; this._resetCompareLoading(); } },
     compareNext() { if (this.comparePage < this.compareTotalPages - 1) { this.comparePage++; this._resetCompareLoading(); } },
