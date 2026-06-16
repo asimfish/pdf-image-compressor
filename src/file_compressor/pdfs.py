@@ -9,19 +9,92 @@ from tempfile import TemporaryDirectory
 from typing import Optional
 
 from PIL import Image, ImageFilter, ImageEnhance
+import statistics
 
 from .models import CompressionConfig
 from .utils import clamp_quality
 
 
-def _post_process_page(image: Image.Image, quality: int) -> Image.Image:
+def _analyze_page_content(image: Image.Image) -> dict[str, float]:
+    """Analyze page content to determine optimal compression strategy.
+
+    Uses pure PIL operations (no numpy dependency).
+    Returns dict with:
+    - text_ratio: 0.0-1.0, higher means more text content
+    - edge_density: 0.0-1.0, higher means more edges (text, line art)
+    - color_variance: 0.0-1.0, higher means more color variation (photos)
+    """
+    # Downsample for fast analysis
+    w, h = image.size
+    scale = max(1, min(w, h) // 200)
+    small = image.resize((w // scale, h // scale), Image.NEAREST)
+
+    gray = small.convert("L") if small.mode != "L" else small
+
+    # Edge detection via PIL FIND_EDGES
+    edges = gray.filter(ImageFilter.FIND_EDGES)
+    edge_pixels = 0
+    total_pixels = 0
+    for pixel in edges.tobytes():
+        total_pixels += 1
+        if pixel > 30:
+            edge_pixels += 1
+    edge_density = min(1.0, edge_pixels / max(1, total_pixels) * 3)
+
+    # Color variance
+    if small.mode == "RGB":
+        r, g, b = small.split()
+        r_var = statistics.pvariance(r.tobytes())
+        g_var = statistics.pvariance(g.tobytes())
+        b_var = statistics.pvariance(b.tobytes())
+        color_var = (r_var + g_var + b_var) / 3.0 / (128.0 * 128.0)
+    else:
+        color_var = statistics.pvariance(gray.tobytes()) / (128.0 * 128.0)
+    color_variance = min(1.0, color_var)
+
+    # Text ratio: high edge density + low color variance = text
+    text_ratio = max(0.0, min(1.0, edge_density * 2 - color_variance))
+
+    return {
+        "text_ratio": text_ratio,
+        "edge_density": edge_density,
+        "color_variance": color_variance,
+    }
+
+
+def _content_adjusted_params(dpi: int, quality: int, content: dict[str, float]) -> tuple[int, int]:
+    """Adjust DPI and quality based on page content analysis.
+
+    Strategy:
+    - Text-heavy: boost DPI (keep text sharp), slightly lower JPEG quality
+    - Image-heavy: lower DPI, boost JPEG quality (preserve color/gradient)
+    - Mixed: keep balanced
+    """
+    text_ratio = content["text_ratio"]
+
+    if text_ratio > 0.6:
+        # Text-heavy: prioritize sharpness
+        dpi_boost = int(dpi * 0.15)  # +15% DPI
+        quality_adj = -3  # slightly lower quality OK for text
+    elif text_ratio < 0.3:
+        # Image-heavy: prioritize color preservation
+        dpi_boost = -int(dpi * 0.1)  # -10% DPI
+        quality_adj = 5  # higher quality for images
+    else:
+        # Mixed: slight boost to both
+        dpi_boost = int(dpi * 0.05)  # +5% DPI
+        quality_adj = 2
+
+    return max(_MIN_DPI, dpi + dpi_boost), clamp_quality(quality + quality_adj)
+
+
+def _post_process_page(image: Image.Image, quality: int, content: Optional[dict[str, float]] = None) -> Image.Image:
     """Apply intelligent post-processing to improve readability after lossy compression.
 
-    The intensity scales with how aggressive the compression is:
-    - quality >= 75: no processing (high quality preserves text well)
-    - quality 55-74: mild sharpening + slight contrast boost
-    - quality 35-54: moderate sharpening + contrast boost
-    - quality < 35: strong sharpening + contrast boost + edge enhancement
+    Content-aware adjustments:
+    - Text-heavy pages: stronger sharpening, contrast boost
+    - Image-heavy pages: lighter sharpening, preserve color
+    - Mixed pages: balanced approach
     """
     if quality >= 75:
         return image
@@ -29,8 +102,16 @@ def _post_process_page(image: Image.Image, quality: int) -> Image.Image:
     # Calculate processing intensity (0.0 = mild, 1.0 = strong)
     intensity = max(0.0, min(1.0, (75 - quality) / 40.0))
 
+    # Content-aware intensity adjustment
+    text_ratio = content.get("text_ratio", 0.5) if content else 0.5
+    if text_ratio > 0.6:
+        # Text-heavy: boost sharpening intensity
+        intensity = min(1.0, intensity * 1.3)
+    elif text_ratio < 0.3:
+        # Image-heavy: reduce sharpening to avoid artifacts
+        intensity *= 0.7
+
     # Unsharp mask for text sharpening
-    # radius increases with intensity, percent controls strength
     radius = 1 + intensity * 1.5  # 1.0 to 2.5
     percent = int(80 + intensity * 120)  # 80% to 200%
     threshold = 2
@@ -200,10 +281,22 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
             mode = "L" if grayscale else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             pix = None  # release native pixmap buffer immediately
-            image = _post_process_page(image, quality)
+
+            # Content-aware optimization
+            content = _analyze_page_content(image)
+            page_dpi, page_quality = _content_adjusted_params(dpi, quality, content)
+
+            # Re-render at adjusted DPI if significantly different
+            if abs(page_dpi - dpi) > 10:
+                image.close()
+                pix = page.get_pixmap(dpi=page_dpi, colorspace=colorspace, alpha=False, annots=True)
+                image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+                pix = None
+
+            image = _post_process_page(image, page_quality, content)
             data = BytesIO()
             try:
-                image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
+                image.save(data, format="JPEG", quality=clamp_quality(page_quality), optimize=True, progressive=True)
                 rect = page.rect
                 new_page = dst.new_page(width=rect.width, height=rect.height)
                 new_page.insert_image(new_page.rect, stream=data.getvalue())
