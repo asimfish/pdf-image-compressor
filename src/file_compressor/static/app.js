@@ -340,14 +340,24 @@ function app() {
         const xhr = new XMLHttpRequest();
         this._currentXhr = xhr;
         xhr.open('POST', '/api/pdfs/upload');
+        let processingTimer = null;
+        let processingStart = 0;
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             const filePct = e.loaded / e.total;
             this.uploadProgress = Math.round(((index + filePct) / total) * 100);
-            if (filePct >= 1) this.uploadStatus = `Processing ${index + 1}/${total}: ${file.name}`;
+            if (filePct >= 1 && !processingTimer) {
+              processingStart = Date.now();
+              this.uploadStatus = `Compressing ${index + 1}/${total}: ${file.name} ⏳`;
+              processingTimer = setInterval(() => {
+                const elapsed = Math.round((Date.now() - processingStart) / 1000);
+                this.uploadStatus = `Compressing ${index + 1}/${total}: ${file.name} ⏳ ${elapsed}s`;
+              }, 1000);
+            }
           }
         };
         xhr.onload = () => {
+          if (processingTimer) { clearInterval(processingTimer); processingTimer = null; }
           this._currentXhr = null;
           if (xhr.status >= 200 && xhr.status < 300) {
             try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('Invalid response')); }
@@ -356,8 +366,8 @@ function app() {
             catch { reject(new Error(xhr.statusText)); }
           }
         };
-        xhr.onerror = () => { this._currentXhr = null; reject(new Error('Network error')); };
-        xhr.onabort = () => { this._currentXhr = null; reject(new Error('Upload cancelled')); };
+        xhr.onerror = () => { if (processingTimer) clearInterval(processingTimer); this._currentXhr = null; reject(new Error('Network error')); };
+        xhr.onabort = () => { if (processingTimer) clearInterval(processingTimer); this._currentXhr = null; reject(new Error('Upload cancelled')); };
         xhr.timeout = 600000;
         xhr.ontimeout = () => { this._currentXhr = null; reject(new Error('Server timed out')); };
         xhr.send(fd);
