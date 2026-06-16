@@ -10,6 +10,8 @@
     .drop-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
     .fade-in { animation: fadeIn .2s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse-bar { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .progress-pulsing { animation: pulse-bar 1.5s ease-in-out infinite; }
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     .compare-container { position: relative; user-select: none; cursor: col-resize; overflow: hidden; }
@@ -310,7 +312,7 @@
       </div>
       <div x-show="uploading" class="mt-4">
         <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div class="h-full bg-blue-600 rounded-full transition-all" :style="'width:' + uploadProgress + '%'"></div>
+          <div class="h-full bg-blue-600 rounded-full transition-all" :class="compressingUpload ? 'progress-pulsing' : ''" :style="'width:' + uploadProgress + '%'"></div>
         </div>
         <p class="text-sm text-gray-500 mt-1 text-center" x-text="uploadStatus"></p>
         <button @click.stop="cancelUpload()" class="mt-2 text-sm text-gray-500 hover:text-red-600 transition mx-auto block">Cancel</button>
