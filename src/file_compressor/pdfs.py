@@ -8,10 +8,48 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 
 from .models import CompressionConfig
 from .utils import clamp_quality
+
+
+def _post_process_page(image: Image.Image, quality: int) -> Image.Image:
+    """Apply intelligent post-processing to improve readability after lossy compression.
+
+    The intensity scales with how aggressive the compression is:
+    - quality >= 75: no processing (high quality preserves text well)
+    - quality 55-74: mild sharpening + slight contrast boost
+    - quality 35-54: moderate sharpening + contrast boost
+    - quality < 35: strong sharpening + contrast boost + edge enhancement
+    """
+    if quality >= 75:
+        return image
+
+    # Calculate processing intensity (0.0 = mild, 1.0 = strong)
+    intensity = max(0.0, min(1.0, (75 - quality) / 40.0))
+
+    # Unsharp mask for text sharpening
+    # radius increases with intensity, percent controls strength
+    radius = 1 + intensity * 1.5  # 1.0 to 2.5
+    percent = int(80 + intensity * 120)  # 80% to 200%
+    threshold = 2
+    image = image.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent, threshold=threshold))
+
+    # Contrast enhancement for text clarity
+    contrast_factor = 1.0 + intensity * 0.15  # 1.0 to 1.15
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(contrast_factor)
+
+    # For very low quality, also apply edge enhancement
+    if quality < 45:
+        edge_intensity = (45 - quality) / 45.0  # 0 to 1
+        # Blend original with edge-enhanced version
+        edges = image.filter(ImageFilter.EDGE_ENHANCE)
+        blend_factor = edge_intensity * 0.3  # subtle blend
+        image = Image.blend(image, edges, blend_factor)
+
+    return image
 
 
 def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
@@ -162,6 +200,7 @@ def rasterize_pdf(source: Path, output: Path, dpi: int, quality: int, grayscale:
             mode = "L" if grayscale else "RGB"
             image = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             pix = None  # release native pixmap buffer immediately
+            image = _post_process_page(image, quality)
             data = BytesIO()
             try:
                 image.save(data, format="JPEG", quality=clamp_quality(quality), optimize=True, progressive=True)
