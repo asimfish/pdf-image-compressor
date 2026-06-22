@@ -177,7 +177,23 @@ class Storage:
 
     # ── PDF CRUD ──
 
-    def add_pdf(self, filename: str, file_data: bytes, page_count: int, notes: str = "") -> PdfRecord:
+    def find_existing_pdf(self, filename: str, file_size: int) -> Optional[PdfRecord]:
+        """Find an existing PDF with the same filename and similar size (within 5%)."""
+        rows = self._fetchall(
+            "SELECT * FROM pdfs WHERE filename=? ORDER BY upload_time DESC",
+            (filename,),
+        )
+        for row in rows:
+            existing_size = row["file_size"]
+            if existing_size > 0 and abs(existing_size - file_size) / existing_size < 0.05:
+                return _row_to_pdf(row)
+        return None
+
+    def add_pdf(self, filename: str, file_data: bytes, page_count: int, notes: str = "", group_existing: bool = False) -> PdfRecord:
+        if group_existing:
+            existing = self.find_existing_pdf(filename, len(file_data))
+            if existing is not None:
+                return existing
         pdf_id = uuid.uuid4().hex[:12]
         suffix = Path(filename).suffix.lower()
         stored_name = f"{pdf_id}{suffix}"

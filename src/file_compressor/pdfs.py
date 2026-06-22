@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import threading
 import time
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -141,50 +142,62 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode == "raster":
         return rasterize_pdf_to_target(source, output, config)
 
+    # Auto mode: try multiple strategies and pick the best
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
         original_size = source.stat().st_size
-        # Skip optimize pass if target is very aggressive (< 30% of original)
+        candidates: list[tuple[Path, int, str]] = []  # (path, size, label)
+
+        # Strategy 1: Optimize only (lossless)
         skip_optimize = config.target_bytes is not None and original_size > 0 and config.target_bytes < original_size * 0.3
-        if skip_optimize:
-            optimized = None
-            opt_size = original_size
-        else:
+        if not skip_optimize:
             optimized = Path(temp_dir) / "optimized.pdf"
             optimize_pdf(source, optimized, config)
             opt_size = optimized.stat().st_size
-        if config.target_bytes is None:
-            if optimized is not None and opt_size < original_size:
-                output.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(optimized, output)
-                return output
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, output)
-            return output
-        if opt_size <= config.target_bytes:
-            if optimized is None:
-                return rasterize_pdf_to_target(source, output, config)
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(optimized, output)
-            return output
+            if opt_size < original_size:
+                candidates.append((optimized, opt_size, "optimize"))
+
+        # Strategy 2: Color raster (with content-aware optimization)
         rasterized = Path(temp_dir) / "rasterized.pdf"
         try:
             rasterize_pdf_to_target(source, rasterized, config)
+            raster_size = rasterized.stat().st_size
+            if raster_size < original_size:
+                candidates.append((rasterized, raster_size, "raster"))
         except Exception:
-            if optimized is None:
-                raise
+            pass
+
+        # Strategy 3: Grayscale raster (for text-heavy PDFs, saves ~2/3 color data)
+        if config.target_bytes is not None:
+            gray_config = replace(config, pdf_grayscale=True)
+            gray_rasterized = Path(temp_dir) / "gray_rasterized.pdf"
+            try:
+                rasterize_pdf_to_target(source, gray_rasterized, gray_config)
+                gray_size = gray_rasterized.stat().st_size
+                if gray_size < original_size:
+                    candidates.append((gray_rasterized, gray_size, "grayscale"))
+            except Exception:
+                pass
+
+        if not candidates:
             output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(optimized, output)
-            return output
-        raster_size = rasterized.stat().st_size
-        if optimized is not None:
-            best = rasterized if raster_size < opt_size else optimized
-        else:
-            best = rasterized if raster_size < original_size else None
-        output.parent.mkdir(parents=True, exist_ok=True)
-        if best is not None:
-            shutil.copy2(best, output)
-        else:
             shutil.copy2(source, output)
+            return output
+
+        # Select best candidate
+        if config.target_bytes is not None:
+            # Prefer candidates that meet target, pick smallest among them
+            under_target = [(p, s, l) for p, s, l in candidates if s <= config.target_bytes]
+            if under_target:
+                best = min(under_target, key=lambda x: x[1])
+            else:
+                # Pick closest to target
+                best = min(candidates, key=lambda x: abs(x[1] - config.target_bytes))
+        else:
+            # No target: pick smallest
+            best = min(candidates, key=lambda x: x[1])
+
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(best[0], output)
         return output
 
 
