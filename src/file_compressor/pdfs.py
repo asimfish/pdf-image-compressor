@@ -184,7 +184,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             return output
 
         # Select best candidate
-        # Priority: color > grayscale, quality > size (within target)
+        # Priority: ALWAYS prefer color over grayscale
         color_candidates = [(p, s, l) for p, s, l in candidates if l != "grayscale"]
         gray_candidates = [(p, s, l) for p, s, l in candidates if l == "grayscale"]
 
@@ -192,16 +192,19 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             # Try color candidates first
             color_under = [(p, s, l) for p, s, l in color_candidates if s <= config.target_bytes]
             if color_under:
-                # Pick the one closest to target (best quality, largest size under target)
+                # Color meets target — pick best quality (closest to target)
                 best = max(color_under, key=lambda x: x[1])
+            elif color_candidates:
+                # Color doesn't meet target — still prefer color over grayscale
+                # Pick smallest color (closest to target, even if over)
+                best = min(color_candidates, key=lambda x: x[1])
             else:
-                # Color can't meet target — fall back to grayscale
+                # No color candidates at all — use grayscale
                 gray_under = [(p, s, l) for p, s, l in gray_candidates if s <= config.target_bytes]
                 if gray_under:
                     best = max(gray_under, key=lambda x: x[1])
                 else:
-                    # Nothing meets target — pick closest
-                    best = min(candidates, key=lambda x: abs(x[1] - config.target_bytes))
+                    best = min(candidates, key=lambda x: x[1])
         else:
             # No target: pick smallest color, or smallest overall
             if color_candidates:
