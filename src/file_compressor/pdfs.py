@@ -184,17 +184,30 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             return output
 
         # Select best candidate
+        # Priority: color > grayscale, quality > size (within target)
+        color_candidates = [(p, s, l) for p, s, l in candidates if l != "grayscale"]
+        gray_candidates = [(p, s, l) for p, s, l in candidates if l == "grayscale"]
+
         if config.target_bytes is not None:
-            # Prefer candidates that meet target, pick smallest among them
-            under_target = [(p, s, l) for p, s, l in candidates if s <= config.target_bytes]
-            if under_target:
-                best = min(under_target, key=lambda x: x[1])
+            # Try color candidates first
+            color_under = [(p, s, l) for p, s, l in color_candidates if s <= config.target_bytes]
+            if color_under:
+                # Pick the one closest to target (best quality, largest size under target)
+                best = max(color_under, key=lambda x: x[1])
             else:
-                # Pick closest to target
-                best = min(candidates, key=lambda x: abs(x[1] - config.target_bytes))
+                # Color can't meet target — fall back to grayscale
+                gray_under = [(p, s, l) for p, s, l in gray_candidates if s <= config.target_bytes]
+                if gray_under:
+                    best = max(gray_under, key=lambda x: x[1])
+                else:
+                    # Nothing meets target — pick closest
+                    best = min(candidates, key=lambda x: abs(x[1] - config.target_bytes))
         else:
-            # No target: pick smallest
-            best = min(candidates, key=lambda x: x[1])
+            # No target: pick smallest color, or smallest overall
+            if color_candidates:
+                best = min(color_candidates, key=lambda x: x[1])
+            else:
+                best = min(candidates, key=lambda x: x[1])
 
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(best[0], output)
