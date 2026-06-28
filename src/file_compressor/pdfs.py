@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import shutil
 import threading
 import time
@@ -134,6 +135,117 @@ def _post_process_page(image: Image.Image, quality: int, content: Optional[dict[
     return image
 
 
+def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
+    """Smart compression: keep text as vector, only compress embedded images.
+
+    This approach preserves text clarity while reducing file size by:
+    1. Extracting embedded images
+    2. Resizing/compressing them based on target size
+    3. Replacing originals with compressed versions
+    4. Keeping all text, vectors, and structure intact
+    """
+    fitz = _fitz()
+    doc = fitz.open(source)
+    try:
+        original_size = source.stat().st_size
+        target_bytes = config.target_bytes
+
+        # Calculate compression ratio needed for images
+        if target_bytes:
+            # Estimate text overhead (usually 10-20% of file)
+            text_overhead = original_size * 0.15
+            image_budget = max(target_bytes - text_overhead, target_bytes * 0.3)
+            # Image compression ratio
+            total_image_size = 0
+            image_xrefs = []
+            for page in doc:
+                for img in page.get_images(full=True):
+                    xref = img[0]
+                    if xref not in image_xrefs:
+                        image_xrefs.append(xref)
+                        base = doc.extract_image(xref)
+                        if base:
+                            total_image_size += len(base['image'])
+            if total_image_size > 0:
+                ratio = min(1.0, image_budget / total_image_size)
+            else:
+                ratio = 0.5
+        else:
+            ratio = 0.5  # Default: 50% image quality
+
+        # Process each image
+        processed = set()
+        for page_num, page in enumerate(doc):
+            images = page.get_images(full=True)
+            for img in images:
+                xref = img[0]
+                if xref in processed:
+                    continue
+                processed.add(xref)
+
+                base_image = doc.extract_image(xref)
+                if not base_image:
+                    continue
+
+                img_bytes = base_image["image"]
+                w, h = base_image["width"], base_image["height"]
+                ext = base_image["ext"]
+
+                # Skip tiny images
+                if w < 50 or h < 50 or len(img_bytes) < 1024:
+                    continue
+
+                try:
+                    pil_img = Image.open(io.BytesIO(img_bytes))
+                    if pil_img.mode == "CMYK":
+                        pil_img = pil_img.convert("RGB")
+
+                    # Calculate new dimensions
+                    new_w = max(64, int(w * ratio))
+                    new_h = max(64, int(h * ratio))
+
+                    # Only resize if it saves significant space
+                    if new_w < w * 0.9 or new_h < h * 0.9:
+                        pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                    # Save as JPEG with quality based on ratio
+                    quality = max(30, min(85, int(ratio * 100)))
+                    buf = io.BytesIO()
+                    if pil_img.mode == "RGBA":
+                        bg = Image.new("RGB", pil_img.size, "white")
+                        bg.paste(pil_img, mask=pil_img.split()[-1])
+                        bg.save(buf, format="JPEG", quality=quality, optimize=True)
+                        bg.close()
+                    else:
+                        pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
+                    pil_img.close()
+
+                    # Replace image in PDF
+                    new_img_bytes = buf.getvalue()
+                    if len(new_img_bytes) < len(img_bytes):
+                        try:
+                            # Get image rectangle on page
+                            rects = page.get_image_rects(xref)
+                            if rects:
+                                rect = rects[0]
+                                # Delete old image and insert new one
+                                page.replace_image(xref, stream=new_img_bytes)
+                        except Exception:
+                            pass  # Skip if replacement fails
+                    buf.close()
+                except Exception:
+                    continue  # Skip problematic images
+
+        # Save with garbage collection
+        if config.strip_metadata:
+            doc.set_metadata({})
+        output.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(output, garbage=4, deflate=True, clean=True)
+        return output
+    finally:
+        doc.close()
+
+
 def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode not in {"auto", "optimize", "raster"}:
         raise ValueError("pdf_mode must be auto, optimize, or raster")
@@ -156,7 +268,17 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             if opt_size < original_size:
                 candidates.append((optimized, opt_size, "optimize"))
 
-        # Strategy 2: Color raster (with content-aware optimization)
+        # Strategy 2: Smart image compression (keep text as vector)
+        smart_compressed = Path(temp_dir) / "smart_compressed.pdf"
+        try:
+            optimize_images_in_pdf(source, smart_compressed, config)
+            smart_size = smart_compressed.stat().st_size
+            if smart_size < original_size:
+                candidates.append((smart_compressed, smart_size, "smart_images"))
+        except Exception:
+            pass
+
+        # Strategy 3: Color raster (with content-aware optimization)
         rasterized = Path(temp_dir) / "rasterized.pdf"
         try:
             rasterize_pdf_to_target(source, rasterized, config)
@@ -184,30 +306,39 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             return output
 
         # Select best candidate
-        # Priority: ALWAYS prefer color over grayscale
-        color_candidates = [(p, s, l) for p, s, l in candidates if l != "grayscale"]
+        # Priority: smart_images > optimize > raster > grayscale
+        # Smart images preserves text quality, so prefer it over raster
+        smart_candidates = [(p, s, l) for p, s, l in candidates if l == "smart_images"]
+        color_candidates = [(p, s, l) for p, s, l in candidates if l not in ("grayscale", "smart_images")]
         gray_candidates = [(p, s, l) for p, s, l in candidates if l == "grayscale"]
 
         if config.target_bytes is not None:
-            # Try color candidates first
-            color_under = [(p, s, l) for p, s, l in color_candidates if s <= config.target_bytes]
-            if color_under:
-                # Color meets target — pick best quality (closest to target)
-                best = max(color_under, key=lambda x: x[1])
-            elif color_candidates:
-                # Color doesn't meet target — still prefer color over grayscale
-                # Pick smallest color (closest to target, even if over)
-                best = min(color_candidates, key=lambda x: x[1])
+            # Try smart_images first (best quality)
+            smart_under = [(p, s, l) for p, s, l in smart_candidates if s <= config.target_bytes]
+            if smart_under:
+                best = max(smart_under, key=lambda x: x[1])
+            elif smart_candidates:
+                # Smart images over target — still prefer it over raster
+                best = min(smart_candidates, key=lambda x: x[1])
             else:
-                # No color candidates at all — use grayscale
-                gray_under = [(p, s, l) for p, s, l in gray_candidates if s <= config.target_bytes]
-                if gray_under:
-                    best = max(gray_under, key=lambda x: x[1])
+                # Fall back to other color candidates
+                color_under = [(p, s, l) for p, s, l in color_candidates if s <= config.target_bytes]
+                if color_under:
+                    best = max(color_under, key=lambda x: x[1])
+                elif color_candidates:
+                    best = min(color_candidates, key=lambda x: x[1])
                 else:
-                    best = min(candidates, key=lambda x: x[1])
+                    # Last resort: grayscale
+                    gray_under = [(p, s, l) for p, s, l in gray_candidates if s <= config.target_bytes]
+                    if gray_under:
+                        best = max(gray_under, key=lambda x: x[1])
+                    else:
+                        best = min(candidates, key=lambda x: x[1])
         else:
-            # No target: pick smallest color, or smallest overall
-            if color_candidates:
+            # No target: prefer smart_images, then color, then grayscale
+            if smart_candidates:
+                best = min(smart_candidates, key=lambda x: x[1])
+            elif color_candidates:
                 best = min(color_candidates, key=lambda x: x[1])
             else:
                 best = min(candidates, key=lambda x: x[1])
