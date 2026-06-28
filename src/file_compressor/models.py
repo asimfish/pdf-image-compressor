@@ -22,6 +22,7 @@ class CompressionConfig:
     pdf_dpi: int = 120
     pdf_grayscale: bool = False
     strip_metadata: bool = True
+    compression_level: int = 2  # 1=minimal, 2=balanced, 3=aggressive, 4=maximum
 
     def with_quality(self, quality: int) -> "CompressionConfig":
         return replace(self, quality=max(1, min(95, quality)))

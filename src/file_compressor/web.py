@@ -29,7 +29,7 @@ _STATIC = Path(__file__).parent / "static"
 app = FastAPI(title="PDF Manager")
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
-_VALID_MODES = {"auto", "optimize", "raster"}
+_VALID_MODES = {"auto", "optimize", "raster", "text"}
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 _MAX_NOTES_LEN = 5000
 _MAX_LABEL_LEN = 500
@@ -56,11 +56,13 @@ def _compress_form(
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
     strip_metadata: bool = Form(True),
+    compression_level: int = Form(2),
 ) -> CompressionConfig:
     _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
     return CompressionConfig(
         quality=quality, target_bytes=parse_size(target_size), pdf_mode=pdf_mode,
         pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
+        compression_level=compression_level,
     )
 
 

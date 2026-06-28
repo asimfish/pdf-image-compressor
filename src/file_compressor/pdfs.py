@@ -10,8 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
 
-from PIL import Image, ImageFilter, ImageEnhance
-import statistics
+from PIL import Image, ImageFilter, ImageEnhance, ImageStat
 
 from .models import CompressionConfig
 from .utils import clamp_quality
@@ -33,25 +32,21 @@ def _analyze_page_content(image: Image.Image) -> dict[str, float]:
 
     gray = small.convert("L") if small.mode != "L" else small
 
-    # Edge detection via PIL FIND_EDGES
+    # Edge detection via PIL FIND_EDGES. Count strong-edge pixels (>30) from the
+    # histogram instead of a per-pixel Python loop — same result, C-level speed.
     edges = gray.filter(ImageFilter.FIND_EDGES)
-    edge_pixels = 0
-    total_pixels = 0
-    for pixel in edges.tobytes():
-        total_pixels += 1
-        if pixel > 30:
-            edge_pixels += 1
+    hist = edges.histogram()
+    total_pixels = sum(hist)
+    edge_pixels = sum(hist[31:])
     edge_density = min(1.0, edge_pixels / max(1, total_pixels) * 3)
 
-    # Color variance
+    # Color variance via ImageStat (population variance, computed in C) rather than
+    # statistics.pvariance over raw bytes, which is far slower for large pages.
     if small.mode == "RGB":
-        r, g, b = small.split()
-        r_var = statistics.pvariance(r.tobytes())
-        g_var = statistics.pvariance(g.tobytes())
-        b_var = statistics.pvariance(b.tobytes())
-        color_var = (r_var + g_var + b_var) / 3.0 / (128.0 * 128.0)
+        var = ImageStat.Stat(small).var
+        color_var = (var[0] + var[1] + var[2]) / 3.0 / (128.0 * 128.0)
     else:
-        color_var = statistics.pvariance(gray.tobytes()) / (128.0 * 128.0)
+        color_var = ImageStat.Stat(gray).var[0] / (128.0 * 128.0)
     color_variance = min(1.0, color_var)
 
     # Text ratio: high edge density + low color variance = text
@@ -138,17 +133,27 @@ def _post_process_page(image: Image.Image, quality: int, content: Optional[dict[
 def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     """Smart compression: keep text as vector, only compress embedded images.
 
-    This approach preserves text clarity while reducing file size by:
-    1. Extracting embedded images
-    2. Resizing/compressing them based on target size
-    3. Replacing originals with compressed versions
-    4. Keeping all text, vectors, and structure intact
+    Compression levels:
+    - 1 (minimal): ratio=0.8, quality=85 - best quality, minimal compression
+    - 2 (balanced): ratio=0.5, quality=70 - good balance (default)
+    - 3 (aggressive): ratio=0.3, quality=50 - smaller files
+    - 4 (maximum): ratio=0.15, quality=30 - smallest files
     """
     fitz = _fitz()
     doc = fitz.open(source)
     try:
         original_size = source.stat().st_size
         target_bytes = config.target_bytes
+        level = max(1, min(4, config.compression_level))
+
+        # Level-based defaults
+        level_defaults = {
+            1: {"ratio": 0.8, "quality": 85},  # Minimal
+            2: {"ratio": 0.5, "quality": 70},  # Balanced
+            3: {"ratio": 0.3, "quality": 50},  # Aggressive
+            4: {"ratio": 0.15, "quality": 30},  # Maximum
+        }
+        defaults = level_defaults[level]
 
         # Calculate compression ratio needed for images
         if target_bytes:
@@ -169,9 +174,9 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
             if total_image_size > 0:
                 ratio = min(1.0, image_budget / total_image_size)
             else:
-                ratio = 0.5
+                ratio = defaults["ratio"]
         else:
-            ratio = 0.5  # Default: 50% image quality
+            ratio = defaults["ratio"]
 
         # Process each image
         processed = set()
@@ -208,8 +213,9 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                     if new_w < w * 0.9 or new_h < h * 0.9:
                         pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-                    # Save as JPEG with quality based on ratio
-                    quality = max(30, min(85, int(ratio * 100)))
+                    # Save as JPEG with quality based on level and ratio
+                    base_quality = defaults["quality"]
+                    quality = max(20, min(95, int(base_quality * ratio * 1.5)))
                     buf = io.BytesIO()
                     if pil_img.mode == "RGBA":
                         bg = Image.new("RGB", pil_img.size, "white")
@@ -247,12 +253,14 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
 
 
 def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
-    if config.pdf_mode not in {"auto", "optimize", "raster"}:
-        raise ValueError("pdf_mode must be auto, optimize, or raster")
+    if config.pdf_mode not in {"auto", "optimize", "raster", "text"}:
+        raise ValueError("pdf_mode must be auto, optimize, raster, or text")
     if config.pdf_mode == "optimize":
         return optimize_pdf(source, output, config)
     if config.pdf_mode == "raster":
         return rasterize_pdf_to_target(source, output, config)
+    if config.pdf_mode == "text":
+        return compress_pdf_keep_text(source, output, config)
 
     # Auto mode: try multiple strategies and pick the best
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
@@ -288,7 +296,7 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         except Exception:
             pass
 
-        # Strategy 3: Grayscale raster (for text-heavy PDFs, saves ~2/3 color data)
+        # Strategy 4: Grayscale raster (for text-heavy PDFs, saves ~2/3 color data)
         if config.target_bytes is not None:
             gray_config = replace(config, pdf_grayscale=True)
             gray_rasterized = Path(temp_dir) / "gray_rasterized.pdf"
@@ -361,6 +369,135 @@ def optimize_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
         return output
     finally:
         doc.close()
+
+
+# Near-lossless quality for the "smallest with minimal quality loss" pass.
+_NEAR_LOSSLESS_QUALITY = 92
+
+# (scale, quality) candidates for keep-text target search, ordered so the
+# resulting file size is (roughly) descending — highest quality / largest first.
+_KEEP_TEXT_CANDIDATES: list[tuple[float, int]] = [
+    (1.0, 92), (1.0, 85), (1.0, 78), (1.0, 70),
+    (0.85, 62), (0.72, 55), (0.60, 48), (0.50, 42),
+    (0.42, 36), (0.34, 30), (0.28, 24),
+]
+
+
+def _recompress_images_keep_text(source: Path, output: Path, scale: float, quality: int, strip_metadata: bool) -> Path:
+    """Re-encode embedded raster images at the given scale/quality while keeping
+    all text, vectors and structure intact — the text layer is never rasterized.
+
+    An image is only replaced when the re-encoded version is actually smaller,
+    so already-efficient images are left untouched (avoids needless quality loss).
+    """
+    fitz = _fitz()
+    quality = clamp_quality(quality)
+    doc = fitz.open(source)
+    try:
+        processed: set[int] = set()
+        for page in doc:
+            for img in page.get_images(full=True):
+                xref = img[0]
+                if xref in processed:
+                    continue
+                processed.add(xref)
+                base = doc.extract_image(xref)
+                if not base:
+                    continue
+                img_bytes = base["image"]
+                w, h = base["width"], base["height"]
+                if w < 50 or h < 50 or len(img_bytes) < 1024:
+                    continue
+                pil = None
+                try:
+                    pil = Image.open(io.BytesIO(img_bytes))
+                    if pil.mode == "CMYK":
+                        pil = pil.convert("RGB")
+                    if scale < 0.99:
+                        nw = max(64, int(w * scale))
+                        nh = max(64, int(h * scale))
+                        if nw < w:
+                            pil = pil.resize((nw, nh), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
+                        rgba = pil.convert("RGBA")
+                        bg = Image.new("RGB", rgba.size, "white")
+                        bg.paste(rgba, mask=rgba.split()[-1])
+                        bg.save(buf, format="JPEG", quality=quality, optimize=True)
+                        bg.close()
+                        rgba.close()
+                    else:
+                        if pil.mode not in ("RGB", "L"):
+                            pil = pil.convert("RGB")
+                        pil.save(buf, format="JPEG", quality=quality, optimize=True)
+                    new_bytes = buf.getvalue()
+                    buf.close()
+                    if len(new_bytes) < len(img_bytes):
+                        try:
+                            page.replace_image(xref, stream=new_bytes)
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
+                finally:
+                    if pil is not None:
+                        pil.close()
+        if strip_metadata:
+            doc.set_metadata({})
+            if hasattr(doc, "del_xml_metadata"):
+                doc.del_xml_metadata()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(output, garbage=4, deflate=True, clean=True)
+        return output
+    finally:
+        doc.close()
+
+
+def compress_pdf_keep_text(source: Path, output: Path, config: CompressionConfig) -> Path:
+    """Keep-text PDF compression: the text layer is always preserved (never
+    rasterized); only embedded raster images are re-encoded.
+
+    Compression levels (when no target_bytes):
+    - 1 (minimal): scale=1.0, quality=92 - near-lossless
+    - 2 (balanced): scale=0.85, quality=78 - good balance (default)
+    - 3 (aggressive): scale=0.60, quality=55 - smaller files
+    - 4 (maximum): scale=0.34, quality=30 - smallest files
+
+    With target_bytes: iterate candidates and stop at first that fits.
+    """
+    level = max(1, min(4, config.compression_level))
+    level_params = {
+        1: (1.0, 92),   # Minimal
+        2: (0.85, 78),  # Balanced
+        3: (0.60, 55),  # Aggressive
+        4: (0.34, 30),  # Maximum
+    }
+    scale, quality = level_params[level]
+
+    if config.target_bytes is None:
+        return _recompress_images_keep_text(source, output, scale, quality, config.strip_metadata)
+
+    target = config.target_bytes
+    best_under: Optional[tuple[Path, int]] = None
+    smallest: Optional[tuple[Path, int]] = None
+    with TemporaryDirectory(prefix="pdf_keeptext_") as temp_dir:
+        temp = Path(temp_dir)
+        for index, (scale, quality) in enumerate(_KEEP_TEXT_CANDIDATES):
+            candidate = temp / f"cand_{index}.pdf"
+            _recompress_images_keep_text(source, candidate, scale, quality, config.strip_metadata)
+            size = candidate.stat().st_size
+            if smallest is None or size < smallest[1]:
+                smallest = (candidate, size)
+            if size <= target:
+                best_under = (candidate, size)
+                break
+        chosen = best_under or smallest
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if chosen is None:
+            shutil.copy2(source, output)
+        else:
+            shutil.copy2(chosen[0], output)
+    return output
 
 
 _SIZE_TOLERANCE = 1.02
