@@ -411,7 +411,17 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                 pil = None
                 try:
                     pil = Image.open(io.BytesIO(img_bytes))
-                    if pil.mode == "CMYK":
+                    # Handle transparency BEFORE resize to avoid black backgrounds
+                    if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
+                        rgba = pil.convert("RGBA")
+                        pil.close()
+                        bg = Image.new("RGB", rgba.size, "white")
+                        bg.paste(rgba, mask=rgba.split()[-1])
+                        rgba.close()
+                        pil = bg
+                    elif pil.mode == "CMYK":
+                        pil = pil.convert("RGB")
+                    elif pil.mode not in ("RGB", "L"):
                         pil = pil.convert("RGB")
                     if scale < 0.99:
                         nw = max(64, int(w * scale))
@@ -419,17 +429,7 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                         if nw < w:
                             pil = pil.resize((nw, nh), Image.Resampling.LANCZOS)
                     buf = io.BytesIO()
-                    if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
-                        rgba = pil.convert("RGBA")
-                        bg = Image.new("RGB", rgba.size, "white")
-                        bg.paste(rgba, mask=rgba.split()[-1])
-                        bg.save(buf, format="JPEG", quality=quality, optimize=True)
-                        bg.close()
-                        rgba.close()
-                    else:
-                        if pil.mode not in ("RGB", "L"):
-                            pil = pil.convert("RGB")
-                        pil.save(buf, format="JPEG", quality=quality, optimize=True)
+                    pil.save(buf, format="JPEG", quality=quality, optimize=True)
                     new_bytes = buf.getvalue()
                     buf.close()
                     if len(new_bytes) < len(img_bytes):
