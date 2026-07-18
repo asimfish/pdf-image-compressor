@@ -4,6 +4,15 @@ __pycache__/
 .pytest_cache/
 compressed/
 *.egg-info/
+build/
+dist/
 .DS_Store
 .gitnexus
 .claude/
+.coverage
+htmlcov/
+.server.log
+.server.pid
+test/
+AGENTS.md
+CLAUDE.md

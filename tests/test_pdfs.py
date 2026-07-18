@@ -119,6 +119,80 @@ def test_compress_pdf_invalid_mode(tmp_path: Path):
         compress_pdf(source, output, config)
 
 
+def _make_pdf_with_image(path: Path, pages: int = 2) -> Path:
+    """Build a PDF with selectable text AND a real embedded raster image."""
+    import io
+    import random
+    from PIL import Image
+
+    with Image.new("RGB", (1000, 800)) as img:
+        px = img.load()
+        random.seed(1)
+        for y in range(0, 800, 4):
+            for x in range(0, 1000, 4):
+                c = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+                for dy in range(4):
+                    for dx in range(4):
+                        if x + dx < 1000 and y + dy < 800:
+                            px[x + dx, y + dy] = c
+        with io.BytesIO() as buf:
+            img.save(buf, format="JPEG", quality=95)
+            data = buf.getvalue()
+
+    with fitz.open() as doc:
+        for i in range(pages):
+            page = doc.new_page()
+            page.insert_text((72, 72), f"Page {i + 1}: searchable text content", fontsize=18)
+            page.insert_image(fitz.Rect(50, 100, 550, 500), stream=data)
+        doc.save(path)
+    return path
+
+
+def _text_chars(path: Path) -> int:
+    with fitz.open(path) as doc:
+        return sum(len(p.get_text()) for p in doc)
+
+
+def test_compress_pdf_text_mode_keeps_text(tmp_path: Path):
+    source = _make_pdf_with_image(tmp_path / "txt.pdf", pages=2)
+    output = tmp_path / "txt_out.pdf"
+
+    config = CompressionConfig(pdf_mode="text", output_dir=tmp_path)
+    compress_pdf(source, output, config)
+
+    assert output.exists()
+    # Near-lossless pass must keep the text layer and not grow the file.
+    assert _text_chars(output) > 0
+    assert output.stat().st_size <= source.stat().st_size
+
+
+def test_compress_pdf_text_mode_with_target_keeps_text(tmp_path: Path):
+    source = _make_pdf_with_image(tmp_path / "txt_t.pdf", pages=2)
+    output = tmp_path / "txt_t_out.pdf"
+    original = source.stat().st_size
+    target = int(original * 0.5)
+
+    config = CompressionConfig(pdf_mode="text", target_bytes=target, output_dir=tmp_path)
+    compress_pdf(source, output, config)
+
+    assert output.exists()
+    assert _text_chars(output) > 0  # text preserved, never rasterized
+    assert output.stat().st_size <= target
+    assert output.stat().st_size < original
+
+
+def test_compress_pdf_text_mode_no_images(tmp_path: Path):
+    # A text-only PDF (no raster images) must still succeed and keep its text.
+    source = _make_pdf(tmp_path / "txt_only.pdf", pages=3)
+    output = tmp_path / "txt_only_out.pdf"
+
+    config = CompressionConfig(pdf_mode="text", output_dir=tmp_path)
+    compress_pdf(source, output, config)
+
+    assert output.exists()
+    assert _text_chars(output) > 0
+
+
 def test_compress_pdf_with_target_size(tmp_path: Path):
     source = _make_pdf(tmp_path / "target.pdf", pages=5, with_images=True)
     output = tmp_path / "target_out.pdf"

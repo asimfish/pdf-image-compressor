@@ -4,7 +4,7 @@ import io
 import shutil
 import threading
 import time
-from dataclasses import replace
+from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -156,7 +156,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
         defaults = level_defaults[level]
 
         # Calculate compression ratio needed for images
-        if target_bytes:
+        if target_bytes is not None:
             # Estimate text overhead (usually 10-20% of file)
             text_overhead = original_size * 0.15
             image_budget = max(target_bytes - text_overhead, target_bytes * 0.3)
@@ -180,7 +180,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
 
         # Process each image
         processed = set()
-        for page_num, page in enumerate(doc):
+        for page in doc:
             images = page.get_images(full=True)
             for img in images:
                 xref = img[0]
@@ -194,51 +194,47 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
 
                 img_bytes = base_image["image"]
                 w, h = base_image["width"], base_image["height"]
-                ext = base_image["ext"]
 
                 # Skip tiny images
                 if w < 50 or h < 50 or len(img_bytes) < 1024:
                     continue
 
                 try:
-                    pil_img = Image.open(io.BytesIO(img_bytes))
-                    if pil_img.mode == "CMYK":
-                        pil_img = pil_img.convert("RGB")
+                    with ExitStack() as stack:
+                        image_source = stack.enter_context(io.BytesIO(img_bytes))
+                        pil_img = stack.enter_context(Image.open(image_source))
+                        if pil_img.mode == "CMYK":
+                            pil_img = stack.enter_context(pil_img.convert("RGB"))
 
-                    # Calculate new dimensions
-                    new_w = max(64, int(w * ratio))
-                    new_h = max(64, int(h * ratio))
+                        # Calculate new dimensions
+                        new_w = max(64, int(w * ratio))
+                        new_h = max(64, int(h * ratio))
 
-                    # Only resize if it saves significant space
-                    if new_w < w * 0.9 or new_h < h * 0.9:
-                        pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                        # Only resize if it saves significant space
+                        if new_w < w * 0.9 or new_h < h * 0.9:
+                            pil_img = stack.enter_context(
+                                pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                            )
 
-                    # Save as JPEG with quality based on level and ratio
-                    base_quality = defaults["quality"]
-                    quality = max(20, min(95, int(base_quality * ratio * 1.5)))
-                    buf = io.BytesIO()
-                    if pil_img.mode == "RGBA":
-                        bg = Image.new("RGB", pil_img.size, "white")
-                        bg.paste(pil_img, mask=pil_img.split()[-1])
-                        bg.save(buf, format="JPEG", quality=quality, optimize=True)
-                        bg.close()
-                    else:
-                        pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
-                    pil_img.close()
+                        # Save as JPEG with quality based on level and ratio
+                        base_quality = defaults["quality"]
+                        quality = max(20, min(95, int(base_quality * ratio * 1.5)))
+                        with io.BytesIO() as buf:
+                            if pil_img.mode == "RGBA":
+                                bg = stack.enter_context(Image.new("RGB", pil_img.size, "white"))
+                                alpha = stack.enter_context(pil_img.getchannel("A"))
+                                bg.paste(pil_img, mask=alpha)
+                                bg.save(buf, format="JPEG", quality=quality, optimize=True)
+                            else:
+                                pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
+                            new_img_bytes = buf.getvalue()
 
-                    # Replace image in PDF
-                    new_img_bytes = buf.getvalue()
                     if len(new_img_bytes) < len(img_bytes):
                         try:
-                            # Get image rectangle on page
-                            rects = page.get_image_rects(xref)
-                            if rects:
-                                rect = rects[0]
-                                # Delete old image and insert new one
+                            if page.get_image_rects(xref):
                                 page.replace_image(xref, stream=new_img_bytes)
                         except Exception:
                             pass  # Skip if replacement fails
-                    buf.close()
                 except Exception:
                     continue  # Skip problematic images
 
@@ -262,97 +258,73 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode == "text":
         return compress_pdf_keep_text(source, output, config)
 
-    # Auto mode: try multiple strategies and pick the best
+    # Auto mode is quality-first. Preserve the original text/vector layer whenever
+    # the requested target is achievable by recompressing embedded images. Full-page
+    # rasterization is an expensive, destructive fallback: it removes selectable
+    # text and can take minutes on image-heavy papers, so only run it when the
+    # keep-text result cannot meet the target.
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
         original_size = source.stat().st_size
-        candidates: list[tuple[Path, int, str]] = []  # (path, size, label)
+        temp = Path(temp_dir)
+        candidates: list[tuple[Path, int, str]] = []
 
-        # Strategy 1: Optimize only (lossless)
-        skip_optimize = config.target_bytes is not None and original_size > 0 and config.target_bytes < original_size * 0.3
-        if not skip_optimize:
-            optimized = Path(temp_dir) / "optimized.pdf"
+        optimized = temp / "optimized.pdf"
+        try:
             optimize_pdf(source, optimized, config)
-            opt_size = optimized.stat().st_size
-            if opt_size < original_size:
-                candidates.append((optimized, opt_size, "optimize"))
-
-        # Strategy 2: Smart image compression (keep text as vector)
-        smart_compressed = Path(temp_dir) / "smart_compressed.pdf"
-        try:
-            optimize_images_in_pdf(source, smart_compressed, config)
-            smart_size = smart_compressed.stat().st_size
-            if smart_size < original_size:
-                candidates.append((smart_compressed, smart_size, "smart_images"))
+            optimized_size = optimized.stat().st_size
+            if optimized_size <= original_size:
+                candidates.append((optimized, optimized_size, "optimize"))
+                if config.target_bytes is not None and optimized_size <= config.target_bytes:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(optimized, output)
+                    return output
         except Exception:
             pass
 
-        # Strategy 3: Color raster (with content-aware optimization)
-        rasterized = Path(temp_dir) / "rasterized.pdf"
+        keep_text = temp / "keep_text.pdf"
         try:
-            rasterize_pdf_to_target(source, rasterized, config)
-            raster_size = rasterized.stat().st_size
-            if raster_size < original_size:
-                candidates.append((rasterized, raster_size, "raster"))
+            compress_pdf_keep_text(source, keep_text, config)
+            keep_text_size = keep_text.stat().st_size
+            if keep_text_size <= original_size:
+                candidates.append((keep_text, keep_text_size, "text"))
+                if config.target_bytes is not None and keep_text_size <= config.target_bytes:
+                    output.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(keep_text, output)
+                    return output
         except Exception:
             pass
 
-        # Strategy 4: Grayscale raster (for text-heavy PDFs, saves ~2/3 color data)
-        if config.target_bytes is not None:
-            gray_config = replace(config, pdf_grayscale=True)
-            gray_rasterized = Path(temp_dir) / "gray_rasterized.pdf"
+        if config.target_bytes is None:
+            # No hard size target: prefer the balanced keep-text result, then the
+            # lossless optimization, and never rasterize implicitly.
+            preferred = next((item for item in candidates if item[2] == "text"), None)
+            best = preferred or (min(candidates, key=lambda item: item[1]) if candidates else None)
+        else:
+            # The keep-text pass could not hit the requested size. Rasterization is
+            # now justified; honor the caller's explicit grayscale choice rather
+            # than silently discarding color in auto mode.
+            rasterized = temp / "rasterized.pdf"
             try:
-                rasterize_pdf_to_target(source, gray_rasterized, gray_config)
-                gray_size = gray_rasterized.stat().st_size
-                if gray_size < original_size:
-                    candidates.append((gray_rasterized, gray_size, "grayscale"))
+                rasterize_pdf_to_target(source, rasterized, config)
+                raster_size = rasterized.stat().st_size
+                if raster_size <= original_size:
+                    candidates.append((rasterized, raster_size, "raster"))
             except Exception:
                 pass
 
-        if not candidates:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, output)
-            return output
-
-        # Select best candidate
-        # Priority: smart_images > optimize > raster > grayscale
-        # Smart images preserves text quality, so prefer it over raster
-        smart_candidates = [(p, s, l) for p, s, l in candidates if l == "smart_images"]
-        color_candidates = [(p, s, l) for p, s, l in candidates if l not in ("grayscale", "smart_images")]
-        gray_candidates = [(p, s, l) for p, s, l in candidates if l == "grayscale"]
-
-        if config.target_bytes is not None:
-            # Try smart_images first (best quality)
-            smart_under = [(p, s, l) for p, s, l in smart_candidates if s <= config.target_bytes]
-            if smart_under:
-                best = max(smart_under, key=lambda x: x[1])
-            elif smart_candidates:
-                # Smart images over target — still prefer it over raster
-                best = min(smart_candidates, key=lambda x: x[1])
+            under_target = [item for item in candidates if item[1] <= config.target_bytes]
+            if under_target:
+                # Quality order is deliberate: lossless > keep-text > raster.
+                priority = {"optimize": 3, "text": 2, "raster": 1}
+                best = max(under_target, key=lambda item: (priority[item[2]], item[1]))
             else:
-                # Fall back to other color candidates
-                color_under = [(p, s, l) for p, s, l in color_candidates if s <= config.target_bytes]
-                if color_under:
-                    best = max(color_under, key=lambda x: x[1])
-                elif color_candidates:
-                    best = min(color_candidates, key=lambda x: x[1])
-                else:
-                    # Last resort: grayscale
-                    gray_under = [(p, s, l) for p, s, l in gray_candidates if s <= config.target_bytes]
-                    if gray_under:
-                        best = max(gray_under, key=lambda x: x[1])
-                    else:
-                        best = min(candidates, key=lambda x: x[1])
-        else:
-            # No target: prefer smart_images, then color, then grayscale
-            if smart_candidates:
-                best = min(smart_candidates, key=lambda x: x[1])
-            elif color_candidates:
-                best = min(color_candidates, key=lambda x: x[1])
-            else:
-                best = min(candidates, key=lambda x: x[1])
+                best = min(candidates, key=lambda item: item[1]) if candidates else None
 
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(best[0], output)
+        if best is None:
+            shutil.copy2(source, output)
+        else:
+            shutil.copy2(best[0], output)
         return output
 
 
@@ -408,30 +380,31 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                 w, h = base["width"], base["height"]
                 if w < 50 or h < 50 or len(img_bytes) < 1024:
                     continue
-                pil = None
                 try:
-                    pil = Image.open(io.BytesIO(img_bytes))
-                    # Handle transparency BEFORE resize to avoid black backgrounds
-                    if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
-                        rgba = pil.convert("RGBA")
-                        pil.close()
-                        bg = Image.new("RGB", rgba.size, "white")
-                        bg.paste(rgba, mask=rgba.split()[-1])
-                        rgba.close()
-                        pil = bg
-                    elif pil.mode == "CMYK":
-                        pil = pil.convert("RGB")
-                    elif pil.mode not in ("RGB", "L"):
-                        pil = pil.convert("RGB")
-                    if scale < 0.99:
-                        nw = max(64, int(w * scale))
-                        nh = max(64, int(h * scale))
-                        if nw < w:
-                            pil = pil.resize((nw, nh), Image.Resampling.LANCZOS)
-                    buf = io.BytesIO()
-                    pil.save(buf, format="JPEG", quality=quality, optimize=True)
-                    new_bytes = buf.getvalue()
-                    buf.close()
+                    with ExitStack() as stack:
+                        image_source = stack.enter_context(io.BytesIO(img_bytes))
+                        pil = stack.enter_context(Image.open(image_source))
+                        # Handle transparency BEFORE resize to avoid black backgrounds
+                        if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
+                            rgba = stack.enter_context(pil.convert("RGBA"))
+                            bg = stack.enter_context(Image.new("RGB", rgba.size, "white"))
+                            alpha = stack.enter_context(rgba.getchannel("A"))
+                            bg.paste(rgba, mask=alpha)
+                            pil = bg
+                        elif pil.mode == "CMYK":
+                            pil = stack.enter_context(pil.convert("RGB"))
+                        elif pil.mode not in ("RGB", "L"):
+                            pil = stack.enter_context(pil.convert("RGB"))
+                        if scale < 0.99:
+                            nw = max(64, int(w * scale))
+                            nh = max(64, int(h * scale))
+                            if nw < w:
+                                pil = stack.enter_context(
+                                    pil.resize((nw, nh), Image.Resampling.LANCZOS)
+                                )
+                        with io.BytesIO() as buf:
+                            pil.save(buf, format="JPEG", quality=quality, optimize=True)
+                            new_bytes = buf.getvalue()
                     if len(new_bytes) < len(img_bytes):
                         try:
                             page.replace_image(xref, stream=new_bytes)
@@ -439,9 +412,6 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                             pass
                 except Exception:
                     continue
-                finally:
-                    if pil is not None:
-                        pil.close()
         if strip_metadata:
             doc.set_metadata({})
             if hasattr(doc, "del_xml_metadata"):
@@ -514,7 +484,6 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
     over_target_path: Optional[Path] = None
     over_target_size: Optional[int] = None
     over_target_diff: Optional[int] = None
-    over_target_quality: Optional[int] = None
     with TemporaryDirectory(prefix="pdf_raster_") as temp_dir:
         temp = Path(temp_dir)
         for index, (dpi, quality) in enumerate(candidates):
@@ -545,7 +514,6 @@ def rasterize_pdf_to_target(source: Path, output: Path, config: CompressionConfi
                     over_target_path = candidate
                     over_target_size = size
                     over_target_diff = diff
-                    over_target_quality = quality
         if best_path is not None and best_size is not None and config.target_bytes is not None and best_size > config.target_bytes and under_target_path is not None and best_quality is not None and best_quality <= (under_target_quality or 0) + 10:
             best_path = under_target_path
             best_size = under_target_size

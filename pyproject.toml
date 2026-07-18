@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pdf-image-compressor"
 version = "0.1.0"
-description = "Local CLI and web tool for compressing PDFs and images."
+description = "Target-aware PDF compressor that preserves searchable text, links, and vector content."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -16,6 +16,11 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pydantic>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/asimfish/pdf-image-compressor"
+Repository = "https://github.com/asimfish/pdf-image-compressor.git"
+Issues = "https://github.com/asimfish/pdf-image-compressor/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -31,6 +36,9 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+file_compressor = ["static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

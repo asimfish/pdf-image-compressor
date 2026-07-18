@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -12,8 +13,8 @@ from typing import Optional
 
 logger = logging.getLogger("pdf_manager")
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.background import BackgroundTask
@@ -26,22 +27,89 @@ from .utils import clamp_quality, format_size, parse_size, unique_path
 
 _STATIC = Path(__file__).parent / "static"
 
-app = FastAPI(title="PDF Manager")
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+_PUBLIC_MODE = os.getenv("PDF_COMPRESSOR_PUBLIC_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+_MAX_UPLOAD_BYTES = _env_int(
+    "PDF_COMPRESSOR_MAX_UPLOAD_MB",
+    30 if _PUBLIC_MODE else 500,
+    1,
+    500,
+) * 1024 * 1024
+_MAX_PUBLIC_PAGES = _env_int("PDF_COMPRESSOR_MAX_PAGES", 100, 1, 2000)
+_PUBLIC_COMPRESSION_SLOTS = _env_int("PDF_COMPRESSOR_CONCURRENCY", 1, 1, 4)
+_public_compression_semaphore = threading.BoundedSemaphore(_PUBLIC_COMPRESSION_SLOTS)
+
+app = FastAPI(
+    title="PDF Manager",
+    docs_url=None if _PUBLIC_MODE else "/docs",
+    redoc_url=None if _PUBLIC_MODE else "/redoc",
+    openapi_url=None if _PUBLIC_MODE else "/openapi.json",
+)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 _VALID_MODES = {"auto", "optimize", "raster", "text"}
-_MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 _MAX_NOTES_LEN = 5000
 _MAX_LABEL_LEN = 500
 
+_PRIVATE_API_PREFIXES = (
+    "/api/pdfs",
+    "/api/versions",
+    "/api/preview",
+    "/api/stats",
+)
 
-def _validate_compress_params(quality: int, pdf_mode: str, pdf_dpi: int, target_size: Optional[str] = None) -> None:
+
+def _apply_security_headers(response: Response) -> Response:
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    if _PUBLIC_MODE:
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; connect-src 'self'; object-src 'none'; "
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
+    return response
+
+
+@app.middleware("http")
+async def public_mode_guard(request: Request, call_next):
+    """Keep the shared library private when running the anonymous public site."""
+    if _PUBLIC_MODE and any(
+        request.url.path == prefix or request.url.path.startswith(prefix + "/")
+        for prefix in _PRIVATE_API_PREFIXES
+    ):
+        return _apply_security_headers(
+            JSONResponse(status_code=404, content={"detail": "Not available in public mode"})
+        )
+    response = await call_next(request)
+    return _apply_security_headers(response)
+
+
+def _validate_compress_params(
+    quality: int,
+    pdf_mode: str,
+    pdf_dpi: int,
+    target_size: Optional[str] = None,
+    compression_level: int = 2,
+) -> None:
     if clamp_quality(quality) != quality:
         raise HTTPException(422, detail="quality must be between 1 and 95")
     if pdf_mode not in _VALID_MODES:
         raise HTTPException(422, detail=f"pdf_mode must be one of {sorted(_VALID_MODES)}")
     if not 36 <= pdf_dpi <= 300:
         raise HTTPException(422, detail="pdf_dpi must be between 36 and 300")
+    if not 1 <= compression_level <= 4:
+        raise HTTPException(422, detail="compression_level must be between 1 and 4")
     if target_size:
         try:
             parse_size(target_size)
@@ -58,7 +126,7 @@ def _compress_form(
     strip_metadata: bool = Form(True),
     compression_level: int = Form(2),
 ) -> CompressionConfig:
-    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size)
+    _validate_compress_params(quality, pdf_mode, pdf_dpi, target_size, compression_level)
     return CompressionConfig(
         quality=quality, target_bytes=parse_size(target_size), pdf_mode=pdf_mode,
         pdf_dpi=pdf_dpi, pdf_grayscale=pdf_grayscale, strip_metadata=strip_metadata,
@@ -137,7 +205,8 @@ class NotesUpdate(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
-    html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    page = "public.html" if _PUBLIC_MODE else "index.html"
+    html = (_STATIC / page).read_text(encoding="utf-8")
     return HTMLResponse(content=html)
 
 
@@ -145,6 +214,8 @@ def index() -> HTMLResponse:
 
 @app.get("/api/health")
 def api_health() -> dict:
+    if _PUBLIC_MODE:
+        return {"status": "ok", "mode": "public", "compression_slots": _PUBLIC_COMPRESSION_SLOTS}
     storage = _get_storage()
     stats = storage.stats()
     return {"status": "ok", "pdf_count": stats["pdf_count"], "version_count": stats["version_count"]}
@@ -159,7 +230,11 @@ def api_stats() -> dict:
 
 @app.get("/api/config")
 def api_config() -> dict:
-    return {"max_upload_bytes": _MAX_UPLOAD_BYTES}
+    return {
+        "max_upload_bytes": _MAX_UPLOAD_BYTES,
+        "max_pages": _MAX_PUBLIC_PAGES if _PUBLIC_MODE else None,
+        "public_mode": _PUBLIC_MODE,
+    }
 
 
 # ── PDF CRUD ──
@@ -482,6 +557,27 @@ def _save_upload_files(files: list[UploadFile], dest: Path) -> None:
                 handle.write(chunk)
 
 
+def _validate_public_pdf(path: Path) -> None:
+    """Validate anonymous uploads before starting an expensive compression job."""
+    try:
+        fitz = _fitz()
+        with fitz.open(path) as doc:
+            if doc.needs_pass:
+                raise HTTPException(400, detail="Password-protected PDFs are not supported")
+            page_count = len(doc)
+            if page_count == 0:
+                raise HTTPException(400, detail="PDF has no pages")
+            if page_count > _MAX_PUBLIC_PAGES:
+                raise HTTPException(
+                    413,
+                    detail=f"PDF has {page_count} pages; public limit is {_MAX_PUBLIC_PAGES}",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(400, detail="Invalid PDF file")
+
+
 # ── Legacy compress endpoint (backward compat) ──
 
 @app.post("/compress")
@@ -496,11 +592,26 @@ def compress_upload(
         raise HTTPException(422, detail="archive must be None or 'zip'")
     if max_edge is not None and (max_edge < 100 or max_edge > 10000):
         raise HTTPException(422, detail="max_edge must be between 100 and 10000")
+    if _PUBLIC_MODE:
+        if len(files) != 1:
+            raise HTTPException(422, detail="Public mode accepts exactly one PDF at a time")
+        if archive is not None:
+            raise HTTPException(422, detail="Archives are not available in public mode")
+        filename = Path(files[0].filename or "upload.pdf").name
+        if not filename.lower().endswith(".pdf"):
+            raise HTTPException(400, detail="Only PDF files are supported")
+
     temp = tempfile.mkdtemp(prefix="file_compressor_web_")
     temp_path = Path(temp)
     upload_dir = temp_path / "uploads"
     output_dir = temp_path / "compressed"
     upload_dir.mkdir(parents=True, exist_ok=True)
+    acquired_slot = False
+    if _PUBLIC_MODE:
+        acquired_slot = _public_compression_semaphore.acquire(blocking=False)
+        if not acquired_slot:
+            shutil.rmtree(temp_path, True)
+            raise HTTPException(429, detail="The compressor is busy; please retry shortly")
     try:
         _save_upload_files(files, upload_dir)
         config = replace(config, max_edge=max_edge, to_webp=to_webp, output_dir=output_dir, archive=archive)
@@ -510,6 +621,8 @@ def compress_upload(
             source = next(upload_dir.iterdir(), None)
             if source is None:
                 raise HTTPException(400, detail="No files uploaded")
+        if _PUBLIC_MODE:
+            _validate_public_pdf(source)
         output = output_dir / "compressed.zip" if archive == "zip" else None
         summary = compress_path(source, config, output)
         result = summary.archive or next((item for item in summary.results if item.output is not None), None)
@@ -522,7 +635,16 @@ def compress_upload(
         shutil.rmtree(temp_path, True)
         logger.error("Legacy compress failed: %s", _sanitize_error(exc))
         raise HTTPException(500, detail="Compression failed")
-    response = FileResponse(result.output, filename=result.output.name, media_type="application/octet-stream")
+    finally:
+        if acquired_slot:
+            _public_compression_semaphore.release()
+    media_type = "application/zip" if result.output.suffix.lower() == ".zip" else "application/pdf"
+    response = FileResponse(
+        result.output,
+        filename=result.output.name,
+        media_type=media_type,
+        headers={"Cache-Control": "no-store"},
+    )
     response.background = BackgroundTask(shutil.rmtree, temp_path, True)
     return response
 

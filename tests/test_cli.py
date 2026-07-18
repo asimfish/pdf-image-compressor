@@ -277,7 +277,7 @@ def test_run_compress_basic(tmp_path):
         max_edge=None, to_webp=False, target_size=None,
         overwrite=False, archive=None, pdf_mode="auto",
         pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
-        json_report=False,
+        json_report=False, compression_level=2,
     )
     run_compress(args)
 
@@ -296,7 +296,7 @@ def test_run_compress_with_output(tmp_path):
         max_edge=None, to_webp=False, target_size=None,
         overwrite=False, archive=None, pdf_mode="raster",
         pdf_dpi=100, pdf_grayscale=True, keep_metadata=False,
-        json_report=False,
+        json_report=False, compression_level=2,
     )
     run_compress(args)
     assert out.exists()
@@ -313,7 +313,7 @@ def test_run_compress_json_report(tmp_path, capsys):
         max_edge=None, to_webp=False, target_size=None,
         overwrite=False, archive=None, pdf_mode="auto",
         pdf_dpi=120, pdf_grayscale=False, keep_metadata=False,
-        json_report=True,
+        json_report=True, compression_level=2,
     )
     run_compress(args)
     captured = capsys.readouterr()

@@ -36,9 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
     compress.add_argument("--target-size", type=str, default=None)
     compress.add_argument("--overwrite", action="store_true")
     compress.add_argument("--archive", choices=["zip"], default=None)
-    compress.add_argument("--pdf-mode", choices=["auto", "optimize", "raster"], default="auto")
+    compress.add_argument("--pdf-mode", choices=["auto", "optimize", "raster", "text"], default="auto")
     compress.add_argument("--pdf-dpi", type=int, default=120)
     compress.add_argument("--pdf-grayscale", action="store_true")
+    compress.add_argument("--compression-level", type=int, choices=range(1, 5), default=2)
     compress.add_argument("--keep-metadata", action="store_true")
     compress.add_argument("--json-report", action="store_true")
 
@@ -72,6 +73,7 @@ def run_compress(args: argparse.Namespace) -> None:
         pdf_dpi=args.pdf_dpi,
         pdf_grayscale=args.pdf_grayscale,
         strip_metadata=not args.keep_metadata,
+        compression_level=args.compression_level,
     )
     summary = compress_path(args.input, config, args.output)
     if args.json_report:

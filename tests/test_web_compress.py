@@ -48,6 +48,19 @@ def test_compress_creates_version(tmp_path: Path):
     assert data["quality"] == 50
 
 
+def test_compress_text_mode_accepted(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "tm.pdf")
+    with open(pdf_path, "rb") as f:
+        upload = client.post("/api/pdfs/upload", files={"file": ("tm.pdf", f, "application/pdf")})
+    pdf_id = upload.json()["id"]
+    resp = client.post(f"/api/pdfs/{pdf_id}/compress", data={"pdf_mode": "text", "label": "keep-text"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["pdf_mode"] == "text"
+    assert data["label"] == "keep-text"
+
+
 
 
 def test_compress_with_grayscale(tmp_path: Path):

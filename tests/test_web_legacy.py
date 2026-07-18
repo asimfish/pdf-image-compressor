@@ -102,6 +102,57 @@ def test_legacy_compress_rejects_bad_quality(tmp_path: Path):
     assert resp.status_code == 422
 
 
+def test_legacy_compress_rejects_bad_compression_level(tmp_path: Path):
+    client = _client(tmp_path)
+    pdf_path = make_test_pdf(tmp_path / "level.pdf")
+    with open(pdf_path, "rb") as f:
+        resp = client.post(
+            "/compress",
+            files=[("files", ("level.pdf", f, "application/pdf"))],
+            data={"compression_level": "5"},
+        )
+    assert resp.status_code == 422
+    assert "compression_level" in resp.json()["detail"]
+
+
+def test_public_mode_private_api_404_has_security_headers(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    with patch("file_compressor.web._PUBLIC_MODE", True):
+        resp = client.get("/api/pdfs")
+
+    assert resp.status_code == 404
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
+
+
+def test_public_mode_releases_compression_slot_after_failure(tmp_path: Path):
+    import threading
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    pdf_data = make_test_pdf(tmp_path / "failure.pdf").read_bytes()
+    semaphore = threading.BoundedSemaphore(1)
+    with (
+        patch("file_compressor.web._PUBLIC_MODE", True),
+        patch("file_compressor.web._public_compression_semaphore", semaphore),
+        patch("file_compressor.web.compress_path", side_effect=RuntimeError("boom")),
+    ):
+        first = client.post(
+            "/compress",
+            files=[("files", ("failure.pdf", pdf_data, "application/pdf"))],
+        )
+        second = client.post(
+            "/compress",
+            files=[("files", ("failure.pdf", pdf_data, "application/pdf"))],
+        )
+
+    assert first.status_code == 500
+    assert second.status_code == 500
+
+
 
 
 def test_legacy_compress_rejects_bad_mode(tmp_path: Path):

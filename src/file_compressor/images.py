@@ -32,6 +32,9 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
         raw = ImageOps.exif_transpose(Image.open(source))
     except UnidentifiedImageError as exc:
         raise RuntimeError(f"Unsupported or corrupt image: {source}") from exc
+    # Must be set before the try below so the finally never sees it unbound
+    # if EXIF handling raises (e.g. malformed EXIF with strip_metadata=False).
+    raw_closed = False
     try:
         if not config.strip_metadata:
             exif_obj = raw.getexif()
@@ -40,7 +43,6 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
             exif_bytes = exif_obj.tobytes() if exif_obj else None
         else:
             exif_bytes = None
-        raw_closed = False
         normalized = _normalize_mode(raw, suffix)
         if normalized is not raw:
             raw.close()
@@ -50,8 +52,11 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                 pixels = normalized.width * normalized.height
                 if pixels > config.target_bytes * 100:
                     edges = [e for e in edges if e is not None]
+            first_combo = True
             for quality in qualities:
                 for edge in edges:
+                    is_first = first_combo
+                    first_combo = False
                     resized = _resize(normalized, edge)
                     try:
                         try:
@@ -66,6 +71,12 @@ def compress_image(source: Path, output: Path, config: CompressionConfig) -> Pat
                             if size <= config.target_bytes and (under_target_size is None or size > under_target_size):
                                 under_target_data = data
                                 under_target_size = size
+                            if is_first and size <= config.target_bytes:
+                                # Highest quality + largest edge already fits the target, so
+                                # no other candidate can be a larger result under the target.
+                                output.parent.mkdir(parents=True, exist_ok=True)
+                                output.write_bytes(data)
+                                return output
                         else:
                             # No target — first result (highest quality, largest edge) is best
                             output.parent.mkdir(parents=True, exist_ok=True)
