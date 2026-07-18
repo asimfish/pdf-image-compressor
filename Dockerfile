@@ -20,6 +20,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.12.12-slim-bookworm AS runtime
 
+LABEL org.opencontainers.image.source="https://github.com/asimfish/pdf-image-compressor" \
+      org.opencontainers.image.description="Target-aware PDF compression with searchable text preservation" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

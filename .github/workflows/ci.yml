@@ -12,8 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.3.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.9.28"
           enable-cache: true
@@ -21,3 +21,93 @@ jobs:
       - run: uv sync --locked --extra dev
       - run: uv run python -m pytest -q
       - run: uv build
+
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Build container
+        run: docker build --tag papersqueeze:ci .
+      - name: Start container
+        run: docker run --detach --name papersqueeze-ci --publish 127.0.0.1:18080:8080 papersqueeze:ci
+      - name: Smoke test public service
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/api/health >/tmp/health.json; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != true ]]; then
+            docker logs papersqueeze-ci
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          content = b"BT /F1 18 Tf 72 720 Td (PaperSqueeze smoke test) Tj ET"
+          objects = [
+              b"<< /Type /Catalog /Pages 2 0 R >>",
+              b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+              (
+                  b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                  b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"
+              ),
+              b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+              b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+          ]
+          pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+          offsets = [0]
+          for index, obj in enumerate(objects, 1):
+              offsets.append(len(pdf))
+              pdf.extend(f"{index} 0 obj\n".encode() + obj + b"\nendobj\n")
+          xref = len(pdf)
+          pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+          pdf.extend(b"0000000000 65535 f \n")
+          for offset in offsets[1:]:
+              pdf.extend(f"{offset:010d} 00000 n \n".encode())
+          pdf.extend(
+              (
+                  f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+                  f"startxref\n{xref}\n%%EOF\n"
+              ).encode()
+          )
+          Path("/tmp/smoke.pdf").write_bytes(pdf)
+          PY
+
+          curl --fail --silent --show-error \
+            --form "files=@/tmp/smoke.pdf;type=application/pdf" \
+            --form "target_size=100KB" \
+            --form "pdf_mode=auto" \
+            --output /tmp/compressed.pdf \
+            http://127.0.0.1:18080/compress
+          python - <<'PY'
+          from pathlib import Path
+
+          output = Path("/tmp/compressed.pdf").read_bytes()
+          assert output.startswith(b"%PDF-"), "compression response is not a PDF"
+          assert len(output) > 100, "compression response is unexpectedly empty"
+          PY
+      - name: Stop container
+        if: always()
+        run: docker rm --force papersqueeze-ci
+      - name: Publish container to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker tag papersqueeze:ci "$image:latest"
+          docker tag papersqueeze:ci "$image:$GITHUB_SHA"
+          docker push "$image:latest"
+          docker push "$image:$GITHUB_SHA"

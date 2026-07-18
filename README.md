@@ -105,6 +105,34 @@ docker run --rm -p 8080:8080 \
 
 访问 <http://127.0.0.1:8080>，健康检查为 `GET /api/health`。
 
+每次推送到 `main` 后，CI 会构建、启动并冒烟测试容器，再发布到 GitHub Container Registry：
+
+```bash
+docker pull ghcr.io/asimfish/pdf-image-compressor:latest
+docker run --rm -p 8080:8080 \
+  ghcr.io/asimfish/pdf-image-compressor:latest
+```
+
+这份镜像可部署到任何支持 Docker/OCI 的平台，不依赖特定云厂商。
+
+## 部署到 Hugging Face Spaces
+
+Hugging Face Docker Spaces 不要求 Google Cloud 结算账号，但当前即使使用 `cpu-basic` 也需要 Hugging Face PRO；免费账号只能创建无法运行本项目 Python 后端的 Static Space。订阅 PRO 后，先登录，再运行仓库内的部署脚本：
+
+```bash
+uvx --from huggingface_hub hf auth login
+uv run --no-project deploy_huggingface_space.py
+```
+
+脚本默认创建公开的 `<HF用户名>/papersqueeze`。如需使用组织或其他名称：
+
+```bash
+HF_SPACE_ID=your-org/your-space \
+uv run --no-project deploy_huggingface_space.py
+```
+
+Space 使用现有 Dockerfile，监听 8080 端口，并默认启用公开无状态模式。脚本按完整快照覆盖部署，Space 中手动添加的其他文件会被清除。实例可能休眠，首次访问需要等待冷启动。
+
 ## 部署到 Google Cloud Run
 
 项目附带可重复执行的部署脚本，默认使用东京区域、1 GiB 内存、并发 1、最大实例 1、空闲缩容到 0：
@@ -157,7 +185,7 @@ uv run python -m pytest -q
 uv build
 ```
 
-当前测试套件包含 355 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字保留、Web API、存储和错误处理。GitHub Actions 会在每次推送和 Pull Request 中运行测试并构建分发包。
+当前测试套件包含 357 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字保留、Web API、部署打包、存储和错误处理。GitHub Actions 会在每次推送和 Pull Request 中运行测试、构建分发包并验证容器。
 
 ## 开源与贡献
 
