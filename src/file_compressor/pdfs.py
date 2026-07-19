@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import threading
 import time
@@ -8,12 +9,28 @@ from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
+from typing import Mapping, Optional, Protocol
 
 from PIL import Image, ImageFilter, ImageEnhance, ImageStat
 
 from .models import CompressionConfig
 from .utils import clamp_quality
+
+logger = logging.getLogger(__name__)
+
+
+class _PdfImageDocument(Protocol):
+    def extract_image(self, xref: int) -> Optional[Mapping[str, object]]: ...
+
+    def xref_set_key(self, xref: int, key: str, value: str) -> None: ...
+
+
+class _PdfImagePage(Protocol):
+    def replace_image(self, xref: int, *, stream: bytes) -> None: ...
+
+
+class _SoftMaskRestoreError(RuntimeError):
+    """Raised after image replacement when its PDF soft mask cannot be restored."""
 
 
 def _analyze_page_content(image: Image.Image) -> dict[str, float]:
@@ -130,6 +147,63 @@ def _post_process_page(image: Image.Image, quality: int, content: Optional[dict[
     return image
 
 
+def _prepare_pdf_image_for_jpeg(
+    image: Image.Image,
+    stack: ExitStack,
+    *,
+    doc: _PdfImageDocument,
+    smask_xref: int,
+) -> Image.Image:
+    """Return a JPEG-compatible base image without destroying PDF transparency.
+
+    External PDF soft masks stay separate and are restored after replacement.
+    Pillow-embedded alpha has no separate PDF object, so it is flattened to white.
+    Any derived images are owned by ``stack``.
+    """
+    mask: Optional[Image.Image] = None
+    if smask_xref > 0:
+        mask_data = doc.extract_image(smask_xref)
+        mask_bytes = mask_data.get("image") if mask_data else None
+        if not isinstance(mask_bytes, bytes):
+            logger.warning("Skipping PDF soft mask %d: extract_image returned no image bytes", smask_xref)
+            raise ValueError(f"Unable to extract PDF soft mask {smask_xref}")
+    elif "A" in image.getbands() or (image.mode == "P" and "transparency" in image.info):
+        rgba = stack.enter_context(image.convert("RGBA"))
+        mask = stack.enter_context(rgba.getchannel("A"))
+
+    if mask is not None:
+        rgb = image if image.mode == "RGB" else stack.enter_context(image.convert("RGB"))
+        background = stack.enter_context(Image.new("RGB", image.size, "white"))
+        background.paste(rgb, mask=mask)
+        return background
+    if image.mode == "CMYK" or image.mode not in ("RGB", "L"):
+        return stack.enter_context(image.convert("RGB"))
+    return image
+
+
+def _replace_pdf_image_preserving_soft_mask(
+    page: _PdfImagePage,
+    doc: _PdfImageDocument,
+    *,
+    xref: int,
+    smask_xref: int,
+    stream: bytes,
+) -> None:
+    page.replace_image(xref, stream=stream)
+    if smask_xref > 0:
+        try:
+            doc.xref_set_key(xref, "SMask", f"{smask_xref} 0 R")
+        except Exception as exc:
+            logger.error(
+                "PDF image replacement succeeded for xref=%d, but soft mask %d could not be restored",
+                xref,
+                smask_xref,
+            )
+            raise _SoftMaskRestoreError(
+                f"Unable to restore PDF soft mask {smask_xref} for image xref {xref}"
+            ) from exc
+
+
 def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     """Smart compression: keep text as vector, only compress embedded images.
 
@@ -162,12 +236,12 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
             image_budget = max(target_bytes - text_overhead, target_bytes * 0.3)
             # Image compression ratio
             total_image_size = 0
-            image_xrefs = []
+            image_xrefs: set[int] = set()
             for page in doc:
                 for img in page.get_images(full=True):
                     xref = img[0]
                     if xref not in image_xrefs:
-                        image_xrefs.append(xref)
+                        image_xrefs.add(xref)
                         base = doc.extract_image(xref)
                         if base:
                             total_image_size += len(base['image'])
@@ -184,6 +258,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
             images = page.get_images(full=True)
             for img in images:
                 xref = img[0]
+                smask_xref = img[1]
                 if xref in processed:
                     continue
                 processed.add(xref)
@@ -203,8 +278,12 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                     with ExitStack() as stack:
                         image_source = stack.enter_context(io.BytesIO(img_bytes))
                         pil_img = stack.enter_context(Image.open(image_source))
-                        if pil_img.mode == "CMYK":
-                            pil_img = stack.enter_context(pil_img.convert("RGB"))
+                        pil_img = _prepare_pdf_image_for_jpeg(
+                            pil_img,
+                            stack,
+                            doc=doc,
+                            smask_xref=smask_xref,
+                        )
 
                         # Calculate new dimensions
                         new_w = max(64, int(w * ratio))
@@ -220,22 +299,21 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                         base_quality = defaults["quality"]
                         quality = max(20, min(95, int(base_quality * ratio * 1.5)))
                         with io.BytesIO() as buf:
-                            if pil_img.mode == "RGBA":
-                                bg = stack.enter_context(Image.new("RGB", pil_img.size, "white"))
-                                alpha = stack.enter_context(pil_img.getchannel("A"))
-                                bg.paste(pil_img, mask=alpha)
-                                bg.save(buf, format="JPEG", quality=quality, optimize=True)
-                            else:
-                                pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
+                            pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
                             new_img_bytes = buf.getvalue()
 
-                    if len(new_img_bytes) < len(img_bytes):
-                        try:
-                            if page.get_image_rects(xref):
-                                page.replace_image(xref, stream=new_img_bytes)
-                        except Exception:
-                            pass  # Skip if replacement fails
-                except Exception:
+                    if len(new_img_bytes) < len(img_bytes) and page.get_image_rects(xref):
+                        _replace_pdf_image_preserving_soft_mask(
+                            page,
+                            doc,
+                            xref=xref,
+                            smask_xref=smask_xref,
+                            stream=new_img_bytes,
+                        )
+                except _SoftMaskRestoreError:
+                    raise
+                except Exception as exc:
+                    logger.debug("Skipping PDF image xref=%d during optimization: %s", xref, exc)
                     continue  # Skip problematic images
 
         # Save with garbage collection
@@ -278,8 +356,8 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
                     output.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(optimized, output)
                     return output
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Optimize PDF pass failed in auto mode: %s", exc)
 
         keep_text = temp / "keep_text.pdf"
         try:
@@ -291,8 +369,8 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
                     output.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(keep_text, output)
                     return output
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Keep-text PDF pass failed in auto mode: %s", exc)
 
         if config.target_bytes is None:
             # No hard size target: prefer the balanced keep-text result, then the
@@ -309,8 +387,8 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
                 raster_size = rasterized.stat().st_size
                 if raster_size <= original_size:
                     candidates.append((rasterized, raster_size, "raster"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Raster PDF pass failed in auto mode: %s", exc)
 
             under_target = [item for item in candidates if item[1] <= config.target_bytes]
             if under_target:
@@ -370,6 +448,7 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
         for page in doc:
             for img in page.get_images(full=True):
                 xref = img[0]
+                smask_xref = img[1]
                 if xref in processed:
                     continue
                 processed.add(xref)
@@ -384,17 +463,12 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                     with ExitStack() as stack:
                         image_source = stack.enter_context(io.BytesIO(img_bytes))
                         pil = stack.enter_context(Image.open(image_source))
-                        # Handle transparency BEFORE resize to avoid black backgrounds
-                        if "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info):
-                            rgba = stack.enter_context(pil.convert("RGBA"))
-                            bg = stack.enter_context(Image.new("RGB", rgba.size, "white"))
-                            alpha = stack.enter_context(rgba.getchannel("A"))
-                            bg.paste(rgba, mask=alpha)
-                            pil = bg
-                        elif pil.mode == "CMYK":
-                            pil = stack.enter_context(pil.convert("RGB"))
-                        elif pil.mode not in ("RGB", "L"):
-                            pil = stack.enter_context(pil.convert("RGB"))
+                        pil = _prepare_pdf_image_for_jpeg(
+                            pil,
+                            stack,
+                            doc=doc,
+                            smask_xref=smask_xref,
+                        )
                         if scale < 0.99:
                             nw = max(64, int(w * scale))
                             nh = max(64, int(h * scale))
@@ -406,11 +480,17 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                             pil.save(buf, format="JPEG", quality=quality, optimize=True)
                             new_bytes = buf.getvalue()
                     if len(new_bytes) < len(img_bytes):
-                        try:
-                            page.replace_image(xref, stream=new_bytes)
-                        except Exception:
-                            pass
-                except Exception:
+                        _replace_pdf_image_preserving_soft_mask(
+                            page,
+                            doc,
+                            xref=xref,
+                            smask_xref=smask_xref,
+                            stream=new_bytes,
+                        )
+                except _SoftMaskRestoreError:
+                    raise
+                except Exception as exc:
+                    logger.debug("Skipping PDF image xref=%d during text-preserving compression: %s", xref, exc)
                     continue
         if strip_metadata:
             doc.set_metadata({})

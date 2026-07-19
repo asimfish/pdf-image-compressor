@@ -1,29 +1,35 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
+import multiprocessing
 import os
 import re
 import shutil
 import tempfile
 import threading
+import time
+from collections import deque
 from dataclasses import asdict, replace
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
-
-logger = logging.getLogger("pdf_manager")
+from typing import Any, Callable, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
-from starlette.background import BackgroundTask
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .core import compress_path
 from .models import CompressionConfig
 from .pdfs import _fitz, evict_render_cache, render_page
+from .public_worker import compress_pdf_to_output
 from .storage import Storage, VersionParams, VersionRecord
 from .utils import clamp_quality, format_size, parse_size, unique_path
+
+logger = logging.getLogger("pdf_manager")
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -43,9 +49,235 @@ _MAX_UPLOAD_BYTES = _env_int(
     1,
     500,
 ) * 1024 * 1024
+_MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
 _MAX_PUBLIC_PAGES = _env_int("PDF_COMPRESSOR_MAX_PAGES", 100, 1, 2000)
+_PUBLIC_UPLOAD_TIMEOUT_SECONDS = _env_int(
+    "PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS", 120, 10, 900
+)
+_PUBLIC_DOWNLOAD_TIMEOUT_SECONDS = _env_int(
+    "PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS", 120, 10, 900
+)
+_PUBLIC_PROCESSING_TIMEOUT_SECONDS = _env_int(
+    "PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS", 300, 30, 1800
+)
+_PUBLIC_RATE_LIMIT_PER_MINUTE = _env_int(
+    "PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE", 12, 1, 120
+)
 _PUBLIC_COMPRESSION_SLOTS = _env_int("PDF_COMPRESSOR_CONCURRENCY", 1, 1, 4)
 _public_compression_semaphore = threading.BoundedSemaphore(_PUBLIC_COMPRESSION_SLOTS)
+
+
+def _scope_route_path(scope: Scope) -> str:
+    path = scope.get("path", "")
+    root_path = scope.get("root_path", "").rstrip("/")
+    if not root_path:
+        return path
+    if path == root_path:
+        return "/"
+    if path.startswith(root_path + "/"):
+        return path[len(root_path) :]
+    return path
+
+
+class _PublicRateLimiter:
+    def __init__(
+        self,
+        requests_per_minute: int,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.requests_per_minute = requests_per_minute
+        self.clock = clock
+        self.timestamps: deque[float] = deque()
+        self.lock = threading.Lock()
+
+    def allow(self) -> tuple[bool, int]:
+        with self.lock:
+            now = self.clock()
+            cutoff = now - 60
+            while self.timestamps and self.timestamps[0] <= cutoff:
+                self.timestamps.popleft()
+            if len(self.timestamps) >= self.requests_per_minute:
+                retry_after = max(
+                    1,
+                    min(60, math.ceil(60 - (now - self.timestamps[0]))),
+                )
+                return False, retry_after
+            self.timestamps.append(now)
+        return True, 0
+
+
+_public_rate_limiter = (
+    _PublicRateLimiter(_PUBLIC_RATE_LIMIT_PER_MINUTE) if _PUBLIC_MODE else None
+)
+
+
+class CleanupFileResponse(FileResponse):
+    """Remove the response's temporary directory even if sending is cancelled."""
+
+    def __init__(self, *args, cleanup_path: Path, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.cleanup_path = cleanup_path
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await _run_thread_complete(shutil.rmtree, self.cleanup_path, True)
+
+
+class PublicUploadLimitMiddleware:
+    """Gate public jobs and stop oversized uploads while the body is streaming."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        is_public_upload = (
+            _PUBLIC_MODE
+            and scope["type"] == "http"
+            and scope.get("method") == "POST"
+            and _scope_route_path(scope) in {"/compress", "/compress/"}
+        )
+        if not is_public_upload:
+            await self.app(scope, receive, send)
+            return
+
+        semaphore = _public_compression_semaphore
+        acquired_slot = semaphore.acquire(blocking=False)
+        if not acquired_slot:
+            await JSONResponse(
+                status_code=429,
+                content={"detail": "The compressor is busy; please retry shortly"},
+                headers={"Retry-After": "1"},
+            )(scope, receive, send)
+            return
+
+        limiter = _public_rate_limiter
+        if limiter is not None:
+            allowed, retry_after = limiter.allow()
+            if not allowed:
+                semaphore.release()
+                await JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded; please retry later"},
+                    headers={"Retry-After": str(retry_after)},
+                )(scope, receive, send)
+                return
+
+        response_started = asyncio.Event()
+
+        async def track_response_start(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                response_started.set()
+            await send(message)
+
+        job = asyncio.create_task(
+            self._handle_public_upload(scope, receive, track_response_start)
+        )
+        response_waiter = asyncio.create_task(response_started.wait())
+        try:
+            completed, _ = await asyncio.wait(
+                {job, response_waiter},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if job in completed:
+                await job
+            else:
+                try:
+                    await asyncio.wait_for(job, timeout=_PUBLIC_DOWNLOAD_TIMEOUT_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.warning("Public download exceeded the response deadline")
+        finally:
+            if not job.done():
+                job.cancel()
+            if not response_waiter.done():
+                response_waiter.cancel()
+            cleanup = asyncio.ensure_future(
+                asyncio.gather(job, response_waiter, return_exceptions=True)
+            )
+            try:
+                await _await_task_completion(cleanup)
+            finally:
+                semaphore.release()
+
+    async def _handle_public_upload(self, scope: Scope, receive: Receive, send: Send) -> None:
+        limit = _MAX_UPLOAD_BYTES + _MAX_MULTIPART_OVERHEAD_BYTES
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                request_bytes = int(content_length)
+            except ValueError:
+                await JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})(
+                    scope, receive, send
+                )
+                return
+            if request_bytes < 0:
+                await JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})(
+                    scope, receive, send
+                )
+                return
+            if request_bytes > limit:
+                await JSONResponse(status_code=413, content={"detail": "Upload too large"})(
+                    scope, receive, send
+                )
+                return
+
+        deadline = asyncio.get_running_loop().time() + _PUBLIC_UPLOAD_TIMEOUT_SECONDS
+        received = 0
+        abort_response: Optional[JSONResponse] = None
+        replacement_sent = False
+
+        async def limited_receive() -> Message:
+            nonlocal abort_response, received
+            if abort_response is not None:
+                return {"type": "http.disconnect"}
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                abort_response = JSONResponse(
+                    status_code=408,
+                    content={"detail": "Upload timed out"},
+                )
+                return {"type": "http.disconnect"}
+            try:
+                message = await asyncio.wait_for(receive(), timeout=remaining)
+            except asyncio.TimeoutError:
+                abort_response = JSONResponse(
+                    status_code=408,
+                    content={"detail": "Upload timed out"},
+                )
+                return {"type": "http.disconnect"}
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    abort_response = JSONResponse(
+                        status_code=413,
+                        content={"detail": "Upload too large"},
+                    )
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def send_replacement() -> None:
+            nonlocal replacement_sent
+            if replacement_sent or abort_response is None:
+                return
+            replacement_sent = True
+            await abort_response(scope, receive, send)
+
+        async def limited_send(message: Message) -> None:
+            if abort_response is not None:
+                await send_replacement()
+                return
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, limited_send)
+        except Exception:
+            if abort_response is None:
+                raise
+        if abort_response is not None:
+            await send_replacement()
+
 
 app = FastAPI(
     title="PDF Manager",
@@ -53,6 +285,7 @@ app = FastAPI(
     redoc_url=None if _PUBLIC_MODE else "/redoc",
     openapi_url=None if _PUBLIC_MODE else "/openapi.json",
 )
+app.add_middleware(PublicUploadLimitMiddleware)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
 _VALID_MODES = {"auto", "optimize", "raster", "text"}
@@ -84,8 +317,9 @@ def _apply_security_headers(response: Response) -> Response:
 @app.middleware("http")
 async def public_mode_guard(request: Request, call_next):
     """Keep the shared library private when running the anonymous public site."""
+    route_path = _scope_route_path(request.scope)
     if _PUBLIC_MODE and any(
-        request.url.path == prefix or request.url.path.startswith(prefix + "/")
+        route_path == prefix or route_path.startswith(prefix + "/")
         for prefix in _PRIVATE_API_PREFIXES
     ):
         return _apply_security_headers(
@@ -215,7 +449,12 @@ def index() -> HTMLResponse:
 @app.get("/api/health")
 def api_health() -> dict:
     if _PUBLIC_MODE:
-        return {"status": "ok", "mode": "public", "compression_slots": _PUBLIC_COMPRESSION_SLOTS}
+        return {
+            "status": "ok",
+            "mode": "public",
+            "compression_slots": _PUBLIC_COMPRESSION_SLOTS,
+            "rate_limit_per_minute": _PUBLIC_RATE_LIMIT_PER_MINUTE,
+        }
     storage = _get_storage()
     stats = storage.stats()
     return {"status": "ok", "pdf_count": stats["pdf_count"], "version_count": stats["version_count"]}
@@ -233,6 +472,12 @@ def api_config() -> dict:
     return {
         "max_upload_bytes": _MAX_UPLOAD_BYTES,
         "max_pages": _MAX_PUBLIC_PAGES if _PUBLIC_MODE else None,
+        "upload_timeout_seconds": _PUBLIC_UPLOAD_TIMEOUT_SECONDS if _PUBLIC_MODE else None,
+        "processing_timeout_seconds": (
+            _PUBLIC_PROCESSING_TIMEOUT_SECONDS if _PUBLIC_MODE else None
+        ),
+        "download_timeout_seconds": _PUBLIC_DOWNLOAD_TIMEOUT_SECONDS if _PUBLIC_MODE else None,
+        "rate_limit_per_minute": _PUBLIC_RATE_LIMIT_PER_MINUTE if _PUBLIC_MODE else None,
         "public_mode": _PUBLIC_MODE,
     }
 
@@ -578,10 +823,88 @@ def _validate_public_pdf(path: Path) -> None:
         raise HTTPException(400, detail="Invalid PDF file")
 
 
+def _cleanup_public_process(process: Any) -> None:
+    if process.is_alive():
+        process.terminate()
+        process.join(5)
+    if process.is_alive():
+        process.kill()
+        process.join(5)
+    if process.is_alive():
+        logger.error("Compression worker could not be stopped")
+        return
+    try:
+        process.close()
+    except ValueError:
+        logger.warning("Compression worker could not be closed")
+
+
+async def _await_task_completion(task: asyncio.Future[Any]) -> Any:
+    cancellation: Optional[asyncio.CancelledError] = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            cancellation = exc
+        except BaseException:
+            # A completed task's exception is handled by task.result() below.
+            pass
+    try:
+        result = task.result()
+    except BaseException as exc:
+        if cancellation is not None:
+            logger.warning(
+                "Operation failed while cancellation was pending: %s",
+                exc,
+                exc_info=True,
+            )
+            raise cancellation from exc
+        raise
+    if cancellation is not None:
+        raise cancellation
+    return result
+
+
+async def _run_thread_complete(function: Callable[..., Any], *args: Any) -> Any:
+    task = asyncio.create_task(asyncio.to_thread(function, *args))
+    return await _await_task_completion(task)
+
+
+async def _run_public_compression(
+    source: Path,
+    config: CompressionConfig,
+    output: Path,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    process = context.Process(
+        target=compress_pdf_to_output,
+        args=(str(source), config, str(output)),
+        name="papersqueeze-compression",
+    )
+    try:
+        await _run_thread_complete(process.start)
+    except BaseException:
+        await _run_thread_complete(_cleanup_public_process, process)
+        raise
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _PUBLIC_PROCESSING_TIMEOUT_SECONDS
+    try:
+        while process.is_alive():
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise HTTPException(504, detail="Compression timed out")
+            await asyncio.sleep(min(0.1, remaining))
+        if process.exitcode != 0 or not output.is_file():
+            raise RuntimeError("Compression worker failed")
+    finally:
+        await _run_thread_complete(_cleanup_public_process, process)
+
+
 # ── Legacy compress endpoint (backward compat) ──
 
 @app.post("/compress")
-def compress_upload(
+async def compress_upload(
     files: list[UploadFile] = File(...),
     config: CompressionConfig = Depends(_compress_form),
     max_edge: Optional[int] = Form(None),
@@ -606,14 +929,8 @@ def compress_upload(
     upload_dir = temp_path / "uploads"
     output_dir = temp_path / "compressed"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    acquired_slot = False
-    if _PUBLIC_MODE:
-        acquired_slot = _public_compression_semaphore.acquire(blocking=False)
-        if not acquired_slot:
-            shutil.rmtree(temp_path, True)
-            raise HTTPException(429, detail="The compressor is busy; please retry shortly")
     try:
-        _save_upload_files(files, upload_dir)
+        await _run_thread_complete(_save_upload_files, files, upload_dir)
         config = replace(config, max_edge=max_edge, to_webp=to_webp, output_dir=output_dir, archive=archive)
         if len(files) > 1 or archive == "zip":
             source = upload_dir
@@ -622,30 +939,37 @@ def compress_upload(
             if source is None:
                 raise HTTPException(400, detail="No files uploaded")
         if _PUBLIC_MODE:
-            _validate_public_pdf(source)
-        output = output_dir / "compressed.zip" if archive == "zip" else None
-        summary = compress_path(source, config, output)
-        result = summary.archive or next((item for item in summary.results if item.output is not None), None)
-        if result is None or result.output is None:
-            raise HTTPException(500, detail="Compression produced no output")
+            await _run_thread_complete(_validate_public_pdf, source)
+            result_path = output_dir / "compressed.pdf"
+            await _run_public_compression(source, config, result_path)
+        else:
+            output = output_dir / "compressed.zip" if archive == "zip" else None
+            summary = await _run_thread_complete(compress_path, source, config, output)
+            result = summary.archive or next(
+                (item for item in summary.results if item.output is not None),
+                None,
+            )
+            if result is None or result.output is None:
+                raise HTTPException(500, detail="Compression produced no output")
+            result_path = result.output
     except HTTPException:
-        shutil.rmtree(temp_path, True)
+        await _run_thread_complete(shutil.rmtree, temp_path, True)
+        raise
+    except asyncio.CancelledError:
+        await _run_thread_complete(shutil.rmtree, temp_path, True)
         raise
     except Exception as exc:
-        shutil.rmtree(temp_path, True)
+        await _run_thread_complete(shutil.rmtree, temp_path, True)
         logger.error("Legacy compress failed: %s", _sanitize_error(exc))
         raise HTTPException(500, detail="Compression failed")
-    finally:
-        if acquired_slot:
-            _public_compression_semaphore.release()
-    media_type = "application/zip" if result.output.suffix.lower() == ".zip" else "application/pdf"
-    response = FileResponse(
-        result.output,
-        filename=result.output.name,
+    media_type = "application/zip" if result_path.suffix.lower() == ".zip" else "application/pdf"
+    response = CleanupFileResponse(
+        result_path,
+        filename=result_path.name,
         media_type=media_type,
         headers={"Cache-Control": "no-store"},
+        cleanup_path=temp_path,
     )
-    response.background = BackgroundTask(shutil.rmtree, temp_path, True)
     return response
 
 

@@ -11,6 +11,7 @@
 
 - **目标大小压缩**：输入 `500KB`、`3MB` 等目标，自动寻找不超过上限的高质量结果。
 - **文字优先**：`text` 模式永不栅格化页面，保留复制、搜索和超链接。
+- **透明图层保真**：重新编码图片后恢复 PDF 外置软遮罩（`SMask`），避免透明标注变成黑底或白框。
 - **质量优先的自动模式**：按“无损优化 → 保留文字重压图片 → 栅格化兜底”的顺序执行。
 - **四档压缩强度**：1 近无损、2 均衡、3 激进、4 最大压缩。
 - **CLI 与 Web UI**：支持单文件、目录批量、JSON 报告和浏览器操作。
@@ -20,18 +21,32 @@
 
 本地使用一份 20 页、30,628,839 字节的论文 PDF，以 3,194,322 字节为目标上限：
 
-- 输出大小：**3,159,612 字节**，比目标参考文件再小 34,710 字节。
-- 压缩率：**89.68%**。
+- 输出大小：**2,773,250 字节**，比目标参考文件再小 421,072 字节。
+- 压缩率：**90.95%**。
 - 文字：80,827 个字符，和原件完全一致。
 - 链接：163 个，和原件完全一致。
-- 视觉质量：20 页相对原件的平均 SSIM 为 **0.9960**，最低 0.9630。
-- 性能：37.17 秒、峰值内存约 689 MiB；旧自动流程需要 6 分 44 秒，速度提升约 10.9 倍。
+- 透明度：原件中的 **65 处 SMask 引用全部保留**，透明文字和标注不会被烘焙成白框。
+- 视觉质量：20 页相对原件的平均 SSIM 为 **0.9996**，最低 0.9976。
+- 性能：本机约 61.5 秒；具体时间取决于 CPU、PDF 图像数量和目标大小。
 
 参考 PDF 与原件不是完全相同的论文版本，因此项目采用“同一原件、同一字节上限”的方式评估压缩质量，而不是对不同内容做误导性的逐像素比较。测试论文文件不包含在仓库中。
 
+可用自包含基准脚本复现同样的文件大小、文字、链接、透明软遮罩和逐页 SSIM 检查；依赖由 `uv` 临时安装，不会进入生产镜像：
+
+```bash
+uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
+  --reference reference.pdf \
+  --dpi 96
+
+# 机器可读报告
+uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf --json
+```
+
+比较要求页数和每页尺寸完全一致，不会通过缩放或裁剪掩盖几何变化。
+
 ## 安装
 
-需要 Python 3.9+ 和 [uv](https://docs.astral.sh/uv/)。
+需要 Python 3.10+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
 git clone https://github.com/asimfish/pdf-image-compressor.git
@@ -87,6 +102,10 @@ uv run file-compressor web --data-dir /path/to/library
 PDF_COMPRESSOR_PUBLIC_MODE=1 \
 PDF_COMPRESSOR_MAX_UPLOAD_MB=30 \
 PDF_COMPRESSOR_MAX_PAGES=100 \
+PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS=120 \
+PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS=300 \
+PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS=120 \
+PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE=12 \
 PDF_COMPRESSOR_CONCURRENCY=1 \
 uv run file-compressor web --host 0.0.0.0 --port 8080
 ```
@@ -114,6 +133,29 @@ docker run --rm -p 8080:8080 \
 ```
 
 这份镜像可部署到任何支持 Docker/OCI 的平台，不依赖特定云厂商。
+
+## 免费部署到 Modal
+
+Modal Starter 当前每月提供 $30 免费计算额度，容器空闲时自动缩容到 0，适合低频公开访问。首次使用先创建账号并登录：
+
+```bash
+uvx modal setup
+```
+
+登录完成后直接部署当前工作区：
+
+```bash
+uvx modal deploy deploy_modal.py
+```
+
+脚本使用 2 CPU、2 GiB 内存和 Modal 默认临时磁盘，最多只启动 1 个容器；容器可同时响应 8 个轻量 HTTP 请求，但应用内部仍只允许 1 个压缩任务。空闲 60 秒后缩容，不保留上传文件。部署成功后 Modal 会输出稳定的 `modal.run` HTTPS 地址。查看用量或停止应用：
+
+```bash
+uvx modal billing
+uvx modal app stop papersqueeze
+```
+
+免费额度和平台政策可能变化；如账户绑定了付费方式，请在 Modal 控制台设置预算提醒。冷启动以及超过 150 秒的请求可能发生跳转或延迟。
 
 ## 部署到 Hugging Face Spaces
 
@@ -164,7 +206,11 @@ bash deploy_cloud_run.sh
 - `PDF_COMPRESSOR_PUBLIC_MODE`：设为 `1` 启用公开无状态页面。
 - `PDF_COMPRESSOR_MAX_UPLOAD_MB`：单文件上限，范围 1–500 MiB；公开模式默认 30，资料库模式默认 500。
 - `PDF_COMPRESSOR_MAX_PAGES`：公开 PDF 最大页数，范围 1–2000。
-- `PDF_COMPRESSOR_CONCURRENCY`：单实例同时执行的压缩任务数，范围 1–4。
+- `PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS`：公开模式上传总时限，范围 10–900 秒，默认 120。
+- `PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS`：公开模式压缩进程总时限，范围 30–1800 秒，默认 300；超时会终止隔离进程。
+- `PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS`：公开模式下载总时限，范围 10–900 秒，默认 120；超时会终止传输并清理临时文件。
+- `PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE`：单实例每分钟最多接受的压缩请求数，范围 1–120，默认 12。
+- `PDF_COMPRESSOR_CONCURRENCY`：单实例同时接收、压缩和下载的任务数，范围 1–4。
 - `PORT`：容器监听端口，默认 `8080`。
 
 ## API
@@ -181,18 +227,21 @@ bash deploy_cloud_run.sh
 ## 测试
 
 ```bash
+uv sync --locked --extra dev
+uv run ruff check src tests scripts deploy_huggingface_space.py deploy_modal.py
+uv run pip-audit --local --skip-editable
 uv run python -m pytest -q
 uv build
 ```
 
-当前测试套件包含 357 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字保留、Web API、部署打包、存储和错误处理。GitHub Actions 会在每次推送和 Pull Request 中运行测试、构建分发包并验证容器。
+当前测试套件包含 395 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
 
 ## 开源与贡献
 
 欢迎提交 Issue 和 Pull Request。涉及压缩算法的改动，请同时提供：
 
 1. 原始大小与输出大小。
-2. 文本字符数、链接数是否保留。
+2. 文本和链接的数量及语义指纹是否保留。
 3. 至少一项视觉质量指标（如 SSIM/PSNR）。
 4. 运行时间与峰值内存。
 5. 对应的回归测试。

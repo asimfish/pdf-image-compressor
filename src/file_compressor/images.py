@@ -169,9 +169,14 @@ def _save(image: Image.Image, buffer: BytesIO, suffix: str, quality: int, exif_b
                 try:
                     rgb = Image.merge("RGB", (r, g, b))
                 except Exception:
-                    r.close(); g.close(); b.close(); a.close()
+                    r.close()
+                    g.close()
+                    b.close()
+                    a.close()
                     raise
-                r.close(); g.close(); b.close()
+                r.close()
+                g.close()
+                b.close()
                 quantized = None
                 result = None
                 try:
