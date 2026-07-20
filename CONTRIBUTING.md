@@ -57,5 +57,22 @@ uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
 - Update `README.md` and `CHANGELOG.md` when public behavior changes.
 - Confirm that no API keys, tokens, private documents, or generated outputs are included.
 
+## Maintainer release
+
+1. Update the version in `pyproject.toml` and add its dated changelog entry.
+2. Merge the release preparation through a pull request and wait for `main` CI.
+3. Create and push an annotated version tag:
+
+   ```bash
+   git tag -a vX.Y.Z -m "PaperSqueeze vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+The Release workflow verifies that the tag matches the package version, reruns
+all quality gates, builds and checks the Python distributions, creates the
+GitHub Release, and publishes `vX.Y.Z` and `X.Y.Z` GHCR image tags. Its manual
+dispatch is only for safely rerunning an existing version tag; it never replaces
+existing wheel or source-distribution assets.
+
 For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of
 opening a public issue.

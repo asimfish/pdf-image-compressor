@@ -3,6 +3,16 @@
 All notable changes to PaperSqueeze are documented here. The project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Automated tag-to-release publishing with version checks, quality gates, Python distribution validation, SHA-256 checksums, and versioned GHCR image tags.
+
+### Security
+
+- Isolated untrusted build and test code from release write tokens, locked the package build toolchain, and prevented commit/version container tags from being overwritten.
+
 ## [0.1.0] - 2026-07-20
 
 ### Added
@@ -25,4 +35,5 @@ All notable changes to PaperSqueeze are documented here. The project follows
 - Isolated compression in a worker process and removed temporary files after each response.
 - Added restrictive browser security headers and disabled private library routes in public mode.
 
+[Unreleased]: https://github.com/asimfish/pdf-image-compressor/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/asimfish/pdf-image-compressor/releases/tag/v0.1.0
