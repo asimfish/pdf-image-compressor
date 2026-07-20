@@ -28,6 +28,7 @@ import shutil
 import stat
 import sys
 import tarfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -275,7 +276,8 @@ def _read_sdist_pkginfo(path: Path) -> bytes:
                 raise ReleaseStateError(
                     f"sdist {path.name}: unable to read regular PKG-INFO member"
                 )
-            return metadata_file.read()
+            with metadata_file:
+                return metadata_file.read()
     except ReleaseStateError:
         raise
     except (tarfile.TarError, OSError, EOFError, KeyError) as exc:
@@ -603,7 +605,11 @@ def _load_manifest(manifest_path: Path) -> tuple[str, str, dict[str, str]]:
         )
 
     schema_version = data.get("schema_version")
-    if type(schema_version) is not int or schema_version != MANIFEST_SCHEMA_VERSION:
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != MANIFEST_SCHEMA_VERSION
+    ):
         raise ReleaseStateError(
             f"Unsupported manifest schema_version: {schema_version!r} "
             f"(expected {MANIFEST_SCHEMA_VERSION})"
@@ -650,12 +656,10 @@ def verify(
     * A hash conflict raises :class:`ReleaseStateError` immediately.
     * Exhausting all attempts raises :class:`ReleaseStateError`.
     """
-    import time as _time_mod
-
     if _sleep is None:
-        _sleep = _time_mod.sleep
+        _sleep = time.sleep
 
-    if type(attempts) is not int or attempts < 1:
+    if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 1:
         raise ReleaseStateError(
             "Verification attempts must be an integer of at least 1"
         )

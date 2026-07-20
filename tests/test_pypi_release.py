@@ -18,6 +18,7 @@ Covers all 10 required test categories:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import hashlib
 import http.client
 import io
@@ -175,7 +176,7 @@ def _write_dist(
     return wheel_data, sdist_data
 
 
-def _mock_fetch_json(payload: dict):
+def _mock_fetch_json(payload: dict[str, object]) -> Callable[[str], bytes]:
     """Return a _fetch callable that always returns the given JSON dict."""
 
     def _fetch(url: str) -> bytes:
@@ -184,14 +185,14 @@ def _mock_fetch_json(payload: dict):
     return _fetch
 
 
-def _mock_fetch_http_error(code: int, reason: str = "Error"):
+def _mock_fetch_http_error(code: int, reason: str = "Error") -> Callable[[str], bytes]:
     def _fetch(url: str) -> bytes:
         raise urllib.error.HTTPError(url, code, reason, {}, None)
 
     return _fetch
 
 
-def _remote_state(wheel_sha: str, sdist_sha: str) -> dict:
+def _remote_state(wheel_sha: str, sdist_sha: str) -> dict[str, object]:
     return {
         "urls": [
             {
@@ -630,7 +631,7 @@ def test_prepare_full_identical_no_staging(tmp_path):
     staging = tmp_path / "staging"
     manifest_path = tmp_path / "manifest.json"
     gho = tmp_path / "gho"
-    gho.write_text("")
+    gho.write_text("", encoding="utf-8")
 
     prepare(
         source=src,
@@ -967,7 +968,7 @@ def test_prepare_manifest_has_all_files_regardless_of_staging(tmp_path):
     staging = tmp_path / "staging"
     manifest_path = tmp_path / "manifest.json"
     gho = tmp_path / "gho"
-    gho.write_text("")
+    gho.write_text("", encoding="utf-8")
 
     prepare(
         source=src,
@@ -1003,7 +1004,7 @@ def test_prepare_github_output_publish_false(tmp_path):
     ssha = _sha256_bytes(sdata)
 
     gho = tmp_path / "gho"
-    gho.write_text("PREVIOUS=value\n")
+    gho.write_text("PREVIOUS=value\n", encoding="utf-8")
 
     prepare(
         source=src,
@@ -1156,7 +1157,7 @@ def _make_manifest(tmp_path: Path, files: dict[str, str] | None = None) -> Path:
         "files": files,
     }
     p = tmp_path / "manifest.json"
-    p.write_text(json.dumps(m))
+    p.write_text(json.dumps(m), encoding="utf-8")
     return p
 
 
@@ -1507,7 +1508,7 @@ def test_verify_invalid_manifest_schema(tmp_path):
     """verify() raises on manifest with wrong schema_version."""
     bad = {"schema_version": 99, "project": "p", "version": "1.0", "files": {}}
     p = tmp_path / "manifest.json"
-    p.write_text(json.dumps(bad))
+    p.write_text(json.dumps(bad), encoding="utf-8")
     with pytest.raises(ReleaseStateError, match="[Ss]chema"):
         verify(p, attempts=1, delay_seconds=0, _fetch=_mock_fetch_http_error(404))
 
@@ -1563,7 +1564,7 @@ def test_verify_missing_manifest_raises(tmp_path):
 def test_verify_malformed_manifest_schema_raises_release_error(tmp_path, payload):
     """Wrong manifest containers, fields, and digest values are rejected."""
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(payload))
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ReleaseStateError):
         verify(
@@ -1593,7 +1594,7 @@ def test_verify_deeply_nested_manifest_is_release_error(tmp_path, monkeypatch):
     """Adversarial manifest nesting cannot leak RecursionError."""
     manifest_path = tmp_path / "manifest.json"
     deeply_nested = "[" * 2000 + "0" + "]" * 2000
-    manifest_path.write_text(deeply_nested)
+    manifest_path.write_text(deeply_nested, encoding="utf-8")
     original_loads = release_module.json.loads
 
     def _loads_with_depth_limit(value):
