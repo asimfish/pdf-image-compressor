@@ -143,6 +143,14 @@ docker run --rm -p 8080:8080 \
   ghcr.io/asimfish/pdf-image-compressor:latest
 ```
 
+每个正式版本还会发布版本化的 `vX.Y.Z` 和 `X.Y.Z` 标签。例如：
+
+```bash
+docker pull ghcr.io/asimfish/pdf-image-compressor:v0.1.0
+```
+
+版本标签直接复用同一提交在 `main` CI 中通过容器冒烟测试的镜像，不会重新构建另一份内容。
+
 这份镜像可部署到任何支持 Docker/OCI 的平台，不依赖特定云厂商。
 
 ## 免费部署到 Modal

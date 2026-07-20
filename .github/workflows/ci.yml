@@ -38,7 +38,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Build container
-        run: docker build --tag papersqueeze:ci .
+        run: |
+          docker build \
+            --build-arg "SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$GITHUB_SHA")" \
+            --tag papersqueeze:ci \
+            .
       - name: Start container
         run: docker run --detach --name papersqueeze-ci --publish 127.0.0.1:18080:8080 papersqueeze:ci
       - name: Smoke test public service
@@ -114,7 +118,35 @@ jobs:
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+
+          manifest_exists() {
+            local output
+            if output="$(docker manifest inspect "$1" 2>&1)"; then
+              return 0
+            fi
+            if grep -Fqi -- "manifest unknown" <<<"$output"; then
+              return 1
+            fi
+            echo "Unable to inspect $1: $output" >&2
+            return 2
+          }
+
+          local_id="$(docker image inspect --format '{{.Id}}' papersqueeze:ci)"
+          if manifest_exists "$image:$GITHUB_SHA"; then
+            docker pull "$image:$GITHUB_SHA"
+            remote_id="$(docker image inspect --format '{{.Id}}' "$image:$GITHUB_SHA")"
+            if [[ "$remote_id" != "$local_id" ]]; then
+              echo "Commit image already exists with different content; refusing to overwrite." >&2
+              exit 1
+            fi
+            echo "Commit image already exists with matching content."
+          else
+            status=$?
+            (( status == 1 )) || exit "$status"
+            docker tag papersqueeze:ci "$image:$GITHUB_SHA"
+            docker push "$image:$GITHUB_SHA"
+          fi
+
           docker tag papersqueeze:ci "$image:latest"
-          docker tag papersqueeze:ci "$image:$GITHUB_SHA"
           docker push "$image:latest"
-          docker push "$image:$GITHUB_SHA"

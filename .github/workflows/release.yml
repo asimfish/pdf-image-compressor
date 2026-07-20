@@ -1,0 +1,254 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    outputs:
+      revision: ${{ steps.release.outputs.revision }}
+    steps:
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag and package version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag --points-at HEAD | grep -Fx -- "$RELEASE_TAG"
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          with Path("pyproject.toml").open("rb") as file:
+              version = tomllib.load(file)["project"]["version"]
+          if tag != f"v{version}":
+              raise SystemExit(
+                  f"Release tag {tag!r} does not match package version {version!r}"
+              )
+          PY
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
+      - name: Install Python and dependencies
+        run: |
+          uv python install "3.12"
+          uv sync --locked --extra dev --python "3.12"
+
+      - name: Run release quality gates
+        run: |
+          uv run ruff check src tests scripts deploy_huggingface_space.py deploy_modal.py
+          uv run pip-audit --local --skip-editable
+          uv run python -m pytest -q
+
+      - name: Build and validate Python distributions
+        run: |
+          uv build --no-build-isolation
+          uv run twine check dist/*
+
+      - name: Store validated Python distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_REVISION: ${{ needs.validate.outputs.revision }}
+    steps:
+      - name: Download validated Python distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Create or verify GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          if (( ${#wheels[@]} != 1 || ${#sdists[@]} != 1 )); then
+            echo "Expected exactly one wheel and one source distribution" >&2
+            exit 1
+          fi
+          wheel_name="$(basename "${wheels[0]}")"
+          sdist_name="$(basename "${sdists[0]}")"
+
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            (
+              cd dist
+              sha256sum "$wheel_name" "$sdist_name" > SHA256SUMS
+            )
+            gh release create "$RELEASE_TAG" \
+              "${wheels[0]}" \
+              "${sdists[0]}" \
+              dist/SHA256SUMS \
+              --verify-tag \
+              --title "PaperSqueeze $RELEASE_TAG" \
+              --generate-notes
+            exit 0
+          fi
+
+          asset_names="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          wheel_exists=false
+          sdist_exists=false
+          checksum_exists=false
+          assets_changed=false
+          grep -Fxq -- "$wheel_name" <<<"$asset_names" && wheel_exists=true
+          grep -Fxq -- "$sdist_name" <<<"$asset_names" && sdist_exists=true
+          grep -Fxq -- "SHA256SUMS" <<<"$asset_names" && checksum_exists=true
+
+          if [[ "$wheel_exists" == false ]]; then
+            gh release upload "$RELEASE_TAG" "${wheels[0]}"
+            assets_changed=true
+          else
+            echo "$wheel_name already exists; leaving it unchanged."
+          fi
+          if [[ "$sdist_exists" == false ]]; then
+            gh release upload "$RELEASE_TAG" "${sdists[0]}"
+            assets_changed=true
+          else
+            echo "$sdist_name already exists; leaving it unchanged."
+          fi
+
+          if [[ "$checksum_exists" == false || "$assets_changed" == true ]]; then
+            release_json="$(gh release view "$RELEASE_TAG" --json assets)"
+            wheel_digest="$(
+              jq -r --arg name "$wheel_name" \
+                '.assets[] | select(.name == $name) | .digest' <<<"$release_json"
+            )"
+            sdist_digest="$(
+              jq -r --arg name "$sdist_name" \
+                '.assets[] | select(.name == $name) | .digest' <<<"$release_json"
+            )"
+            if [[ ! "$wheel_digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+              || [[ ! "$sdist_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "GitHub did not return valid SHA-256 asset digests." >&2
+              exit 1
+            fi
+            printf '%s  %s\n%s  %s\n' \
+              "${wheel_digest#sha256:}" "$wheel_name" \
+              "${sdist_digest#sha256:}" "$sdist_name" \
+              > dist/SHA256SUMS
+            if [[ "$checksum_exists" == true ]]; then
+              gh release upload "$RELEASE_TAG" dist/SHA256SUMS --clobber
+            else
+              gh release upload "$RELEASE_TAG" dist/SHA256SUMS
+            fi
+          else
+            echo "SHA256SUMS already exists; leaving it unchanged."
+          fi
+
+      - name: Publish tested versioned GHCR image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${RELEASE_TAG#v}"
+          source_image="$image:$RELEASE_REVISION"
+          echo "$GHCR_TOKEN" \
+            | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+
+          manifest_exists() {
+            local output
+            if output="$(docker manifest inspect "$1" 2>&1)"; then
+              return 0
+            fi
+            if grep -Fqi -- "manifest unknown" <<<"$output"; then
+              return 1
+            fi
+            echo "Unable to inspect $1: $output" >&2
+            return 2
+          }
+
+          if manifest_exists "$source_image"; then
+            docker pull "$source_image"
+          else
+            status=$?
+            if (( status == 1 )); then
+              echo "CI image $source_image does not exist; refusing to release." >&2
+            fi
+            exit "$status"
+          fi
+          source_id="$(docker image inspect --format '{{.Id}}' "$source_image")"
+
+          publish_alias() {
+            local alias=$1
+            local alias_id
+            local status
+            if manifest_exists "$alias"; then
+              docker pull "$alias"
+              alias_id="$(docker image inspect --format '{{.Id}}' "$alias")"
+              if [[ "$alias_id" != "$source_id" ]]; then
+                echo "$alias does not match tested image $source_image." >&2
+                return 1
+              fi
+              echo "$alias already points to the tested image; leaving it unchanged."
+              return 0
+            fi
+            status=$?
+            (( status == 1 )) || return "$status"
+            docker tag "$source_image" "$alias"
+            docker push "$alias"
+          }
+
+          publish_alias "$image:$RELEASE_TAG"
+          publish_alias "$image:$version"
+          docker manifest inspect "$image:$RELEASE_TAG" >/dev/null
+          docker manifest inspect "$image:$version" >/dev/null

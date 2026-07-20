@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=77.0.0", "wheel"]
+# Keep these pins synchronized with the build and dev extras below.
+requires = ["setuptools==83.0.0", "wheel==0.47.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -38,6 +39,11 @@ Issues = "https://github.com/asimfish/pdf-image-compressor/issues"
 Changelog = "https://github.com/asimfish/pdf-image-compressor/releases"
 
 [project.optional-dependencies]
+# Keep these pins synchronized with build-system.requires and the dev extra.
+build = [
+    "setuptools==83.0.0",
+    "wheel==0.47.0",
+]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.15.22",
@@ -45,6 +51,10 @@ dev = [
     "httpx2>=2.7.0",
     "numpy>=2.2.6",
     "scikit-image>=0.25.2",
+    "twine>=6.2.0",
+    # Keep these pins synchronized with build-system.requires and the build extra.
+    "setuptools==83.0.0",
+    "wheel==0.47.0",
 ]
 
 [project.scripts]
