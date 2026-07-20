@@ -234,7 +234,7 @@ uv run python -m pytest -q
 uv build
 ```
 
-当前测试套件包含 399 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
+当前测试套件包含 407 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留（含半透明、共享软遮罩、间接类型引用和 `Matte`）、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
 
 ## 开源与贡献
 
