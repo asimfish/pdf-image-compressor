@@ -71,8 +71,9 @@ uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
 The Release workflow verifies that the tag matches the package version, reruns
 all quality gates, builds and checks the Python distributions, creates the
 GitHub Release, and publishes `vX.Y.Z` and `X.Y.Z` GHCR image tags. Its manual
-dispatch is only for safely rerunning an existing version tag; it never replaces
-existing wheel or source-distribution assets.
+dispatch only repairs checksums and missing GHCR aliases for an existing
+published tag. It does not execute code from that tag or replace existing wheel
+or source-distribution assets.
 
 For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of
 opening a public issue.
