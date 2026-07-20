@@ -22,8 +22,8 @@ def main() -> None:
         parser.print_help()
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="file-compressor")
+def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog)
     subparsers = parser.add_subparsers(dest="command")
 
     compress = subparsers.add_parser("compress", help="Compress PDFs and images")
