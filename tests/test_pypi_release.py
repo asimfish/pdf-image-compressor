@@ -106,6 +106,37 @@ def _make_sdist(
     return buf.getvalue()
 
 
+def _make_wheel_with_metadata(metadata: bytes) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("papersqueeze-0.2.0.dist-info/METADATA", metadata)
+    return buf.getvalue()
+
+
+def _make_sdist_with_metadata(
+    metadata: bytes,
+    *,
+    metadata_type: bytes = tarfile.REGTYPE,
+    linkname: str = "",
+) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        if linkname:
+            target = tarfile.TarInfo(linkname)
+            target.size = len(metadata)
+            tf.addfile(target, io.BytesIO(metadata))
+
+        info = tarfile.TarInfo("papersqueeze-0.2.0/PKG-INFO")
+        info.type = metadata_type
+        info.linkname = linkname
+        if info.isfile():
+            info.size = len(metadata)
+            tf.addfile(info, io.BytesIO(metadata))
+        else:
+            tf.addfile(info)
+    return buf.getvalue()
+
+
 def _write_dist(
     directory: Path,
     wheel_name: str = "papersqueeze-0.2.0-py3-none-any.whl",
@@ -205,6 +236,22 @@ def test_collect_case_insensitive_name_match(tmp_path):
     sdata = _make_sdist(name="PaperSqueeze")
     _write_dist(tmp_path, wheel_data=wdata, sdist_data=sdata)
     files = collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+    assert len(files) == 2
+
+
+def test_collect_parses_raw_metadata_bytes_with_default_email_policy(tmp_path):
+    """RFC 2047 metadata headers are decoded from raw bytes by BytesParser."""
+    metadata = (
+        b"Metadata-Version: 2.1\nName: =?utf-8?q?PaperSqueeze?=\nVersion: 0.2.0\n"
+    )
+    _write_dist(
+        tmp_path,
+        wheel_data=_make_wheel_with_metadata(metadata),
+        sdist_data=_make_sdist_with_metadata(metadata),
+    )
+
+    files = collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
     assert len(files) == 2
 
 
@@ -337,6 +384,27 @@ def test_collect_sdist_dotdot_path(tmp_path):
     sdata = _make_sdist(extra_members=[("papersqueeze-0.2.0/../evil.txt", b"bad")])
     _write_dist(tmp_path, sdist_data=sdata)
     with pytest.raises(ReleaseStateError, match="[Uu]nsafe"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+@pytest.mark.parametrize(
+    ("metadata_type", "kind"),
+    [
+        (tarfile.SYMTYPE, "symlink"),
+        (tarfile.LNKTYPE, "hardlink"),
+    ],
+)
+def test_collect_rejects_linked_sdist_metadata(tmp_path, metadata_type, kind):
+    """PKG-INFO must be a regular file, never a symlink or hardlink."""
+    metadata = b"Metadata-Version: 2.1\nName: papersqueeze\nVersion: 0.2.0\n"
+    sdata = _make_sdist_with_metadata(
+        metadata,
+        metadata_type=metadata_type,
+        linkname="metadata-target",
+    )
+    _write_dist(tmp_path, sdist_data=sdata)
+
+    with pytest.raises(ReleaseStateError, match="[Rr]egular"):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 
@@ -577,6 +645,42 @@ def test_query_pypi_invalid_sha256_format():
         query_pypi_version("papersqueeze", "0.2.0", _fetch=_mock_fetch_json(payload))
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"\xff",
+        json.dumps([]).encode(),
+        json.dumps(None).encode(),
+        json.dumps({"urls": [None]}).encode(),
+        json.dumps(
+            {"urls": [{"filename": 7, "digests": {"sha256": "a" * 64}}]}
+        ).encode(),
+        json.dumps({"urls": [{"filename": "x.whl", "digests": []}]}).encode(),
+        json.dumps(
+            {"urls": [{"filename": "x.whl", "digests": {"sha256": 7}}]}
+        ).encode(),
+    ],
+)
+def test_query_pypi_malformed_response_types_raise_release_error(body):
+    """Malformed response bytes and containers never leak parser exceptions."""
+
+    def _fetch(url: str) -> bytes:
+        return body
+
+    with pytest.raises(ReleaseStateError):
+        query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
+
+
+def test_query_pypi_non_json_body_type_raises_release_error():
+    """A fetch implementation returning the wrong value type is schema failure."""
+
+    def _fetch(url: str) -> bytes:
+        return {"urls": []}  # type: ignore[return-value]
+
+    with pytest.raises(ReleaseStateError):
+        query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
+
+
 # ── 8. Manifest has all expected hashes; GitHub output correctness ────────────
 
 
@@ -788,6 +892,54 @@ def test_verify_transient_failure_retry(tmp_path):
     assert sleep_calls == [7.0]
 
 
+def test_verify_malformed_json_exhausts_bounded_attempts(tmp_path):
+    """Malformed remote JSON retries exactly attempts times without real sleep."""
+    manifest_path = _make_manifest(tmp_path)
+    fetch_calls = 0
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        return b"{not-json"
+
+    sleep_calls: list[float] = []
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=3,
+            delay_seconds=2.5,
+            _fetch=_fetch,
+            _sleep=sleep_calls.append,
+        )
+
+    assert fetch_calls == 3
+    assert sleep_calls == [2.5, 2.5]
+
+
+def test_verify_url_error_exhausts_bounded_attempts(tmp_path):
+    """Network failures retry exactly attempts times without real sleep."""
+    manifest_path = _make_manifest(tmp_path)
+    fetch_calls = 0
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        raise urllib.error.URLError("offline")
+
+    sleep_calls: list[float] = []
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=4,
+            delay_seconds=1.25,
+            _fetch=_fetch,
+            _sleep=sleep_calls.append,
+        )
+
+    assert fetch_calls == 4
+    assert sleep_calls == [1.25, 1.25, 1.25]
+
+
 def test_verify_immediate_conflict_failure(tmp_path):
     """verify() raises immediately (no retry) when remote hash conflicts."""
     wsha = "a" * 64
@@ -833,6 +985,112 @@ def test_verify_missing_manifest_raises(tmp_path):
             attempts=1,
             delay_seconds=0,
             _fetch=_mock_fetch_http_error(404),
+        )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        None,
+        {"schema_version": 1, "version": "0.2.0", "files": {"x.whl": "a" * 64}},
+        {
+            "schema_version": 1,
+            "project": 7,
+            "version": "0.2.0",
+            "files": {"x.whl": "a" * 64},
+        },
+        {
+            "schema_version": 1,
+            "project": "papersqueeze",
+            "version": [],
+            "files": {"x.whl": "a" * 64},
+        },
+        {
+            "schema_version": 1,
+            "project": "papersqueeze",
+            "version": "0.2.0",
+            "files": {"": "a" * 64},
+        },
+        {
+            "schema_version": 1,
+            "project": "papersqueeze",
+            "version": "0.2.0",
+            "files": {"x.whl": 7},
+        },
+        {
+            "schema_version": 1,
+            "project": "papersqueeze",
+            "version": "0.2.0",
+            "files": {"x.whl": "not-a-sha256"},
+        },
+    ],
+)
+def test_verify_malformed_manifest_schema_raises_release_error(tmp_path, payload):
+    """Wrong manifest containers, fields, and digest values are rejected."""
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=1,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json({"urls": []}),
+            _sleep=lambda _: pytest.fail("invalid manifest must not sleep"),
+        )
+
+
+@pytest.mark.parametrize("content", [b"{not-json", b"\xff"])
+def test_verify_malformed_manifest_encoding_or_json(tmp_path, content):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_bytes(content)
+
+    with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
+        verify(
+            manifest_path,
+            attempts=1,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json({"urls": []}),
+        )
+
+
+def test_verify_unreadable_manifest_path_raises_release_error(tmp_path):
+    """A directory path is reported as a manifest error, not raw OSError."""
+    with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
+        verify(
+            tmp_path,
+            attempts=1,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json({"urls": []}),
+        )
+
+
+def test_verify_malformed_manifest_path_raises_release_error():
+    """An invalid filesystem path is reported without leaking ValueError."""
+    with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
+        verify(
+            Path("\0"),
+            attempts=1,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json({"urls": []}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("attempts", "delay_seconds"),
+    [(0, 0), (-1, 0), (1, -0.1)],
+)
+def test_verify_rejects_invalid_retry_configuration(tmp_path, attempts, delay_seconds):
+    manifest_path = _make_manifest(tmp_path)
+
+    with pytest.raises(ReleaseStateError, match="[Aa]ttempt|[Dd]elay"):
+        verify(
+            manifest_path,
+            attempts=attempts,
+            delay_seconds=delay_seconds,
+            _fetch=_mock_fetch_json({"urls": []}),
+            _sleep=lambda _: pytest.fail("invalid retry settings must not sleep"),
         )
 
 
@@ -900,6 +1158,29 @@ def test_cli_verify_missing_manifest_file_exits_1(tmp_path, capsys):
     assert exc_info.value.code == 1
     captured = capsys.readouterr()
     assert "error:" in captured.err
+
+
+def test_cli_verify_malformed_manifest_exits_1_without_traceback(tmp_path, capsys):
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_bytes(b"\xff")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "verify",
+                "--manifest",
+                str(manifest_path),
+                "--attempts",
+                "1",
+                "--delay-seconds",
+                "0",
+            ]
+        )
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error:")
+    assert "Traceback" not in captured.err
 
 
 def test_cli_prepare_end_to_end(tmp_path):

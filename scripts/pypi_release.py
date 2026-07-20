@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import shutil
 import sys
@@ -30,7 +31,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
-from email import message_from_string
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 from typing import Callable
 
@@ -43,6 +45,10 @@ _CHUNK = 65536  # 64 KiB chunks for SHA-256 streaming
 
 class ReleaseStateError(RuntimeError):
     """Raised when local or remote release state is inconsistent or unsafe."""
+
+
+class _RemoteHashConflictError(ReleaseStateError):
+    """Raised when PyPI reports a filename with an unexpected digest."""
 
 
 @dataclass(frozen=True)
@@ -86,30 +92,34 @@ def _check_wheel_members_safe(members: list[str], wheel_name: str) -> None:
             )
 
 
-def _read_wheel_metadata(path: Path) -> str:
+def _read_wheel_metadata(path: Path) -> bytes:
     """Extract exactly one *.dist-info/METADATA from a wheel (ZIP). No extraction."""
     try:
         with zipfile.ZipFile(path, "r") as zf:
             members = zf.namelist()
-    except zipfile.BadZipFile as exc:
+            _check_wheel_members_safe(members, path.name)
+
+            metadata_members = [
+                member
+                for member in members
+                if re.match(r"[^/]+\.dist-info/METADATA$", member)
+            ]
+            if len(metadata_members) == 0:
+                raise ReleaseStateError(
+                    f"Wheel {path.name}: no *.dist-info/METADATA found"
+                )
+            if len(metadata_members) > 1:
+                raise ReleaseStateError(
+                    f"Wheel {path.name}: multiple *.dist-info/METADATA entries: "
+                    f"{metadata_members}"
+                )
+            return zf.read(metadata_members[0])
+    except ReleaseStateError:
+        raise
+    except (zipfile.BadZipFile, OSError, RuntimeError, KeyError) as exc:
         raise ReleaseStateError(
-            f"Wheel is not a valid ZIP: {path.name}: {exc}"
+            f"Unable to read wheel metadata from {path.name}: {exc}"
         ) from exc
-
-    _check_wheel_members_safe(members, path.name)
-
-    metadata_members = [
-        m for m in members if re.match(r"[^/]+\.dist-info/METADATA$", m)
-    ]
-    if len(metadata_members) == 0:
-        raise ReleaseStateError(f"Wheel {path.name}: no *.dist-info/METADATA found")
-    if len(metadata_members) > 1:
-        raise ReleaseStateError(
-            f"Wheel {path.name}: multiple *.dist-info/METADATA entries: {metadata_members}"
-        )
-
-    with zipfile.ZipFile(path, "r") as zf:
-        return zf.read(metadata_members[0]).decode("utf-8", errors="replace")
 
 
 def _check_tarinfo_safe(members: list[tarfile.TarInfo], sdist_name: str) -> None:
@@ -127,53 +137,61 @@ def _check_tarinfo_safe(members: list[tarfile.TarInfo], sdist_name: str) -> None
             )
 
 
-def _read_sdist_pkginfo(path: Path) -> str:
+def _read_sdist_pkginfo(path: Path) -> bytes:
     """Extract exactly one top-level */PKG-INFO from an sdist (tar.gz). No extraction."""
     try:
         with tarfile.open(path, "r:gz") as tf:
             members = tf.getmembers()
-    except tarfile.TarError as exc:
+            _check_tarinfo_safe(members, path.name)
+
+            # top-level: exactly one directory component before PKG-INFO
+            pkg_info_members = [
+                member
+                for member in members
+                if re.match(r"[^/]+/PKG-INFO$", member.name)
+                and not member.name.startswith("/")
+                and ".." not in member.name.split("/")
+            ]
+            if len(pkg_info_members) == 0:
+                raise ReleaseStateError(
+                    f"sdist {path.name}: no top-level PKG-INFO found"
+                )
+            if len(pkg_info_members) > 1:
+                raise ReleaseStateError(
+                    f"sdist {path.name}: multiple top-level PKG-INFO entries: "
+                    f"{[member.name for member in pkg_info_members]}"
+                )
+
+            metadata_member = pkg_info_members[0]
+            if not metadata_member.isfile():
+                raise ReleaseStateError(
+                    f"sdist {path.name}: PKG-INFO member is not a regular file"
+                )
+
+            metadata_file = tf.extractfile(metadata_member)
+            if metadata_file is None:
+                raise ReleaseStateError(
+                    f"sdist {path.name}: unable to read regular PKG-INFO member"
+                )
+            return metadata_file.read()
+    except ReleaseStateError:
+        raise
+    except (tarfile.TarError, OSError, EOFError, KeyError) as exc:
         raise ReleaseStateError(
-            f"sdist is not a valid tar.gz: {path.name}: {exc}"
+            f"Unable to read sdist metadata from {path.name}: {exc}"
         ) from exc
 
-    _check_tarinfo_safe(members, path.name)
 
-    # top-level: exactly one directory component before PKG-INFO
-    pkg_info_members = [
-        m
-        for m in members
-        if re.match(r"[^/]+/PKG-INFO$", m.name)
-        and not m.name.startswith("/")
-        and ".." not in m.name.split("/")
-    ]
-    if len(pkg_info_members) == 0:
-        raise ReleaseStateError(f"sdist {path.name}: no top-level PKG-INFO found")
-    if len(pkg_info_members) > 1:
-        raise ReleaseStateError(
-            f"sdist {path.name}: multiple top-level PKG-INFO entries: "
-            f"{[m.name for m in pkg_info_members]}"
-        )
-
-    with tarfile.open(path, "r:gz") as tf:
-        fobj = tf.extractfile(pkg_info_members[0])
-        if fobj is None:
-            raise ReleaseStateError(
-                f"sdist {path.name}: PKG-INFO member is not a regular file"
-            )
-        return fobj.read().decode("utf-8", errors="replace")
-
-
-def _parse_metadata(text: str) -> tuple[str, str]:
+def _parse_metadata(raw_metadata: bytes) -> tuple[str, str]:
     """Parse RFC 5322-style metadata; return (Name, Version) or raise."""
-    msg = message_from_string(text)
+    msg = BytesParser(policy=policy.default).parsebytes(raw_metadata)
     name = msg.get("Name")
     version = msg.get("Version")
     if not name:
         raise ReleaseStateError("Metadata missing 'Name' header")
     if not version:
         raise ReleaseStateError("Metadata missing 'Version' header")
-    return name, version
+    return str(name), str(version)
 
 
 def collect_distributions(
@@ -213,8 +231,8 @@ def collect_distributions(
     norm_project = normalize_project_name(project)
 
     # Validate wheel metadata
-    wheel_meta_text = _read_wheel_metadata(wheel_path)
-    w_name, w_version = _parse_metadata(wheel_meta_text)
+    wheel_metadata = _read_wheel_metadata(wheel_path)
+    w_name, w_version = _parse_metadata(wheel_metadata)
     if normalize_project_name(w_name) != norm_project:
         raise ReleaseStateError(
             f"Wheel Name '{w_name}' does not match project '{project}'"
@@ -225,8 +243,8 @@ def collect_distributions(
         )
 
     # Validate sdist metadata
-    sdist_meta_text = _read_sdist_pkginfo(sdist_path)
-    s_name, s_version = _parse_metadata(sdist_meta_text)
+    sdist_metadata = _read_sdist_pkginfo(sdist_path)
+    s_name, s_version = _parse_metadata(sdist_metadata)
     if normalize_project_name(s_name) != norm_project:
         raise ReleaseStateError(
             f"sdist Name '{s_name}' does not match project '{project}'"
@@ -293,10 +311,20 @@ def query_pypi_version(
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise ReleaseStateError(f"Network error querying PyPI: {exc}") from exc
 
+    if not isinstance(body, (bytes, bytearray)):
+        raise ReleaseStateError(
+            f"PyPI response body must be bytes, got {type(body).__name__}"
+        )
+
     try:
         data = json.loads(body)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ReleaseStateError(f"PyPI returned malformed JSON: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ReleaseStateError(
+            f"PyPI JSON root must be an object, got {type(data).__name__}"
+        )
 
     urls = data.get("urls")
     if not isinstance(urls, list):
@@ -326,7 +354,7 @@ def query_pypi_version(
         fn_lower = filename.lower()
         if fn_lower in result:
             if result[fn_lower] != sha256:
-                raise ReleaseStateError(
+                raise _RemoteHashConflictError(
                     f"Duplicate remote filename '{filename}' with conflicting hashes"
                 )
             # Same hash: silently ignore duplicate
@@ -418,6 +446,56 @@ def prepare(
 # ── verify ────────────────────────────────────────────────────────────────────
 
 
+def _load_manifest(manifest_path: Path) -> tuple[str, str, dict[str, str]]:
+    try:
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ReleaseStateError(
+            f"Unable to read manifest {manifest_path}: {exc}"
+        ) from exc
+
+    try:
+        data = json.loads(manifest_text)
+    except json.JSONDecodeError as exc:
+        raise ReleaseStateError(f"Manifest is not valid JSON: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ReleaseStateError(
+            f"Manifest root must be an object, got {type(data).__name__}"
+        )
+
+    schema_version = data.get("schema_version")
+    if type(schema_version) is not int or schema_version != MANIFEST_SCHEMA_VERSION:
+        raise ReleaseStateError(
+            f"Unsupported manifest schema_version: {schema_version!r} "
+            f"(expected {MANIFEST_SCHEMA_VERSION})"
+        )
+
+    project = data.get("project")
+    version = data.get("version")
+    raw_files = data.get("files")
+    if not isinstance(project, str) or not project:
+        raise ReleaseStateError("Manifest missing or invalid 'project'")
+    if not isinstance(version, str) or not version:
+        raise ReleaseStateError("Manifest missing or invalid 'version'")
+    if not isinstance(raw_files, dict) or not raw_files:
+        raise ReleaseStateError("Manifest 'files' is empty or invalid")
+
+    files: dict[str, str] = {}
+    for filename, digest in raw_files.items():
+        if not isinstance(filename, str) or not filename:
+            raise ReleaseStateError(
+                f"Manifest contains an invalid filename: {filename!r}"
+            )
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ReleaseStateError(
+                f"Manifest sha256 for {filename!r} is not a lowercase 64-hex string"
+            )
+        files[filename] = digest
+
+    return project, version, files
+
+
 def verify(
     manifest_path: Path,
     attempts: int = 6,
@@ -439,40 +517,28 @@ def verify(
     if _sleep is None:
         _sleep = _time_mod.sleep
 
-    if not manifest_path.exists():
-        raise ReleaseStateError(f"Manifest file not found: {manifest_path}")
-
-    try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ReleaseStateError(f"Manifest is not valid JSON: {exc}") from exc
-
-    schema_version = data.get("schema_version")
-    if schema_version != MANIFEST_SCHEMA_VERSION:
+    if type(attempts) is not int or attempts < 1:
         raise ReleaseStateError(
-            f"Unsupported manifest schema_version: {schema_version!r} "
-            f"(expected {MANIFEST_SCHEMA_VERSION})"
+            "Verification attempts must be an integer of at least 1"
+        )
+    if (
+        isinstance(delay_seconds, bool)
+        or not isinstance(delay_seconds, (int, float))
+        or not math.isfinite(delay_seconds)
+        or delay_seconds < 0
+    ):
+        raise ReleaseStateError(
+            "Verification delay_seconds must be a finite non-negative number"
         )
 
-    project = data.get("project")
-    version = data.get("version")
-    files: dict[str, str] = data.get("files", {})
-
-    if not isinstance(project, str) or not project:
-        raise ReleaseStateError("Manifest missing 'project'")
-    if not isinstance(version, str) or not version:
-        raise ReleaseStateError("Manifest missing 'version'")
-    if not isinstance(files, dict) or not files:
-        raise ReleaseStateError("Manifest 'files' is empty or invalid")
+    project, version, files = _load_manifest(manifest_path)
 
     for attempt in range(1, attempts + 1):
         try:
             remote = query_pypi_version(project, version, _fetch=_fetch)
+        except _RemoteHashConflictError:
+            raise
         except ReleaseStateError as exc:
-            msg = str(exc)
-            # Immediate failure on hash conflicts
-            if "conflict" in msg.lower() or "Hash conflict" in msg:
-                raise
             # Transient fetch error: retry unless last attempt
             if attempt < attempts:
                 _sleep(delay_seconds)
@@ -489,7 +555,7 @@ def verify(
             if remote_sha is None:
                 all_present = False
             elif remote_sha != expected_sha:
-                raise ReleaseStateError(
+                raise _RemoteHashConflictError(
                     f"Hash conflict for '{filename}': "
                     f"expected={expected_sha!r} remote={remote_sha!r}"
                 )
