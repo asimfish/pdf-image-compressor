@@ -1,6 +1,7 @@
 # PaperSqueeze
 
 [![CI](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/asimfish/pdf-image-compressor)](https://github.com/asimfish/pdf-image-compressor/releases)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/live-PaperSqueeze-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
 
@@ -54,7 +55,14 @@ uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf --json
 ```bash
 git clone https://github.com/asimfish/pdf-image-compressor.git
 cd pdf-image-compressor
-uv sync --extra dev
+uv sync --locked --extra dev
+```
+
+也可以从 [GitHub Releases](https://github.com/asimfish/pdf-image-compressor/releases)
+下载已构建的 wheel 和源码包：
+
+```bash
+uv pip install ./pdf_image_compressor-*.whl
 ```
 
 ## CLI 使用
@@ -243,7 +251,11 @@ uv build
 
 ## 开源与贡献
 
-欢迎提交 Issue 和 Pull Request。涉及压缩算法的改动，请同时提供：
+欢迎提交 Issue 和 Pull Request。开发环境、检查命令和提交要求见
+[CONTRIBUTING.md](CONTRIBUTING.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要公开披露。
+
+涉及压缩算法的改动，请同时提供：
 
 1. 原始大小与输出大小。
 2. 文本和链接的数量及语义指纹是否保留。

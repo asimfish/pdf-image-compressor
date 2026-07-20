@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,18 @@ version = "0.1.0"
 description = "Target-aware PDF compressor that preserves searchable text, links, and vector content."
 readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "liyufeng" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["pdf", "compression", "pymupdf", "fastapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+]
 dependencies = [
     "Pillow>=10.0.0",
     "PyMuPDF>=1.24.0",
@@ -19,8 +31,11 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/asimfish/pdf-image-compressor"
+Live-Demo = "https://liyufeng854--papersqueeze-serve.modal.run"
+Documentation = "https://github.com/asimfish/pdf-image-compressor#readme"
 Repository = "https://github.com/asimfish/pdf-image-compressor.git"
 Issues = "https://github.com/asimfish/pdf-image-compressor/issues"
+Changelog = "https://github.com/asimfish/pdf-image-compressor/releases"
 
 [project.optional-dependencies]
 dev = [
