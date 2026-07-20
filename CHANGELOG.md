@@ -7,7 +7,7 @@ All notable changes to PaperSqueeze are documented here. The project follows
 
 ### Added
 
-- Automated tag-to-release publishing with version checks, quality gates, Python distribution validation, SHA-256 checksums, and versioned GHCR image tags.
+- Automated tag-to-release publishing with version checks, quality gates, Python distribution validation, SHA-256 checksums, versioned GHCR image tags, and a non-executing repair path for existing releases.
 
 ### Security
 
