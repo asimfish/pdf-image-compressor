@@ -336,8 +336,6 @@ def test_collect_duplicate_sdist(tmp_path):
     sdata = _make_sdist()
     (tmp_path / "papersqueeze-0.2.0-py3-none-any.whl").write_bytes(_make_wheel())
     (tmp_path / "papersqueeze-0.2.0.tar.gz").write_bytes(sdata)
-    (tmp_path / "papersqueeze-0.2.0.zip").write_bytes(sdata)  # not .tar.gz
-    # Only one .tar.gz -> still valid unless we add another .tar.gz
     (tmp_path / "papersqueeze-0.2.0b1.tar.gz").write_bytes(sdata)
     with pytest.raises(ReleaseStateError, match="[Mm]ultiple"):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
@@ -1243,6 +1241,40 @@ def test_verify_exhaustion_raises(tmp_path):
     assert sleep_calls == [5.0, 5.0]
 
 
+def test_verify_exhaustion_reports_only_final_missing_files(tmp_path):
+    """The final error omits artifacts already confirmed on the last lookup."""
+    wheel_filename = "papersqueeze-0.2.0-py3-none-any.whl"
+    sdist_filename = "papersqueeze-0.2.0.tar.gz"
+    manifest_path = _make_manifest(
+        tmp_path,
+        {
+            wheel_filename: "a" * 64,
+            sdist_filename: "b" * 64,
+        },
+    )
+    remote = {
+        "urls": [
+            {
+                "filename": wheel_filename,
+                "digests": {"sha256": "a" * 64},
+            }
+        ]
+    }
+
+    with pytest.raises(ReleaseStateError) as exc_info:
+        verify(
+            manifest_path,
+            attempts=2,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json(remote),
+            _sleep=lambda _: None,
+        )
+
+    message = str(exc_info.value)
+    assert sdist_filename in message
+    assert wheel_filename not in message
+
+
 def test_verify_transient_failure_retry(tmp_path):
     """verify() retries on transient lookup failures (HTTP 500)."""
     wsha, ssha = "a" * 64, "b" * 64
@@ -1747,41 +1779,34 @@ def test_cli_prepare_filesystem_error_exits_1_without_traceback(
     assert "Traceback" not in captured.err
 
 
-def test_cli_prepare_end_to_end(tmp_path):
-    """Full prepare CLI invocation with injected network (via module-level patch)."""
+def test_cli_prepare_end_to_end(tmp_path, monkeypatch):
+    """Full prepare CLI invocation with an injected PyPI response."""
     src = tmp_path / "dist"
     src.mkdir()
-    wdata, sdata = _write_dist(src)
+    _write_dist(src)
 
     staging = tmp_path / "staging"
     manifest_path = tmp_path / "manifest.json"
 
-    import pypi_release as _mod
-
-    _original = _mod._default_fetch
-
     def _always_404(url: str) -> bytes:
         raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
-    _mod._default_fetch = _always_404
-    try:
-        main(
-            [
-                "prepare",
-                "--source",
-                str(src),
-                "--staging",
-                str(staging),
-                "--project",
-                "papersqueeze",
-                "--version",
-                "0.2.0",
-                "--manifest",
-                str(manifest_path),
-            ]
-        )
-    finally:
-        _mod._default_fetch = _original
+    monkeypatch.setattr(release_module, "_default_fetch", _always_404)
+    main(
+        [
+            "prepare",
+            "--source",
+            str(src),
+            "--staging",
+            str(staging),
+            "--project",
+            "papersqueeze",
+            "--version",
+            "0.2.0",
+            "--manifest",
+            str(manifest_path),
+        ]
+    )
 
     staged = {p.name for p in staging.iterdir()}
     assert "papersqueeze-0.2.0-py3-none-any.whl" in staged

@@ -188,17 +188,16 @@ def _read_wheel_metadata(path: Path) -> bytes:
                         f"{member.filename!r}"
                     )
 
-            metadata_members = metadata_candidates
-            if len(metadata_members) == 0:
+            if len(metadata_candidates) == 0:
                 raise ReleaseStateError(
                     f"Wheel {path.name}: no *.dist-info/METADATA found"
                 )
-            if len(metadata_members) > 1:
+            if len(metadata_candidates) > 1:
                 raise ReleaseStateError(
                     f"Wheel {path.name}: multiple *.dist-info/METADATA entries: "
-                    f"{[member.filename for member in metadata_members]}"
+                    f"{[member.filename for member in metadata_candidates]}"
                 )
-            metadata_member = metadata_members[0]
+            metadata_member = metadata_candidates[0]
             _check_wheel_metadata_regular(metadata_member, path.name)
             return zf.read(metadata_member)
     except ReleaseStateError:
@@ -255,18 +254,17 @@ def _read_sdist_pkginfo(path: Path) -> bytes:
                         f"sdist {path.name}: noncanonical PKG-INFO path {member.name!r}"
                     )
 
-            pkg_info_members = pkg_info_candidates
-            if len(pkg_info_members) == 0:
+            if len(pkg_info_candidates) == 0:
                 raise ReleaseStateError(
                     f"sdist {path.name}: no top-level PKG-INFO found"
                 )
-            if len(pkg_info_members) > 1:
+            if len(pkg_info_candidates) > 1:
                 raise ReleaseStateError(
                     f"sdist {path.name}: multiple top-level PKG-INFO entries: "
-                    f"{[member.name for member in pkg_info_members]}"
+                    f"{[member.name for member in pkg_info_candidates]}"
                 )
 
-            metadata_member = pkg_info_members[0]
+            metadata_member = pkg_info_candidates[0]
             if not metadata_member.isfile():
                 raise ReleaseStateError(
                     f"sdist {path.name}: PKG-INFO member is not a regular file"
@@ -557,7 +555,7 @@ def prepare(
             ) from exc
 
     # Build manifest with ALL local files (not just staged subset)
-    manifest: dict = {
+    manifest: dict[str, object] = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "project": project,
         "version": version,
@@ -672,6 +670,7 @@ def verify(
         )
 
     project, version, files = _load_manifest(manifest_path)
+    missing_filenames: list[str] = []
 
     for attempt in range(1, attempts + 1):
         try:
@@ -688,11 +687,11 @@ def verify(
             ) from exc
 
         # Check each expected file
-        all_present = True
+        missing_filenames = []
         for filename, expected_sha in files.items():
             remote_sha = remote.get(filename)
             if remote_sha is None:
-                all_present = False
+                missing_filenames.append(filename)
             elif remote_sha != expected_sha:
                 raise _RemoteHashConflictError(
                     f"Hash conflict for '{filename}': "
@@ -700,14 +699,14 @@ def verify(
                 )
             # else: matches, good
 
-        if all_present:
+        if not missing_filenames:
             return  # Success
 
         if attempt < attempts:
             _sleep(delay_seconds)
 
     raise ReleaseStateError(
-        f"Files not confirmed on PyPI after {attempts} attempts: {list(files.keys())}"
+        f"Files not confirmed on PyPI after {attempts} attempts: {missing_filenames}"
     )
 
 
