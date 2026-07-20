@@ -2,10 +2,13 @@
 
 [![CI](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/live-PaperSqueeze-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
 
 面向论文和技术文档的开源 PDF 压缩器。它优先保留可搜索文字、公式、链接和矢量结构，只重新编码真正占空间的图片；只有在目标大小无法通过保留文字的方式达到时，`auto` 模式才会整页栅格化。
 
 既可以作为本地 PDF 版本管理器使用，也可以部署为匿名、无状态的公开压缩网站。
+
+在线演示：<https://liyufeng854--papersqueeze-serve.modal.run>。免费实例空闲时会缩容，首次访问可能需要等待冷启动。
 
 ## 主要能力
 
@@ -19,7 +22,7 @@
 
 ## 实测结果
 
-本地使用一份 20 页、30,628,839 字节的论文 PDF，以 3,194,322 字节为目标上限：
+已部署的 Modal 网站使用默认 `3MB` 目标，在线处理一份 20 页、30,628,839 字节的论文 PDF，并与 3,194,322 字节的参考文件比较：
 
 - 输出大小：**2,773,250 字节**，比目标参考文件再小 421,072 字节。
 - 压缩率：**90.95%**。
@@ -27,7 +30,7 @@
 - 链接：163 个，和原件完全一致。
 - 透明度：原件中的 **65 处 SMask 引用全部保留**，透明文字和标注不会被烘焙成白框。
 - 视觉质量：20 页相对原件的 RGB 多通道 SSIM 平均为 **0.9993**，最低 0.9961。
-- 性能：本机多次运行约 61–84 秒；具体时间取决于 CPU 负载、PDF 图像数量和目标大小。
+- 性能：线上端到端约 62.5 秒（包含上传、处理和下载）；本机多次运行约 61–84 秒。具体时间取决于网络、CPU 负载、PDF 图像数量和目标大小。
 
 参考 PDF 与原件不是完全相同的论文版本，因此项目采用“同一原件、同一字节上限”的方式评估压缩质量，而不是对不同内容做误导性的逐像素比较。测试论文文件不包含在仓库中。
 
@@ -137,6 +140,8 @@ docker run --rm -p 8080:8080 \
 ## 免费部署到 Modal
 
 Modal Starter 当前每月提供 $30 免费计算额度，容器空闲时自动缩容到 0，适合低频公开访问。首次使用先创建账号并登录：
+
+当前公开实例：<https://liyufeng854--papersqueeze-serve.modal.run>
 
 ```bash
 uvx modal setup
