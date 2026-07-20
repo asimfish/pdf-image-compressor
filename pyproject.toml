@@ -47,6 +47,7 @@ build = [
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.15.22",
+    "tomli>=2.0; python_version < '3.11'",
     "pip-audit>=2.10.1",
     "httpx2>=2.7.0",
     "numpy>=2.2.6",
