@@ -153,15 +153,16 @@ def _text_chars(path: Path) -> int:
         return sum(len(p.get_text()) for p in doc)
 
 
-def _make_pdf_with_soft_mask(path: Path) -> Path:
-    """Build a PDF image whose transparent pixels contain black RGB values."""
+def _make_pdf_with_soft_mask(path: Path, *, matte: bool = False) -> Path:
+    """Build a PDF image with separate base-color and soft-mask objects."""
     import io
     import random
 
     from PIL import Image
 
     rng = random.Random(7)
-    with Image.new("RGBA", (600, 400), (0, 0, 0, 0)) as image:
+    transparent = (255, 255, 255, 0) if matte else (0, 0, 0, 0)
+    with Image.new("RGBA", (600, 400), transparent) as image:
         with Image.frombytes("RGB", (400, 240), rng.randbytes(400 * 240 * 3)) as rgb:
             with Image.new("L", rgb.size, 255) as alpha:
                 with Image.new("RGBA", rgb.size) as visible:
@@ -177,6 +178,10 @@ def _make_pdf_with_soft_mask(path: Path) -> Path:
         image_rect = fitz.Rect(50, 100, 550, 433.33)
         page.draw_rect(image_rect, color=(0.1, 0.4, 0.8), fill=(0.1, 0.4, 0.8))
         page.insert_image(image_rect, stream=data)
+        if matte:
+            smask_xref = page.get_images(full=True)[0][1]
+            assert smask_xref > 0
+            doc.xref_set_key(smask_xref, "Matte", "[1 1 1]")
         doc.save(path)
     return path
 
@@ -195,6 +200,30 @@ def _assert_transparent_pixel_preserved(source: Path, output: Path) -> None:
     assert max(abs(expected[index] - actual[index]) for index in range(3)) <= 2
 
 
+def _assert_scaled_image_keeps_independent_soft_mask(path: Path) -> None:
+    with fitz.open(path) as doc:
+        xref, smask_xref = doc[0].get_images(full=True)[0][:2]
+        assert smask_xref > 0
+        image = doc.extract_image(xref)
+        soft_mask = doc.extract_image(smask_xref)
+        assert (image["width"], image["height"]) != (
+            soft_mask["width"],
+            soft_mask["height"],
+        )
+
+
+def _assert_matte_image_and_soft_mask_dimensions_match(path: Path) -> None:
+    with fitz.open(path) as doc:
+        xref, smask_xref = doc[0].get_images(full=True)[0][:2]
+        assert doc.xref_get_key(smask_xref, "Matte")[0] == "array"
+        image = doc.extract_image(xref)
+        soft_mask = doc.extract_image(smask_xref)
+        assert (image["width"], image["height"]) == (
+            soft_mask["width"],
+            soft_mask["height"],
+        )
+
+
 def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path):
     source = _make_pdf_with_soft_mask(tmp_path / "soft_mask.pdf")
     output = tmp_path / "soft_mask_out.pdf"
@@ -208,8 +237,20 @@ def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path)
     )
 
     _assert_transparent_pixel_preserved(source, output)
-    with fitz.open(output) as doc:
-        assert doc[0].get_images(full=True)[0][1] > 0
+    _assert_scaled_image_keeps_independent_soft_mask(output)
+
+
+def test_text_mode_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_matte.pdf", matte=True)
+    output = tmp_path / "soft_mask_matte_out.pdf"
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="text", compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_matte_image_and_soft_mask_dimensions_match(output)
 
 
 def test_optimize_images_in_pdf_preserves_soft_mask_transparency(tmp_path: Path):
@@ -223,8 +264,23 @@ def test_optimize_images_in_pdf_preserves_soft_mask_transparency(tmp_path: Path)
     )
 
     _assert_transparent_pixel_preserved(source, output)
-    with fitz.open(output) as doc:
-        assert doc[0].get_images(full=True)[0][1] > 0
+    _assert_scaled_image_keeps_independent_soft_mask(output)
+
+
+def test_optimize_images_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(
+        tmp_path / "soft_mask_matte_optimize.pdf",
+        matte=True,
+    )
+    output = tmp_path / "soft_mask_matte_optimize_out.pdf"
+
+    optimize_images_in_pdf(
+        source,
+        output,
+        CompressionConfig(compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_matte_image_and_soft_mask_dimensions_match(output)
 
 
 def test_prepare_pdf_image_logs_unreadable_soft_mask(caplog: pytest.LogCaptureFixture):

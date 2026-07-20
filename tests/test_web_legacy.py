@@ -348,7 +348,8 @@ def test_public_mode_upload_deadline_releases_slot(monkeypatch):
     response = asyncio.run(request())
 
     assert response.status_code == 408
-    assert chunks_sent == 1
+    # Under load the deadline may expire before chunk one, but never read chunk two.
+    assert chunks_sent < 2
     assert semaphore.acquire(blocking=False)
     semaphore.release()
 
@@ -445,6 +446,54 @@ def test_cleanup_file_response_removes_temp_dir_on_cancel(tmp_path: Path):
 
     asyncio.run(run())
 
+    assert not temp_dir.exists()
+
+
+def test_cleanup_file_response_streams_before_pathsend_cleanup(tmp_path: Path):
+    import asyncio
+
+    import file_compressor.web as web
+
+    temp_dir = tmp_path / "pathsend_response"
+    temp_dir.mkdir()
+    output = temp_dir / "compressed.pdf"
+    payload = b"%PDF-1.4\n" + b"x" * 100
+    output.write_bytes(payload)
+    response = web.CleanupFileResponse(
+        output,
+        filename=output.name,
+        media_type="application/pdf",
+        cleanup_path=temp_dir,
+    )
+    messages = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/compressed.pdf",
+        "headers": [],
+        "query_string": b"",
+        "http_version": "1.1",
+        "scheme": "http",
+        "server": ("test", 80),
+        "client": ("test", 123),
+        "extensions": {"http.response.pathsend": {}},
+    }
+
+    asyncio.run(response(scope, receive, send))
+
+    assert not any(message["type"] == "http.response.pathsend" for message in messages)
+    assert b"".join(
+        message.get("body", b"")
+        for message in messages
+        if message["type"] == "http.response.body"
+    ) == payload
     assert not temp_dir.exists()
 
 

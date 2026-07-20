@@ -23,7 +23,7 @@ import numpy as np
 import skimage
 from skimage.metrics import structural_similarity
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _PAGE_SIZE_TOLERANCE_POINTS = 0.01
 _SSIM_WIN_SIZE = 11
 _LINK_FIELDS = ("kind", "from", "page", "to", "uri", "file", "nameddest", "zoom")
@@ -188,17 +188,18 @@ def _validate_geometry(
             )
 
 
-def _render_gray(page: fitz.Page, dpi: int) -> np.ndarray:
+def _render_rgb(page: fitz.Page, dpi: int) -> np.ndarray:
     scale = dpi / 72
     pixmap = page.get_pixmap(
         matrix=fitz.Matrix(scale, scale),
-        colorspace=fitz.csGRAY,
+        colorspace=fitz.csRGB,
         alpha=False,
         annots=True,
     )
     return np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
         pixmap.height,
         pixmap.width,
+        3,
     )
 
 
@@ -213,8 +214,8 @@ def _compare_documents(
     _validate_geometry(original, target, role)
     pages = []
     for index in range(original.page_count):
-        expected = _render_gray(original[index], dpi)
-        actual = _render_gray(target[index], dpi)
+        expected = _render_rgb(original[index], dpi)
+        actual = _render_rgb(target[index], dpi)
         if expected.shape != actual.shape:
             raise ComparisonError(
                 "RENDER_SHAPE_MISMATCH",
@@ -224,7 +225,7 @@ def _compare_documents(
                 expected=list(expected.shape),
                 actual=list(actual.shape),
             )
-        if min(expected.shape) < _SSIM_WIN_SIZE:
+        if min(expected.shape[:2]) < _SSIM_WIN_SIZE:
             raise ComparisonError(
                 "PAGE_TOO_SMALL_FOR_SSIM",
                 f"Page {index + 1} is too small for the SSIM window",
@@ -241,7 +242,7 @@ def _compare_documents(
                 gaussian_weights=True,
                 sigma=1.5,
                 use_sample_covariance=False,
-                channel_axis=None,
+                channel_axis=2,
             )
         )
         if not math.isfinite(score):
@@ -386,14 +387,14 @@ def compare_pdfs(
         "status": "ok",
         "settings": {
             "dpi": dpi,
-            "render": {"colorspace": "gray", "alpha": False, "annotations": True},
+            "render": {"colorspace": "rgb", "alpha": False, "annotations": True},
             "ssim": {
                 "win_size": _SSIM_WIN_SIZE,
                 "data_range": 255,
                 "gaussian_weights": True,
                 "sigma": 1.5,
                 "use_sample_covariance": False,
-                "channel_axis": None,
+                "channel_axis": 2,
             },
             "libraries": {
                 "pymupdf": fitz.__version__,

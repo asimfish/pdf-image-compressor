@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 class _PdfImageDocument(Protocol):
     def extract_image(self, xref: int) -> Optional[Mapping[str, object]]: ...
 
+    def xref_get_key(self, xref: int, key: str) -> tuple[str, str]: ...
+
     def xref_set_key(self, xref: int, key: str, value: str) -> None: ...
 
 
@@ -181,6 +183,25 @@ def _prepare_pdf_image_for_jpeg(
     return image
 
 
+def _soft_mask_requires_matching_dimensions(
+    doc: _PdfImageDocument,
+    smask_xref: int,
+) -> bool:
+    """Return whether a Matte entry requires the mask and base image to match."""
+    if smask_xref <= 0:
+        return False
+    try:
+        value_type, _ = doc.xref_get_key(smask_xref, "Matte")
+    except Exception as exc:
+        logger.warning(
+            "Unable to inspect Matte for PDF soft mask %d; preserving image dimensions: %s",
+            smask_xref,
+            exc,
+        )
+        return True
+    return value_type != "null"
+
+
 def _replace_pdf_image_preserving_soft_mask(
     page: _PdfImagePage,
     doc: _PdfImageDocument,
@@ -288,9 +309,15 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                         # Calculate new dimensions
                         new_w = max(64, int(w * ratio))
                         new_h = max(64, int(h * ratio))
+                        dimensions_locked = _soft_mask_requires_matching_dimensions(
+                            doc,
+                            smask_xref,
+                        )
 
                         # Only resize if it saves significant space
-                        if new_w < w * 0.9 or new_h < h * 0.9:
+                        if not dimensions_locked and (
+                            new_w < w * 0.9 or new_h < h * 0.9
+                        ):
                             pil_img = stack.enter_context(
                                 pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
                             )
@@ -469,7 +496,11 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                             doc=doc,
                             smask_xref=smask_xref,
                         )
-                        if scale < 0.99:
+                        dimensions_locked = _soft_mask_requires_matching_dimensions(
+                            doc,
+                            smask_xref,
+                        )
+                        if scale < 0.99 and not dimensions_locked:
                             nw = max(64, int(w * scale))
                             nh = max(64, int(h * scale))
                             if nw < w:

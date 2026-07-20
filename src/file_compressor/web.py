@@ -112,15 +112,21 @@ _public_rate_limiter = (
 
 
 class CleanupFileResponse(FileResponse):
-    """Remove the response's temporary directory even if sending is cancelled."""
+    """Stream a temporary file, then remove its directory even if cancelled."""
 
     def __init__(self, *args, cleanup_path: Path, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.cleanup_path = cleanup_path
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        stream_scope = scope
+        if "http.response.pathsend" in scope.get("extensions", {}):
+            stream_scope = dict(scope)
+            extensions = dict(scope["extensions"])
+            extensions.pop("http.response.pathsend")
+            stream_scope["extensions"] = extensions
         try:
-            await super().__call__(scope, receive, send)
+            await super().__call__(stream_scope, receive, send)
         finally:
             await _run_thread_complete(shutil.rmtree, self.cleanup_path, True)
 

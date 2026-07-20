@@ -16,6 +16,14 @@ def _make_pdf(path: Path, page_texts: list[str], *, width: float = 595) -> Path:
     return path
 
 
+def _make_solid_color_pdf(path: Path, color: tuple[float, float, float]) -> Path:
+    with fitz.open() as document:
+        page = document.new_page(width=100, height=100)
+        page.draw_rect(page.rect, color=color, fill=color)
+        document.save(path)
+    return path
+
+
 def _make_pdf_with_link(path: Path, uri: str) -> Path:
     with fitz.open() as document:
         page = document.new_page(width=595, height=842)
@@ -66,6 +74,18 @@ def test_compare_identical_pdf_has_perfect_ssim(tmp_path: Path):
     assert comparison["ssim_min"] == pytest.approx(1.0)
     assert comparison["ssim_min_page"] == 1
     assert report["warnings"] == []
+
+
+def test_compare_pdf_ssim_is_color_sensitive(tmp_path: Path):
+    original = _make_solid_color_pdf(tmp_path / "red.pdf", (1, 0, 0))
+    candidate = _make_solid_color_pdf(tmp_path / "green.pdf", (0, 0.51, 0))
+
+    report = compare_pdf_quality.compare_pdfs(original, candidate, dpi=72)
+
+    comparison = report["comparisons"]["candidate"]
+    assert report["settings"]["render"]["colorspace"] == "rgb"
+    assert report["settings"]["ssim"]["channel_axis"] == 2
+    assert comparison["ssim_mean"] < 0.9
 
 
 def test_compare_pdf_identifies_changed_page(tmp_path: Path):
