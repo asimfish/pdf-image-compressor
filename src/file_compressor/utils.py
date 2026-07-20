@@ -34,7 +34,7 @@ def parse_size(value: Optional[str]) -> Optional[int]:
     if result <= 0:
         raise ValueError(f"Size must be positive: {value}")
     if not raw_unit and result < 1000:
-        raise ValueError(f"Bare number below 1000 treated as bytes — did you forget a unit (KB, MB)?")
+        raise ValueError("Bare number below 1000 treated as bytes — did you forget a unit (KB, MB)?")
     return result
 
 

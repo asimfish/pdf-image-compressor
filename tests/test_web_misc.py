@@ -318,7 +318,6 @@ def test_batch_compress_handles_missing_file(tmp_path: Path):
     pdf_id = upload.json()["id"]
 
     # Delete the stored file to simulate missing disk file
-    storage = client.app.state if hasattr(client.app, "state") else None
     from file_compressor.web import _get_storage
     s = _get_storage()
     stored_path = s.get_pdf_path(pdf_id)
@@ -336,7 +335,6 @@ def test_batch_compress_handles_missing_file(tmp_path: Path):
 
 
 def test_download_version_file_missing(tmp_path: Path):
-    from unittest.mock import patch
 
     client = _client(tmp_path)
     pdf_path = make_test_pdf(tmp_path / "vm.pdf")

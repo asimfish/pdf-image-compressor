@@ -8,9 +8,11 @@ __pycache__
 *.egg-info
 .coverage
 htmlcov
+dist
 tests
 test
 compressed
+ENV_STATE.json
 .server.log
 .server.pid
 .DS_Store

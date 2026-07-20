@@ -4,7 +4,7 @@ import fitz
 import pytest
 
 from file_compressor.models import CompressionConfig
-from file_compressor.pdfs import compress_pdf, optimize_pdf, rasterize_pdf, render_page
+from file_compressor.pdfs import compress_pdf, optimize_images_in_pdf, optimize_pdf, rasterize_pdf, render_page
 
 
 def _make_pdf(path: Path, pages: int = 3, with_images: bool = False) -> Path:
@@ -153,6 +153,302 @@ def _text_chars(path: Path) -> int:
         return sum(len(p.get_text()) for p in doc)
 
 
+def _make_pdf_with_soft_mask(path: Path, *, matte: bool = False) -> Path:
+    """Build a PDF image with separate base-color and soft-mask objects."""
+    import io
+    import random
+
+    from PIL import Image
+
+    rng = random.Random(7)
+    transparent = (255, 255, 255, 0) if matte else (0, 0, 0, 0)
+    with Image.new("RGBA", (600, 400), transparent) as image:
+        with Image.frombytes("RGB", (400, 240), rng.randbytes(400 * 240 * 3)) as rgb:
+            with Image.new("L", rgb.size, 255) as alpha:
+                with Image.new("RGBA", rgb.size) as visible:
+                    visible.paste(rgb)
+                    visible.putalpha(alpha)
+                    image.alpha_composite(visible, (100, 80))
+        with io.BytesIO() as buffer:
+            image.save(buffer, format="PNG")
+            data = buffer.getvalue()
+
+    with fitz.open() as doc:
+        page = doc.new_page()
+        image_rect = fitz.Rect(50, 100, 550, 433.33)
+        page.draw_rect(image_rect, color=(0.1, 0.4, 0.8), fill=(0.1, 0.4, 0.8))
+        page.insert_image(image_rect, stream=data)
+        if matte:
+            smask_xref = page.get_images(full=True)[0][1]
+            assert smask_xref > 0
+            doc.xref_set_key(smask_xref, "Matte", "[1 1 1]")
+        doc.save(path)
+    return path
+
+
+def _page_rgb_at(path: Path, x: int, y: int) -> tuple[int, int, int]:
+    with fitz.open(path) as doc:
+        pixmap = doc[0].get_pixmap(matrix=fitz.Matrix(1, 1), colorspace=fitz.csRGB, alpha=False)
+        offset = (y * pixmap.width + x) * 3
+        samples = pixmap.samples
+        return samples[offset], samples[offset + 1], samples[offset + 2]
+
+
+def _assert_transparent_pixel_preserved(source: Path, output: Path) -> None:
+    expected = _page_rgb_at(source, 60, 110)
+    actual = _page_rgb_at(output, 60, 110)
+    assert max(abs(expected[index] - actual[index]) for index in range(3)) <= 2
+
+
+def _assert_scaled_image_keeps_independent_soft_mask(path: Path) -> None:
+    with fitz.open(path) as doc:
+        xref, smask_xref = doc[0].get_images(full=True)[0][:2]
+        assert smask_xref > 0
+        image = doc.extract_image(xref)
+        soft_mask = doc.extract_image(smask_xref)
+        assert (image["width"], image["height"]) != (
+            soft_mask["width"],
+            soft_mask["height"],
+        )
+
+
+def _assert_matte_image_and_soft_mask_dimensions_match(path: Path) -> None:
+    with fitz.open(path) as doc:
+        xref, smask_xref = doc[0].get_images(full=True)[0][:2]
+        assert doc.xref_get_key(smask_xref, "Matte")[0] == "array"
+        image = doc.extract_image(xref)
+        soft_mask = doc.extract_image(smask_xref)
+        assert (image["width"], image["height"]) == (
+            soft_mask["width"],
+            soft_mask["height"],
+        )
+
+
+def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask.pdf")
+    output = tmp_path / "soft_mask_out.pdf"
+    with fitz.open(source) as doc:
+        assert doc[0].get_images(full=True)[0][1] > 0
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="text", compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_transparent_pixel_preserved(source, output)
+    _assert_scaled_image_keeps_independent_soft_mask(output)
+
+
+def test_text_mode_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_matte.pdf", matte=True)
+    output = tmp_path / "soft_mask_matte_out.pdf"
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="text", compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_matte_image_and_soft_mask_dimensions_match(output)
+
+
+def test_optimize_images_in_pdf_preserves_soft_mask_transparency(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_optimize.pdf")
+    output = tmp_path / "soft_mask_optimize_out.pdf"
+
+    optimize_images_in_pdf(
+        source,
+        output,
+        CompressionConfig(compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_transparent_pixel_preserved(source, output)
+    _assert_scaled_image_keeps_independent_soft_mask(output)
+
+
+def test_optimize_images_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path):
+    source = _make_pdf_with_soft_mask(
+        tmp_path / "soft_mask_matte_optimize.pdf",
+        matte=True,
+    )
+    output = tmp_path / "soft_mask_matte_optimize_out.pdf"
+
+    optimize_images_in_pdf(
+        source,
+        output,
+        CompressionConfig(compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_matte_image_and_soft_mask_dimensions_match(output)
+
+
+def test_prepare_pdf_image_logs_unreadable_soft_mask(caplog: pytest.LogCaptureFixture):
+    import logging
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class MissingMaskDocument:
+        @staticmethod
+        def extract_image(_xref: int):
+            return None
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="soft mask 99"):
+            _prepare_pdf_image_for_jpeg(
+                image,
+                stack,
+                doc=MissingMaskDocument(),
+                smask_xref=99,
+            )
+
+    assert "soft mask 99" in caplog.text
+
+
+def test_replace_image_aborts_when_soft_mask_restore_fails(caplog: pytest.LogCaptureFixture):
+    import logging
+
+    from file_compressor.pdfs import (
+        _SoftMaskRestoreError,
+        _replace_pdf_image_preserving_soft_mask,
+    )
+
+    class RecordingPage:
+        replaced_stream: bytes | None = None
+
+        def replace_image(self, _xref: int, *, stream: bytes) -> None:
+            self.replaced_stream = stream
+
+    class FailingDocument:
+        @staticmethod
+        def xref_set_key(_xref: int, _key: str, _value: str) -> None:
+            raise RuntimeError("simulated xref failure")
+
+    page = RecordingPage()
+    with caplog.at_level(logging.ERROR, logger="file_compressor.pdfs"):
+        with pytest.raises(_SoftMaskRestoreError, match="soft mask 99"):
+            _replace_pdf_image_preserving_soft_mask(
+                page,
+                FailingDocument(),
+                xref=7,
+                smask_xref=99,
+                stream=b"jpeg",
+            )
+
+    assert page.replaced_stream == b"jpeg"
+    assert "xref=7" in caplog.text
+    assert "soft mask 99" in caplog.text
+
+
+def test_text_mode_keeps_original_image_when_soft_mask_preparation_fails(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    import logging
+    from unittest.mock import patch
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_broken.pdf")
+    output = tmp_path / "soft_mask_broken_out.pdf"
+
+    def reject_soft_mask(image, stack, *, doc, smask_xref):
+        if smask_xref > 0:
+            raise ValueError("broken soft mask")
+        return _prepare_pdf_image_for_jpeg(image, stack, doc=doc, smask_xref=smask_xref)
+
+    with caplog.at_level(logging.DEBUG, logger="file_compressor.pdfs"):
+        with patch(
+            "file_compressor.pdfs._prepare_pdf_image_for_jpeg",
+            side_effect=reject_soft_mask,
+        ):
+            compress_pdf(
+                source,
+                output,
+                CompressionConfig(pdf_mode="text", compression_level=2, output_dir=tmp_path),
+            )
+
+    _assert_transparent_pixel_preserved(source, output)
+    with fitz.open(output) as doc:
+        assert doc[0].get_images(full=True)[0][1] > 0
+    assert "Skipping PDF image xref=" in caplog.text
+
+
+def test_optimize_images_keeps_original_when_soft_mask_preparation_fails(tmp_path: Path):
+    from unittest.mock import patch
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_optimize_broken.pdf")
+    output = tmp_path / "soft_mask_optimize_broken_out.pdf"
+
+    def reject_soft_mask(image, stack, *, doc, smask_xref):
+        if smask_xref > 0:
+            raise ValueError("broken soft mask")
+        return _prepare_pdf_image_for_jpeg(image, stack, doc=doc, smask_xref=smask_xref)
+
+    with patch(
+        "file_compressor.pdfs._prepare_pdf_image_for_jpeg",
+        side_effect=reject_soft_mask,
+    ):
+        optimize_images_in_pdf(
+            source,
+            output,
+            CompressionConfig(compression_level=2, output_dir=tmp_path),
+        )
+
+    _assert_transparent_pixel_preserved(source, output)
+    with fitz.open(output) as doc:
+        assert doc[0].get_images(full=True)[0][1] > 0
+
+
+def test_text_mode_does_not_save_partial_soft_mask_replacement(tmp_path: Path):
+    from unittest.mock import patch
+
+    from file_compressor.pdfs import _SoftMaskRestoreError
+
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_restore_failure.pdf")
+    output = tmp_path / "soft_mask_restore_failure_out.pdf"
+
+    with patch(
+        "file_compressor.pdfs._replace_pdf_image_preserving_soft_mask",
+        side_effect=_SoftMaskRestoreError("Unable to restore PDF soft mask 99"),
+    ):
+        with pytest.raises(_SoftMaskRestoreError, match="soft mask 99"):
+            compress_pdf(
+                source,
+                output,
+                CompressionConfig(pdf_mode="text", compression_level=2, output_dir=tmp_path),
+            )
+
+    assert not output.exists()
+
+
+def test_optimize_images_does_not_save_partial_soft_mask_replacement(tmp_path: Path):
+    from unittest.mock import patch
+
+    from file_compressor.pdfs import _SoftMaskRestoreError
+
+    source = _make_pdf_with_soft_mask(tmp_path / "soft_mask_optimize_restore_failure.pdf")
+    output = tmp_path / "soft_mask_optimize_restore_failure_out.pdf"
+
+    with patch(
+        "file_compressor.pdfs._replace_pdf_image_preserving_soft_mask",
+        side_effect=_SoftMaskRestoreError("Unable to restore PDF soft mask 99"),
+    ):
+        with pytest.raises(_SoftMaskRestoreError, match="soft mask 99"):
+            optimize_images_in_pdf(
+                source,
+                output,
+                CompressionConfig(compression_level=2, output_dir=tmp_path),
+            )
+
+    assert not output.exists()
+
+
 def test_compress_pdf_text_mode_keeps_text(tmp_path: Path):
     source = _make_pdf_with_image(tmp_path / "txt.pdf", pages=2)
     output = tmp_path / "txt_out.pdf"
@@ -224,6 +520,37 @@ def test_compress_pdf_auto_with_target_falls_back_to_raster(tmp_path: Path):
     compress_pdf(source, output, config)
 
     assert output.exists()
+
+
+def test_compress_pdf_auto_logs_failed_fallback_passes(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    import logging
+    from unittest.mock import patch
+
+    source = _make_pdf(tmp_path / "fallback_errors.pdf")
+    output = tmp_path / "fallback_errors_out.pdf"
+    config = CompressionConfig(target_bytes=1, pdf_mode="auto", output_dir=tmp_path)
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="file_compressor.pdfs"),
+        patch("file_compressor.pdfs.optimize_pdf", side_effect=RuntimeError("optimize failed")),
+        patch(
+            "file_compressor.pdfs.compress_pdf_keep_text",
+            side_effect=RuntimeError("keep-text failed"),
+        ),
+        patch(
+            "file_compressor.pdfs.rasterize_pdf_to_target",
+            side_effect=RuntimeError("raster failed"),
+        ),
+    ):
+        compress_pdf(source, output, config)
+
+    assert output.read_bytes() == source.read_bytes()
+    assert "Optimize PDF pass failed" in caplog.text
+    assert "Keep-text PDF pass failed" in caplog.text
+    assert "Raster PDF pass failed" in caplog.text
 
 
 def test_compress_pdf_auto_with_large_target_returns_optimized(tmp_path: Path):

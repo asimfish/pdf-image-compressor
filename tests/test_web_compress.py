@@ -544,7 +544,6 @@ def test_batch_compress_rejects_long_label(tmp_path: Path):
 
 def test_compress_passes_strip_metadata_to_config(tmp_path: Path):
     from unittest.mock import patch
-    from file_compressor.models import CompressionConfig
 
     client = _client(tmp_path)
     pdf_path = make_test_pdf(tmp_path / "cfg.pdf")
@@ -553,7 +552,6 @@ def test_compress_passes_strip_metadata_to_config(tmp_path: Path):
     pdf_id = upload.json()["id"]
 
     captured_configs = []
-    original_compress_path = None
 
     def mock_compress(src, config, output=None):
         captured_configs.append(config)
@@ -601,8 +599,7 @@ def test_batch_compress_handles_missing_file(tmp_path: Path):
     client = _client(tmp_path)
     pdf_path = make_test_pdf(tmp_path / "test.pdf")
     with open(pdf_path, "rb") as f:
-        resp = client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
-    pdf_id = resp.json()["id"]
+        client.post("/api/pdfs/upload", files={"file": ("test.pdf", f, "application/pdf")})
     # Delete the original file from disk to simulate missing file
     originals = tmp_path / "originals"
     for f in originals.iterdir():

@@ -333,7 +333,6 @@ def test_batch_delete_rollback_on_error(tmp_path: Path):
     p2 = storage.add_pdf("b.pdf", b"%PDF", 1)
 
     real_conn = storage._conn
-    call_count = 0
 
     class FailingCommitConn:
         def __getattr__(self, name):
@@ -493,8 +492,6 @@ def test_batch_delete_succeeds_when_file_unlink_fails(tmp_path: Path):
     storage = Storage(tmp_path)
     pdf = storage.add_pdf("lock.pdf", b"%PDF", 1)
     storage.add_version(_vp(pdf_id=pdf.id, compression_ratio=0.5))
-
-    real_unlink = Path.unlink
 
     def failing_unlink(self, *args, **kwargs):
         raise OSError("Permission denied")
