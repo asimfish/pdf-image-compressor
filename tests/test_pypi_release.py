@@ -19,6 +19,7 @@ Covers all 10 required test categories:
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import json
 import sys
@@ -31,6 +32,8 @@ import pytest
 
 # Make scripts/ importable without modifying project configuration.
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+import pypi_release as release_module  # noqa: E402
 
 from pypi_release import (  # noqa: E402
     DistributionFile,
@@ -509,6 +512,39 @@ def test_prepare_partial_stages_only_missing(tmp_path):
     assert staged == {"papersqueeze-0.2.0.tar.gz"}
 
 
+def test_prepare_case_only_remote_name_stages_exact_local_file(tmp_path):
+    """A case-only remote name is distinct and cannot satisfy the local wheel."""
+    src = tmp_path / "dist"
+    src.mkdir()
+    _, sdata = _write_dist(src)
+    remote = {
+        "urls": [
+            {
+                "filename": "PaperSqueeze-0.2.0-py3-none-any.whl",
+                "digests": {"sha256": "c" * 64},
+            },
+            {
+                "filename": "papersqueeze-0.2.0.tar.gz",
+                "digests": {"sha256": _sha256_bytes(sdata)},
+            },
+        ]
+    }
+    staging = tmp_path / "staging"
+
+    prepare(
+        source=src,
+        project="papersqueeze",
+        version="0.2.0",
+        staging=staging,
+        manifest_path=tmp_path / "manifest.json",
+        _fetch=_mock_fetch_json(remote),
+    )
+
+    assert {path.name for path in staging.iterdir()} == {
+        "papersqueeze-0.2.0-py3-none-any.whl"
+    }
+
+
 # ── 6. Conflicting digest -> hard failure ────────────────────────────────────
 
 
@@ -631,6 +667,23 @@ def test_query_pypi_timeout():
         query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
 
 
+@pytest.mark.parametrize(
+    "read_error",
+    [
+        http.client.IncompleteRead(b"partial", 100),
+        http.client.HTTPException("response read failed"),
+    ],
+)
+def test_query_pypi_http_client_read_error(read_error):
+    """Truncated and failed HTTP response reads become ReleaseStateError."""
+
+    def _fetch(url: str) -> bytes:
+        raise read_error
+
+    with pytest.raises(ReleaseStateError, match="[Nn]etwork|HTTP"):
+        query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
+
+
 def test_query_pypi_invalid_sha256_format():
     """sha256 that is not 64 lowercase hex chars is rejected as schema error."""
     payload = {
@@ -679,6 +732,25 @@ def test_query_pypi_non_json_body_type_raises_release_error():
 
     with pytest.raises(ReleaseStateError):
         query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
+
+
+def test_query_pypi_preserves_case_distinct_filenames():
+    """Remote artifact names are exact identifiers, not normalized project names."""
+    payload = {
+        "urls": [
+            {"filename": "Package.whl", "digests": {"sha256": "a" * 64}},
+            {"filename": "package.whl", "digests": {"sha256": "b" * 64}},
+        ]
+    }
+
+    result = query_pypi_version(
+        "papersqueeze", "0.2.0", _fetch=_mock_fetch_json(payload)
+    )
+
+    assert result == {
+        "Package.whl": "a" * 64,
+        "package.whl": "b" * 64,
+    }
 
 
 # ── 8. Manifest has all expected hashes; GitHub output correctness ────────────
@@ -756,6 +828,126 @@ def test_prepare_github_output_publish_false(tmp_path):
     content = gho.read_text()
     assert "PREVIOUS=value" in content  # existing content preserved
     assert "publish=false" in content
+
+
+def test_prepare_staging_cleanup_failure_is_release_error(tmp_path, monkeypatch):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    def _fail_cleanup(path):
+        raise PermissionError("cleanup denied")
+
+    monkeypatch.setattr(release_module.shutil, "rmtree", _fail_cleanup)
+
+    with pytest.raises(ReleaseStateError, match="[Ss]tag"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=staging,
+            manifest_path=tmp_path / "manifest.json",
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+
+def test_prepare_staging_create_failure_is_release_error(tmp_path, monkeypatch):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+    staging = tmp_path / "staging"
+    original_mkdir = Path.mkdir
+
+    def _fail_staging_mkdir(path, *args, **kwargs):
+        if path == staging:
+            raise PermissionError("mkdir denied")
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _fail_staging_mkdir)
+
+    with pytest.raises(ReleaseStateError, match="[Ss]tag"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=staging,
+            manifest_path=tmp_path / "manifest.json",
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+
+def test_prepare_copy_failure_is_release_error(tmp_path, monkeypatch):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+
+    def _fail_copy(source, destination):
+        raise PermissionError("copy denied")
+
+    monkeypatch.setattr(release_module.shutil, "copy2", _fail_copy)
+
+    with pytest.raises(ReleaseStateError, match="[Cc]opy"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=tmp_path / "staging",
+            manifest_path=tmp_path / "manifest.json",
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+
+def test_prepare_manifest_write_failure_is_release_error(tmp_path, monkeypatch):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+    manifest_path = tmp_path / "manifest.json"
+    original_write_text = Path.write_text
+
+    def _fail_manifest_write(path, *args, **kwargs):
+        if path == manifest_path:
+            raise PermissionError("manifest write denied")
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", _fail_manifest_write)
+
+    with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=tmp_path / "staging",
+            manifest_path=manifest_path,
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+
+def test_prepare_github_output_failure_is_release_error(tmp_path, monkeypatch):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+    github_output = tmp_path / "github-output"
+    original_open = Path.open
+
+    def _fail_output_open(path, mode="r", *args, **kwargs):
+        if path == github_output and mode == "a":
+            raise PermissionError("output append denied")
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _fail_output_open)
+
+    with pytest.raises(ReleaseStateError, match="GitHub"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=tmp_path / "staging",
+            manifest_path=tmp_path / "manifest.json",
+            github_output=github_output,
+            _fetch=_mock_fetch_http_error(404),
+        )
 
 
 # ── 9. Verify scenarios ───────────────────────────────────────────────────────
@@ -938,6 +1130,91 @@ def test_verify_url_error_exhausts_bounded_attempts(tmp_path):
 
     assert fetch_calls == 4
     assert sleep_calls == [1.25, 1.25, 1.25]
+
+
+def test_verify_incomplete_read_retries_then_succeeds(tmp_path):
+    """A truncated read retries once and succeeds without real sleeping."""
+    manifest_path = _make_manifest(tmp_path)
+    fetch_calls = 0
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        if fetch_calls == 1:
+            raise http.client.IncompleteRead(b"partial", 100)
+        return json.dumps(_remote_state("a" * 64, "b" * 64)).encode()
+
+    sleep_calls: list[float] = []
+    verify(
+        manifest_path,
+        attempts=3,
+        delay_seconds=4.0,
+        _fetch=_fetch,
+        _sleep=sleep_calls.append,
+    )
+
+    assert fetch_calls == 2
+    assert sleep_calls == [4.0]
+
+
+def test_verify_incomplete_read_exhausts_bounded_attempts(tmp_path):
+    """Persistent truncated reads exhaust attempts with exactly N-1 sleeps."""
+    manifest_path = _make_manifest(tmp_path)
+    fetch_calls = 0
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        raise http.client.IncompleteRead(b"partial", 100)
+
+    sleep_calls: list[float] = []
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=3,
+            delay_seconds=4.0,
+            _fetch=_fetch,
+            _sleep=sleep_calls.append,
+        )
+
+    assert fetch_calls == 3
+    assert sleep_calls == [4.0, 4.0]
+
+
+def test_verify_case_only_remote_name_exhausts_attempts(tmp_path):
+    """A case-only remote filename never satisfies an exact manifest filename."""
+    manifest_path = _make_manifest(tmp_path)
+    remote = {
+        "urls": [
+            {
+                "filename": "PaperSqueeze-0.2.0-py3-none-any.whl",
+                "digests": {"sha256": "a" * 64},
+            },
+            {
+                "filename": "papersqueeze-0.2.0.tar.gz",
+                "digests": {"sha256": "b" * 64},
+            },
+        ]
+    }
+    fetch_calls = 0
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        return json.dumps(remote).encode()
+
+    sleep_calls: list[float] = []
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=3,
+            delay_seconds=6.0,
+            _fetch=_fetch,
+            _sleep=sleep_calls.append,
+        )
+
+    assert fetch_calls == 3
+    assert sleep_calls == [6.0, 6.0]
 
 
 def test_verify_immediate_conflict_failure(tmp_path):
@@ -1174,6 +1451,45 @@ def test_cli_verify_malformed_manifest_exits_1_without_traceback(tmp_path, capsy
                 "1",
                 "--delay-seconds",
                 "0",
+            ]
+        )
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("error:")
+    assert "Traceback" not in captured.err
+
+
+def test_cli_prepare_filesystem_error_exits_1_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    src = tmp_path / "dist"
+    src.mkdir()
+    _write_dist(src)
+
+    def _always_404(url: str) -> bytes:
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    def _fail_copy(source, destination):
+        raise PermissionError("copy denied")
+
+    monkeypatch.setattr(release_module, "_default_fetch", _always_404)
+    monkeypatch.setattr(release_module.shutil, "copy2", _fail_copy)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "prepare",
+                "--source",
+                str(src),
+                "--staging",
+                str(tmp_path / "staging"),
+                "--project",
+                "papersqueeze",
+                "--version",
+                "0.2.0",
+                "--manifest",
+                str(tmp_path / "manifest.json"),
             ]
         )
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import math
 import re
@@ -308,7 +309,12 @@ def query_pypi_version(
         raise ReleaseStateError(
             f"PyPI HTTP error {exc.code} for {url}: {exc.reason}"
         ) from exc
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+    except (
+        urllib.error.URLError,
+        http.client.HTTPException,
+        OSError,
+        TimeoutError,
+    ) as exc:
         raise ReleaseStateError(f"Network error querying PyPI: {exc}") from exc
 
     if not isinstance(body, (bytes, bytearray)):
@@ -351,15 +357,14 @@ def query_pypi_version(
                 f"PyPI sha256 for {filename!r} is not a valid 64-hex string: {sha256!r}"
             )
 
-        fn_lower = filename.lower()
-        if fn_lower in result:
-            if result[fn_lower] != sha256:
+        if filename in result:
+            if result[filename] != sha256:
                 raise _RemoteHashConflictError(
                     f"Duplicate remote filename '{filename}' with conflicting hashes"
                 )
             # Same hash: silently ignore duplicate
         else:
-            result[fn_lower] = sha256
+            result[filename] = sha256
 
     return result
 
@@ -379,8 +384,7 @@ def files_to_upload(
     """
     to_upload: list[DistributionFile] = []
     for dist_file in local:
-        fn = dist_file.filename.lower()
-        remote_hash = remote.get(fn)
+        remote_hash = remote.get(dist_file.filename)
         if remote_hash is None:
             to_upload.append(dist_file)
         elif remote_hash == dist_file.sha256:
@@ -419,13 +423,24 @@ def prepare(
     missing_files = files_to_upload(local_files, remote_state)
 
     # Clean and recreate staging directory
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    try:
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True)
+    except (OSError, ValueError, shutil.Error) as exc:
+        raise ReleaseStateError(
+            f"Unable to prepare staging directory {staging}: {exc}"
+        ) from exc
 
     # Copy only the files that need uploading
     for dist_file in missing_files:
-        shutil.copy2(dist_file.path, staging / dist_file.filename)
+        destination = staging / dist_file.filename
+        try:
+            shutil.copy2(dist_file.path, destination)
+        except (OSError, ValueError, shutil.Error) as exc:
+            raise ReleaseStateError(
+                f"Unable to copy {dist_file.filename} to staging: {exc}"
+            ) from exc
 
     # Build manifest with ALL local files (not just staged subset)
     manifest: dict = {
@@ -434,13 +449,24 @@ def prepare(
         "version": version,
         "files": {f.filename: f.sha256 for f in local_files},
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    manifest_text = json.dumps(manifest, indent=2) + "\n"
+    try:
+        manifest_path.write_text(manifest_text, encoding="utf-8")
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ReleaseStateError(
+            f"Unable to write manifest {manifest_path}: {exc}"
+        ) from exc
 
     # Append GitHub Actions output variable
     if github_output is not None:
         publish_value = "true" if missing_files else "false"
-        with github_output.open("a", encoding="utf-8") as fh:
-            fh.write(f"publish={publish_value}\n")
+        try:
+            with github_output.open("a", encoding="utf-8") as fh:
+                fh.write(f"publish={publish_value}\n")
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ReleaseStateError(
+                f"Unable to append GitHub output {github_output}: {exc}"
+            ) from exc
 
 
 # ── verify ────────────────────────────────────────────────────────────────────
@@ -550,8 +576,7 @@ def verify(
         # Check each expected file
         all_present = True
         for filename, expected_sha in files.items():
-            fn_lower = filename.lower()
-            remote_sha = remote.get(fn_lower)
+            remote_sha = remote.get(filename)
             if remote_sha is None:
                 all_present = False
             elif remote_sha != expected_sha:
