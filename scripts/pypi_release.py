@@ -25,6 +25,7 @@ import json
 import math
 import re
 import shutil
+import stat
 import sys
 import tarfile
 import urllib.error
@@ -79,31 +80,47 @@ def sha256_file(path: Path) -> str:
 # ── Distribution collection ───────────────────────────────────────────────────
 
 
-def _check_wheel_members_safe(members: list[str], wheel_name: str) -> None:
+def _check_wheel_members_safe(members: list[zipfile.ZipInfo], wheel_name: str) -> None:
     """Raise ReleaseStateError if any ZIP member has unsafe path components."""
     for member in members:
-        if member.startswith("/"):
+        name = member.filename
+        if name.startswith("/"):
             raise ReleaseStateError(
-                f"Wheel {wheel_name}: unsafe absolute-path entry: {member!r}"
+                f"Wheel {wheel_name}: unsafe absolute-path entry: {name!r}"
             )
-        parts = member.replace("\\", "/").split("/")
+        parts = name.replace("\\", "/").split("/")
         if ".." in parts:
             raise ReleaseStateError(
-                f"Wheel {wheel_name}: unsafe path-traversal entry: {member!r}"
+                f"Wheel {wheel_name}: unsafe path-traversal entry: {name!r}"
             )
+
+
+def _check_wheel_metadata_regular(
+    metadata_member: zipfile.ZipInfo, wheel_name: str
+) -> None:
+    """Reject Unix special-file metadata while accepting unspecified type bits."""
+    if metadata_member.create_system != 3:
+        return
+
+    unix_mode = metadata_member.external_attr >> 16
+    file_type = stat.S_IFMT(unix_mode)
+    if file_type not in (0, stat.S_IFREG):
+        raise ReleaseStateError(
+            f"Wheel {wheel_name}: METADATA member is not a regular file"
+        )
 
 
 def _read_wheel_metadata(path: Path) -> bytes:
     """Extract exactly one *.dist-info/METADATA from a wheel (ZIP). No extraction."""
     try:
         with zipfile.ZipFile(path, "r") as zf:
-            members = zf.namelist()
+            members = zf.infolist()
             _check_wheel_members_safe(members, path.name)
 
             metadata_members = [
                 member
                 for member in members
-                if re.match(r"[^/]+\.dist-info/METADATA$", member)
+                if re.match(r"[^/]+\.dist-info/METADATA$", member.filename)
             ]
             if len(metadata_members) == 0:
                 raise ReleaseStateError(
@@ -112,14 +129,16 @@ def _read_wheel_metadata(path: Path) -> bytes:
             if len(metadata_members) > 1:
                 raise ReleaseStateError(
                     f"Wheel {path.name}: multiple *.dist-info/METADATA entries: "
-                    f"{metadata_members}"
+                    f"{[member.filename for member in metadata_members]}"
                 )
-            return zf.read(metadata_members[0])
+            metadata_member = metadata_members[0]
+            _check_wheel_metadata_regular(metadata_member, path.name)
+            return zf.read(metadata_member)
     except ReleaseStateError:
         raise
     except (zipfile.BadZipFile, OSError, RuntimeError, KeyError) as exc:
         raise ReleaseStateError(
-            f"Unable to read wheel metadata from {path.name}: {exc}"
+            f"Unable to read wheel metadata from {path}: {exc}"
         ) from exc
 
 
@@ -179,7 +198,7 @@ def _read_sdist_pkginfo(path: Path) -> bytes:
         raise
     except (tarfile.TarError, OSError, EOFError, KeyError) as exc:
         raise ReleaseStateError(
-            f"Unable to read sdist metadata from {path.name}: {exc}"
+            f"Unable to read sdist metadata from {path}: {exc}"
         ) from exc
 
 
@@ -206,11 +225,22 @@ def collect_distributions(
     Raises :class:`ReleaseStateError` for any structural or metadata problem.
     Never extracts or executes package code.
     """
-    if not source.is_dir():
+    try:
+        source_mode = source.stat().st_mode
+    except (OSError, ValueError) as exc:
+        raise ReleaseStateError(
+            f"Unable to inspect source directory {source}: {exc}"
+        ) from exc
+    if not stat.S_ISDIR(source_mode):
         raise ReleaseStateError(f"Source directory does not exist: {source}")
 
-    wheels = sorted(source.glob("*.whl"))
-    sdists = sorted(p for p in source.glob("*.tar.gz"))
+    try:
+        wheels = sorted(source.glob("*.whl"))
+        sdists = sorted(source.glob("*.tar.gz"))
+    except (OSError, ValueError) as exc:
+        raise ReleaseStateError(
+            f"Unable to discover distributions in {source}: {exc}"
+        ) from exc
 
     # Reject duplicates
     if len(wheels) == 0:
@@ -255,18 +285,18 @@ def collect_distributions(
             f"sdist Version '{s_version}' does not match expected '{version}'"
         )
 
-    return [
-        DistributionFile(
-            path=wheel_path,
-            filename=wheel_path.name,
-            sha256=sha256_file(wheel_path),
-        ),
-        DistributionFile(
-            path=sdist_path,
-            filename=sdist_path.name,
-            sha256=sha256_file(sdist_path),
-        ),
-    ]
+    distribution_files: list[DistributionFile] = []
+    for path in (wheel_path, sdist_path):
+        try:
+            digest = sha256_file(path)
+        except (OSError, ValueError) as exc:
+            raise ReleaseStateError(
+                f"Unable to hash distribution artifact {path}: {exc}"
+            ) from exc
+        distribution_files.append(
+            DistributionFile(path=path, filename=path.name, sha256=digest)
+        )
+    return distribution_files
 
 
 # ── PyPI query ────────────────────────────────────────────────────────────────
@@ -324,7 +354,7 @@ def query_pypi_version(
 
     try:
         data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as exc:
         raise ReleaseStateError(f"PyPI returned malformed JSON: {exc}") from exc
 
     if not isinstance(data, dict):
@@ -482,7 +512,7 @@ def _load_manifest(manifest_path: Path) -> tuple[str, str, dict[str, str]]:
 
     try:
         data = json.loads(manifest_text)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise ReleaseStateError(f"Manifest is not valid JSON: {exc}") from exc
 
     if not isinstance(data, dict):

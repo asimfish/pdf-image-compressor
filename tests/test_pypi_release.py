@@ -22,6 +22,7 @@ import hashlib
 import http.client
 import io
 import json
+import stat
 import sys
 import tarfile
 import urllib.error
@@ -113,6 +114,17 @@ def _make_wheel_with_metadata(metadata: bytes) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("papersqueeze-0.2.0.dist-info/METADATA", metadata)
+    return buf.getvalue()
+
+
+def _make_wheel_with_metadata_mode(mode: int) -> bytes:
+    metadata = b"Metadata-Version: 2.1\nName: papersqueeze\nVersion: 0.2.0\n"
+    metadata_info = zipfile.ZipInfo("papersqueeze-0.2.0.dist-info/METADATA")
+    metadata_info.create_system = 3
+    metadata_info.external_attr = mode << 16
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(metadata_info, metadata)
     return buf.getvalue()
 
 
@@ -382,11 +394,95 @@ def test_collect_wheel_dotdot_path(tmp_path):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 
+def test_collect_accepts_wheel_metadata_with_unset_file_type_mode(tmp_path):
+    """Ordinary ZIP entries without Unix file-type bits remain valid."""
+    _write_dist(tmp_path, wheel_data=_make_wheel_with_metadata_mode(0))
+
+    files = collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+    assert len(files) == 2
+
+
+def test_collect_rejects_wheel_symlink_metadata(tmp_path):
+    """A Unix symlink masquerading as METADATA is never followed or accepted."""
+    mode = stat.S_IFLNK | 0o777
+    _write_dist(tmp_path, wheel_data=_make_wheel_with_metadata_mode(mode))
+
+    with pytest.raises(ReleaseStateError, match="[Rr]egular|[Ss]ymlink"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+def test_collect_rejects_wheel_special_file_metadata(tmp_path):
+    """Non-regular Unix special modes such as FIFOs are rejected."""
+    mode = stat.S_IFIFO | 0o600
+    _write_dist(tmp_path, wheel_data=_make_wheel_with_metadata_mode(mode))
+
+    with pytest.raises(ReleaseStateError, match="[Rr]egular|[Ss]pecial"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
 def test_collect_sdist_dotdot_path(tmp_path):
     """sdist with path-traversal member is rejected."""
     sdata = _make_sdist(extra_members=[("papersqueeze-0.2.0/../evil.txt", b"bad")])
     _write_dist(tmp_path, sdist_data=sdata)
     with pytest.raises(ReleaseStateError, match="[Uu]nsafe"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+def test_collect_source_stat_failure_is_release_error(tmp_path):
+    """Source stat failures include source-path action context."""
+
+    class StatFailingPath(type(Path())):
+        def stat(self, *, follow_symlinks=True):
+            raise PermissionError("stat denied")
+
+    source = StatFailingPath(tmp_path)
+
+    with pytest.raises(ReleaseStateError, match="[Ii]nspect.*source|[Ss]tat"):
+        collect_distributions(source, "papersqueeze", "0.2.0")
+
+
+def test_collect_source_iteration_failure_is_release_error(tmp_path):
+    """Source directory iteration failures never leak raw OSError."""
+
+    class GlobFailingPath(type(Path())):
+        def glob(self, pattern):
+            raise PermissionError("iteration denied")
+
+    source = GlobFailingPath(tmp_path)
+
+    with pytest.raises(ReleaseStateError, match="[Dd]iscover|[Ii]terat"):
+        collect_distributions(source, "papersqueeze", "0.2.0")
+
+
+def test_collect_hash_oserror_is_release_error(tmp_path, monkeypatch):
+    """Hash open/read failures include the affected artifact path."""
+    _write_dist(tmp_path)
+
+    def _fail_hash(path):
+        raise PermissionError("hash read denied")
+
+    monkeypatch.setattr(release_module, "sha256_file", _fail_hash)
+
+    with pytest.raises(ReleaseStateError, match="[Hh]ash.*papersqueeze"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+def test_collect_artifact_disappearing_before_hash_is_release_error(
+    tmp_path, monkeypatch
+):
+    """An artifact removed after inspection is reported as a hash input error."""
+    _write_dist(tmp_path)
+    original_sha256_file = release_module.sha256_file
+
+    def _remove_then_hash(path):
+        if path.suffix == ".whl":
+            path.unlink()
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(release_module, "sha256_file", _remove_then_hash)
+
+    with pytest.raises(ReleaseStateError, match="[Hh]ash.*\\.whl"):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 
@@ -732,6 +828,26 @@ def test_query_pypi_non_json_body_type_raises_release_error():
 
     with pytest.raises(ReleaseStateError):
         query_pypi_version("papersqueeze", "0.2.0", _fetch=_fetch)
+
+
+def test_query_pypi_deep_json_recursion_is_release_error(monkeypatch):
+    """Adversarial JSON nesting cannot leak RecursionError."""
+    deeply_nested = b"[" * 2000 + b"0" + b"]" * 2000
+    original_loads = release_module.json.loads
+
+    def _loads_with_depth_limit(value):
+        if value == deeply_nested:
+            raise RecursionError("maximum JSON depth exceeded")
+        return original_loads(value)
+
+    monkeypatch.setattr(release_module.json, "loads", _loads_with_depth_limit)
+
+    with pytest.raises(ReleaseStateError, match="[Jj]SON"):
+        query_pypi_version(
+            "papersqueeze",
+            "0.2.0",
+            _fetch=lambda url: deeply_nested,
+        )
 
 
 def test_query_pypi_preserves_case_distinct_filenames():
@@ -1181,6 +1297,39 @@ def test_verify_incomplete_read_exhausts_bounded_attempts(tmp_path):
     assert sleep_calls == [4.0, 4.0]
 
 
+def test_verify_deep_json_recursion_exhausts_bounded_attempts(tmp_path, monkeypatch):
+    """Deep remote JSON retries only to the configured bound without real sleep."""
+    manifest_path = _make_manifest(tmp_path)
+    deeply_nested = b"[" * 2000 + b"0" + b"]" * 2000
+    fetch_calls = 0
+    original_loads = release_module.json.loads
+
+    def _loads_with_depth_limit(value):
+        if value == deeply_nested:
+            raise RecursionError("maximum JSON depth exceeded")
+        return original_loads(value)
+
+    monkeypatch.setattr(release_module.json, "loads", _loads_with_depth_limit)
+
+    def _fetch(url: str) -> bytes:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        return deeply_nested
+
+    sleep_calls: list[float] = []
+    with pytest.raises(ReleaseStateError):
+        verify(
+            manifest_path,
+            attempts=3,
+            delay_seconds=3.5,
+            _fetch=_fetch,
+            _sleep=sleep_calls.append,
+        )
+
+    assert fetch_calls == 3
+    assert sleep_calls == [3.5, 3.5]
+
+
 def test_verify_case_only_remote_name_exhausts_attempts(tmp_path):
     """A case-only remote filename never satisfies an exact manifest filename."""
     manifest_path = _make_manifest(tmp_path)
@@ -1322,6 +1471,29 @@ def test_verify_malformed_manifest_schema_raises_release_error(tmp_path, payload
 def test_verify_malformed_manifest_encoding_or_json(tmp_path, content):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_bytes(content)
+
+    with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
+        verify(
+            manifest_path,
+            attempts=1,
+            delay_seconds=0,
+            _fetch=_mock_fetch_json({"urls": []}),
+        )
+
+
+def test_verify_deeply_nested_manifest_is_release_error(tmp_path, monkeypatch):
+    """Adversarial manifest nesting cannot leak RecursionError."""
+    manifest_path = tmp_path / "manifest.json"
+    deeply_nested = "[" * 2000 + "0" + "]" * 2000
+    manifest_path.write_text(deeply_nested)
+    original_loads = release_module.json.loads
+
+    def _loads_with_depth_limit(value):
+        if value == deeply_nested:
+            raise RecursionError("maximum JSON depth exceeded")
+        return original_loads(value)
+
+    monkeypatch.setattr(release_module.json, "loads", _loads_with_depth_limit)
 
     with pytest.raises(ReleaseStateError, match="[Mm]anifest"):
         verify(
