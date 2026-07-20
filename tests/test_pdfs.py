@@ -163,6 +163,8 @@ def _make_pdf_with_soft_mask(path: Path, *, matte: bool = False) -> Path:
     rng = random.Random(7)
     transparent = (255, 255, 255, 0) if matte else (0, 0, 0, 0)
     with Image.new("RGBA", (600, 400), transparent) as image:
+        with Image.new("RGBA", (80, 80), (240, 30, 30, 128)) as partial:
+            image.alpha_composite(partial, (40, 40))
         with Image.frombytes("RGB", (400, 240), rng.randbytes(400 * 240 * 3)) as rgb:
             with Image.new("L", rgb.size, 255) as alpha:
                 with Image.new("RGBA", rgb.size) as visible:
@@ -186,6 +188,48 @@ def _make_pdf_with_soft_mask(path: Path, *, matte: bool = False) -> Path:
     return path
 
 
+def _make_pdf_with_shared_soft_mask(path: Path) -> Path:
+    """Build two distinct base images that reference one shared soft mask."""
+    import io
+    import random
+
+    from PIL import Image
+
+    streams: list[bytes] = []
+    for index, seed in enumerate((11, 29)):
+        rng = random.Random(seed)
+        with Image.new("RGBA", (300, 200), (0, 0, 0, 0)) as image:
+            patch_size = (220, 120 - index)
+            with Image.frombytes("RGB", patch_size, rng.randbytes(patch_size[0] * patch_size[1] * 3)) as rgb:
+                with Image.new("L", rgb.size, 255) as alpha:
+                    with Image.new("RGBA", rgb.size) as visible:
+                        visible.paste(rgb)
+                        visible.putalpha(alpha)
+                        image.alpha_composite(visible, (40, 40))
+            with io.BytesIO() as buffer:
+                image.save(buffer, format="PNG")
+                streams.append(buffer.getvalue())
+
+    with fitz.open() as doc:
+        page = doc.new_page(width=700, height=500)
+        page.draw_rect(page.rect, color=(0.1, 0.4, 0.8), fill=(0.1, 0.4, 0.8))
+        page.insert_image(fitz.Rect(20, 40, 320, 240), stream=streams[0])
+        page.insert_image(fitz.Rect(360, 260, 660, 460), stream=streams[1])
+        images = page.get_images(full=True)
+        smask_by_image_xref = {image[0]: image[1] for image in images}
+        image_xrefs = sorted(
+            smask_by_image_xref,
+            key=lambda xref: page.get_image_rects(xref)[0].x0,
+        )
+        assert len(image_xrefs) == 2
+        shared_smask_xref = smask_by_image_xref[image_xrefs[0]]
+        assert shared_smask_xref > 0
+        assert shared_smask_xref != smask_by_image_xref[image_xrefs[1]]
+        doc.xref_set_key(image_xrefs[1], "SMask", f"{shared_smask_xref} 0 R")
+        doc.save(path)
+    return path
+
+
 def _page_rgb_at(path: Path, x: int, y: int) -> tuple[int, int, int]:
     with fitz.open(path) as doc:
         pixmap = doc[0].get_pixmap(matrix=fitz.Matrix(1, 1), colorspace=fitz.csRGB, alpha=False)
@@ -198,6 +242,20 @@ def _assert_transparent_pixel_preserved(source: Path, output: Path) -> None:
     expected = _page_rgb_at(source, 60, 110)
     actual = _page_rgb_at(output, 60, 110)
     assert max(abs(expected[index] - actual[index]) for index in range(3)) <= 2
+
+
+def _assert_partial_transparency_preserved(source: Path, output: Path) -> None:
+    # This page coordinate falls inside the synthetic red patch with alpha=128.
+    expected = _page_rgb_at(source, 117, 167)
+    actual = _page_rgb_at(output, 117, 167)
+    assert max(abs(expected[index] - actual[index]) for index in range(3)) <= 10
+
+
+def _assert_shared_mask_transparency_preserved(source: Path, output: Path) -> None:
+    for x, y in ((30, 50), (370, 270)):
+        expected = _page_rgb_at(source, x, y)
+        actual = _page_rgb_at(output, x, y)
+        assert max(abs(expected[index] - actual[index]) for index in range(3)) <= 2
 
 
 def _assert_scaled_image_keeps_independent_soft_mask(path: Path) -> None:
@@ -237,6 +295,7 @@ def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path)
     )
 
     _assert_transparent_pixel_preserved(source, output)
+    _assert_partial_transparency_preserved(source, output)
     _assert_scaled_image_keeps_independent_soft_mask(output)
 
 
@@ -264,7 +323,29 @@ def test_optimize_images_in_pdf_preserves_soft_mask_transparency(tmp_path: Path)
     )
 
     _assert_transparent_pixel_preserved(source, output)
+    _assert_partial_transparency_preserved(source, output)
     _assert_scaled_image_keeps_independent_soft_mask(output)
+
+
+def test_optimize_images_preserves_shared_soft_mask(tmp_path: Path):
+    source = _make_pdf_with_shared_soft_mask(tmp_path / "shared_soft_mask.pdf")
+    output = tmp_path / "shared_soft_mask_out.pdf"
+
+    optimize_images_in_pdf(
+        source,
+        output,
+        CompressionConfig(compression_level=2, output_dir=tmp_path),
+    )
+
+    _assert_shared_mask_transparency_preserved(source, output)
+    with fitz.open(output) as doc:
+        images = doc[0].get_images(full=True)
+        image_xrefs = list(dict.fromkeys(image[0] for image in images))
+        smask_xrefs = {image[1] for image in images}
+        assert len(image_xrefs) == 2
+        assert len(smask_xrefs) == 1
+        assert next(iter(smask_xrefs)) > 0
+        assert all(doc.extract_image(xref)["width"] < 300 for xref in image_xrefs)
 
 
 def test_optimize_images_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path):
@@ -283,7 +364,7 @@ def test_optimize_images_keeps_matte_soft_mask_dimensions_aligned(tmp_path: Path
     _assert_matte_image_and_soft_mask_dimensions_match(output)
 
 
-def test_prepare_pdf_image_logs_unreadable_soft_mask(caplog: pytest.LogCaptureFixture):
+def test_prepare_pdf_image_rejects_non_stream_soft_mask(caplog: pytest.LogCaptureFixture):
     import logging
     from contextlib import ExitStack
 
@@ -293,8 +374,16 @@ def test_prepare_pdf_image_logs_unreadable_soft_mask(caplog: pytest.LogCaptureFi
 
     class MissingMaskDocument:
         @staticmethod
-        def extract_image(_xref: int):
-            return None
+        def is_stream(_xref: int) -> bool:
+            return False
+
+        @staticmethod
+        def xref_get_key(_xref: int, _key: str) -> tuple[str, str]:
+            raise AssertionError("non-stream soft masks have no subtype")
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            raise AssertionError("non-stream soft masks have no subtype object")
 
     with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
         with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="soft mask 99"):
@@ -306,6 +395,228 @@ def test_prepare_pdf_image_logs_unreadable_soft_mask(caplog: pytest.LogCaptureFi
             )
 
     assert "soft mask 99" in caplog.text
+
+
+def test_prepare_pdf_image_validates_soft_mask_without_decoding():
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class StreamMaskDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            return True
+
+        @staticmethod
+        def xref_get_key(_xref: int, key: str) -> tuple[str, str]:
+            assert key == "Subtype"
+            return "name", "/Image"
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            raise AssertionError("direct image subtypes have no indirect object")
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        prepared = _prepare_pdf_image_for_jpeg(
+            image,
+            stack,
+            doc=StreamMaskDocument(),
+            smask_xref=99,
+        )
+
+    assert prepared is image
+
+
+def test_prepare_pdf_image_rejects_non_image_stream_soft_mask(
+    caplog: pytest.LogCaptureFixture,
+):
+    import logging
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class NonImageStreamDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            return True
+
+        @staticmethod
+        def xref_get_key(_xref: int, key: str) -> tuple[str, str]:
+            assert key == "Subtype"
+            return "name", "/Form"
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            raise AssertionError("direct non-image subtypes have no indirect object")
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="soft mask 99"):
+            _prepare_pdf_image_for_jpeg(
+                image,
+                stack,
+                doc=NonImageStreamDocument(),
+                smask_xref=99,
+            )
+
+    assert "PDF image stream" in caplog.text
+
+
+def test_prepare_pdf_image_accepts_indirect_image_subtype():
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class IndirectImageSubtypeDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            return True
+
+        @staticmethod
+        def xref_get_key(_xref: int, key: str) -> tuple[str, str]:
+            assert key == "Subtype"
+            return "xref", "123 0 R"
+
+        @staticmethod
+        def xref_object(xref: int, *, compressed: bool) -> str:
+            assert xref == 123
+            assert compressed
+            return "/Image"
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        prepared = _prepare_pdf_image_for_jpeg(
+            image,
+            stack,
+            doc=IndirectImageSubtypeDocument(),
+            smask_xref=99,
+        )
+
+    assert prepared is image
+
+
+def test_prepare_pdf_image_rejects_non_ascii_indirect_subtype():
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class NonAsciiIndirectSubtypeDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            return True
+
+        @staticmethod
+        def xref_get_key(_xref: int, key: str) -> tuple[str, str]:
+            assert key == "Subtype"
+            return "xref", "１２３ ０ R"
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            assert compressed
+            return "/Image"
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        with pytest.raises(ValueError, match="soft mask 99"):
+            _prepare_pdf_image_for_jpeg(
+                image,
+                stack,
+                doc=NonAsciiIndirectSubtypeDocument(),
+                smask_xref=99,
+            )
+
+
+def test_prepare_pdf_image_logs_malformed_indirect_subtype(
+    caplog: pytest.LogCaptureFixture,
+):
+    import logging
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class MalformedIndirectSubtypeDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            return True
+
+        @staticmethod
+        def xref_get_key(_xref: int, key: str) -> tuple[str, str]:
+            assert key == "Subtype"
+            return "xref", "123 invalid R"
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            raise AssertionError("malformed references must not be resolved")
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="soft mask 99"):
+            _prepare_pdf_image_for_jpeg(
+                image,
+                stack,
+                doc=MalformedIndirectSubtypeDocument(),
+                smask_xref=99,
+            )
+
+    assert "malformed indirect Subtype reference" in caplog.text
+
+
+def test_prepare_pdf_image_logs_soft_mask_inspection_failure(
+    caplog: pytest.LogCaptureFixture,
+):
+    import logging
+    from contextlib import ExitStack
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _prepare_pdf_image_for_jpeg
+
+    class FailingMaskDocument:
+        @staticmethod
+        def is_stream(_xref: int) -> bool:
+            raise RuntimeError("simulated xref inspection failure")
+
+        @staticmethod
+        def xref_get_key(_xref: int, _key: str) -> tuple[str, str]:
+            raise AssertionError("stream inspection should fail first")
+
+        @staticmethod
+        def xref_object(_xref: int, *, compressed: bool) -> str:
+            raise AssertionError("stream inspection should fail first")
+
+    with Image.new("RGB", (10, 10), "black") as image, ExitStack() as stack:
+        with caplog.at_level(logging.WARNING), pytest.raises(ValueError, match="soft mask 99"):
+            _prepare_pdf_image_for_jpeg(
+                image,
+                stack,
+                doc=FailingMaskDocument(),
+                smask_xref=99,
+            )
+
+    assert "Unable to inspect PDF soft mask 99" in caplog.text
+
+
+def test_soft_mask_dimension_check_fails_closed(caplog: pytest.LogCaptureFixture):
+    import logging
+
+    from file_compressor.pdfs import _soft_mask_requires_matching_dimensions
+
+    class FailingDocument:
+        @staticmethod
+        def xref_get_key(_xref: int, _key: str) -> tuple[str, str]:
+            raise RuntimeError("simulated xref inspection failure")
+
+    with caplog.at_level(logging.WARNING, logger="file_compressor.pdfs"):
+        assert _soft_mask_requires_matching_dimensions(FailingDocument(), 99)
+
+    assert "soft mask 99" in caplog.text
+    assert "preserving image dimensions" in caplog.text
 
 
 def test_replace_image_aborts_when_soft_mask_restore_fails(caplog: pytest.LogCaptureFixture):

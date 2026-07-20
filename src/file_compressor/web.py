@@ -121,6 +121,8 @@ class CleanupFileResponse(FileResponse):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         stream_scope = scope
         if "http.response.pathsend" in scope.get("extensions", {}):
+            # Starlette returns after pathsend, before the server has consumed the
+            # file. Force body streaming so cleanup cannot race the file transfer.
             stream_scope = dict(scope)
             extensions = dict(scope["extensions"])
             extensions.pop("http.response.pathsend")

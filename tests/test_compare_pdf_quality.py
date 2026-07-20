@@ -77,6 +77,7 @@ def test_compare_identical_pdf_has_perfect_ssim(tmp_path: Path):
 
 
 def test_compare_pdf_ssim_is_color_sensitive(tmp_path: Path):
+    # These hues have similar luminance, so grayscale SSIM would miss the shift.
     original = _make_solid_color_pdf(tmp_path / "red.pdf", (1, 0, 0))
     candidate = _make_solid_color_pdf(tmp_path / "green.pdf", (0, 0.51, 0))
 

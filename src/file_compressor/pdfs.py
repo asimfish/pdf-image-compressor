@@ -9,7 +9,7 @@ from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Mapping, Optional, Protocol
+from typing import Optional, Protocol
 
 from PIL import Image, ImageFilter, ImageEnhance, ImageStat
 
@@ -19,11 +19,19 @@ from .utils import clamp_quality
 logger = logging.getLogger(__name__)
 
 
-class _PdfImageDocument(Protocol):
-    def extract_image(self, xref: int) -> Optional[Mapping[str, object]]: ...
+class _PdfSoftMaskInspector(Protocol):
+    def is_stream(self, xref: int) -> bool: ...
 
     def xref_get_key(self, xref: int, key: str) -> tuple[str, str]: ...
 
+    def xref_object(self, xref: int, *, compressed: bool) -> str: ...
+
+
+class _PdfDictionaryDocument(Protocol):
+    def xref_get_key(self, xref: int, key: str) -> tuple[str, str]: ...
+
+
+class _PdfImageUpdater(Protocol):
     def xref_set_key(self, xref: int, key: str, value: str) -> None: ...
 
 
@@ -153,7 +161,7 @@ def _prepare_pdf_image_for_jpeg(
     image: Image.Image,
     stack: ExitStack,
     *,
-    doc: _PdfImageDocument,
+    doc: _PdfSoftMaskInspector,
     smask_xref: int,
 ) -> Image.Image:
     """Return a JPEG-compatible base image without destroying PDF transparency.
@@ -164,11 +172,45 @@ def _prepare_pdf_image_for_jpeg(
     """
     mask: Optional[Image.Image] = None
     if smask_xref > 0:
-        mask_data = doc.extract_image(smask_xref)
-        mask_bytes = mask_data.get("image") if mask_data else None
-        if not isinstance(mask_bytes, bytes):
-            logger.warning("Skipping PDF soft mask %d: extract_image returned no image bytes", smask_xref)
-            raise ValueError(f"Unable to extract PDF soft mask {smask_xref}")
+        try:
+            is_stream = doc.is_stream(smask_xref)
+            subtype_type, subtype_value = (
+                doc.xref_get_key(smask_xref, "Subtype") if is_stream else ("null", "null")
+            )
+            if subtype_type == "xref":
+                reference = subtype_value.split()
+                if (
+                    len(reference) == 3
+                    and reference[0].isascii()
+                    and reference[0].isdigit()
+                    and reference[1].isascii()
+                    and reference[1].isdigit()
+                    and reference[2] == "R"
+                ):
+                    subtype_type = "name"
+                    subtype_value = doc.xref_object(
+                        int(reference[0]),
+                        compressed=True,
+                    ).strip()
+                else:
+                    logger.warning(
+                        "Skipping PDF soft mask %d: malformed indirect Subtype reference %r",
+                        smask_xref,
+                        subtype_value,
+                    )
+        except Exception as exc:
+            logger.warning(
+                "Unable to inspect PDF soft mask %d; skipping image compression: %s",
+                smask_xref,
+                exc,
+            )
+            raise ValueError(f"Unable to inspect PDF soft mask {smask_xref}") from exc
+        if not is_stream or (subtype_type, subtype_value) != ("name", "/Image"):
+            logger.warning(
+                "Skipping PDF soft mask %d: xref does not reference a PDF image stream",
+                smask_xref,
+            )
+            raise ValueError(f"Invalid PDF soft mask {smask_xref}")
     elif "A" in image.getbands() or (image.mode == "P" and "transparency" in image.info):
         rgba = stack.enter_context(image.convert("RGBA"))
         mask = stack.enter_context(rgba.getchannel("A"))
@@ -184,10 +226,14 @@ def _prepare_pdf_image_for_jpeg(
 
 
 def _soft_mask_requires_matching_dimensions(
-    doc: _PdfImageDocument,
+    doc: _PdfDictionaryDocument,
     smask_xref: int,
 ) -> bool:
-    """Return whether a Matte entry requires the mask and base image to match."""
+    """Return whether a Matte entry requires matching mask and base dimensions.
+
+    PDF soft masks may otherwise use independent dimensions and are scaled by the
+    renderer. Inspection failures lock dimensions so compression fails closed.
+    """
     if smask_xref <= 0:
         return False
     try:
@@ -204,7 +250,7 @@ def _soft_mask_requires_matching_dimensions(
 
 def _replace_pdf_image_preserving_soft_mask(
     page: _PdfImagePage,
-    doc: _PdfImageDocument,
+    doc: _PdfImageUpdater,
     *,
     xref: int,
     smask_xref: int,
