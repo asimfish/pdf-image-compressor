@@ -27,6 +27,7 @@ import sys
 import tarfile
 import urllib.error
 import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -110,10 +111,14 @@ def _make_sdist(
     return buf.getvalue()
 
 
-def _make_wheel_with_metadata(metadata: bytes) -> bytes:
+def _make_wheel_with_metadata(
+    metadata: bytes,
+    *,
+    metadata_path: str = "papersqueeze-0.2.0.dist-info/METADATA",
+) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("papersqueeze-0.2.0.dist-info/METADATA", metadata)
+        zf.writestr(metadata_path, metadata)
     return buf.getvalue()
 
 
@@ -133,6 +138,7 @@ def _make_sdist_with_metadata(
     *,
     metadata_type: bytes = tarfile.REGTYPE,
     linkname: str = "",
+    metadata_path: str = "papersqueeze-0.2.0/PKG-INFO",
 ) -> bytes:
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tf:
@@ -141,7 +147,7 @@ def _make_sdist_with_metadata(
             target.size = len(metadata)
             tf.addfile(target, io.BytesIO(metadata))
 
-        info = tarfile.TarInfo("papersqueeze-0.2.0/PKG-INFO")
+        info = tarfile.TarInfo(metadata_path)
         info.type = metadata_type
         info.linkname = linkname
         if info.isfile():
@@ -421,11 +427,81 @@ def test_collect_rejects_wheel_special_file_metadata(tmp_path):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 
+@pytest.mark.parametrize(
+    "metadata_path",
+    [
+        "papersqueeze-0.2.0.dist-info/METADATA\n",
+        " papersqueeze-0.2.0.dist-info/METADATA",
+        "papersqueeze-0.2.0.dist-info/METADATA ",
+        "papersqueeze-0.2.0.dist-info//METADATA",
+        "evil\\papersqueeze-0.2.0.dist-info/METADATA",
+        "./papersqueeze-0.2.0.dist-info/METADATA",
+        "\x01papersqueeze-0.2.0.dist-info/METADATA",
+    ],
+)
+def test_collect_rejects_noncanonical_wheel_metadata_path(tmp_path, metadata_path):
+    metadata = b"Metadata-Version: 2.1\nName: papersqueeze\nVersion: 0.2.0\n"
+    wheel_data = _make_wheel_with_metadata(
+        metadata,
+        metadata_path=metadata_path,
+    )
+    _write_dist(tmp_path, wheel_data=wheel_data)
+
+    with pytest.raises(ReleaseStateError, match="METADATA"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+@pytest.mark.parametrize(
+    "read_error",
+    [
+        zlib.error("corrupt deflate stream"),
+        zipfile.BadZipFile("Bad CRC-32 for METADATA"),
+        EOFError("truncated compressed data"),
+    ],
+)
+def test_collect_corrupt_wheel_metadata_read_is_release_error(
+    tmp_path, monkeypatch, read_error
+):
+    _write_dist(tmp_path)
+
+    def _fail_metadata_read(archive, member, *args, **kwargs):
+        raise read_error
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", _fail_metadata_read)
+
+    with pytest.raises(ReleaseStateError, match="[Ww]heel metadata"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
 def test_collect_sdist_dotdot_path(tmp_path):
     """sdist with path-traversal member is rejected."""
     sdata = _make_sdist(extra_members=[("papersqueeze-0.2.0/../evil.txt", b"bad")])
     _write_dist(tmp_path, sdist_data=sdata)
     with pytest.raises(ReleaseStateError, match="[Uu]nsafe"):
+        collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+@pytest.mark.parametrize(
+    "metadata_path",
+    [
+        "papersqueeze-0.2.0/PKG-INFO\n",
+        " papersqueeze-0.2.0/PKG-INFO",
+        "papersqueeze-0.2.0/PKG-INFO ",
+        "papersqueeze-0.2.0//PKG-INFO",
+        "evil\\papersqueeze-0.2.0/PKG-INFO",
+        "./papersqueeze-0.2.0/PKG-INFO",
+        "\x01papersqueeze-0.2.0/PKG-INFO",
+    ],
+)
+def test_collect_rejects_noncanonical_sdist_metadata_path(tmp_path, metadata_path):
+    metadata = b"Metadata-Version: 2.1\nName: papersqueeze\nVersion: 0.2.0\n"
+    sdist_data = _make_sdist_with_metadata(
+        metadata,
+        metadata_path=metadata_path,
+    )
+    _write_dist(tmp_path, sdist_data=sdist_data)
+
+    with pytest.raises(ReleaseStateError, match="PKG-INFO"):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 

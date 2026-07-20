@@ -32,6 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
@@ -110,6 +111,56 @@ def _check_wheel_metadata_regular(
         )
 
 
+def _has_noncanonical_archive_path_characters(name: str) -> bool:
+    return (
+        "\\" in name
+        or not name.isprintable()
+        or any(character.isspace() for character in name)
+    )
+
+
+def _is_exact_metadata_path(
+    name: str,
+    *,
+    metadata_filename: str,
+    parent_suffix: str | None = None,
+) -> bool:
+    if _has_noncanonical_archive_path_characters(name):
+        return False
+
+    parts = name.split("/")
+    if len(parts) != 2:
+        return False
+
+    parent, filename = parts
+    if parent in {"", ".", ".."} or filename != metadata_filename:
+        return False
+    if parent_suffix is None:
+        return True
+    if not parent.endswith(parent_suffix):
+        return False
+
+    parent_stem = parent[: -len(parent_suffix)]
+    return parent_stem not in {"", ".", ".."}
+
+
+def _looks_like_metadata_path(
+    name: str,
+    *,
+    metadata_filename: str,
+    parent_suffix: str | None = None,
+) -> bool:
+    normalized = name.replace("\\", "/")
+    parts = [
+        component.strip() for component in normalized.split("/") if component.strip()
+    ]
+    if not parts or parts[-1] != metadata_filename:
+        return False
+    if parent_suffix is None:
+        return True
+    return any(component.endswith(parent_suffix) for component in parts[:-1])
+
+
 def _read_wheel_metadata(path: Path) -> bytes:
     """Extract exactly one *.dist-info/METADATA from a wheel (ZIP). No extraction."""
     try:
@@ -117,11 +168,27 @@ def _read_wheel_metadata(path: Path) -> bytes:
             members = zf.infolist()
             _check_wheel_members_safe(members, path.name)
 
-            metadata_members = [
+            metadata_candidates = [
                 member
                 for member in members
-                if re.match(r"[^/]+\.dist-info/METADATA$", member.filename)
+                if _looks_like_metadata_path(
+                    member.filename,
+                    metadata_filename="METADATA",
+                    parent_suffix=".dist-info",
+                )
             ]
+            for member in metadata_candidates:
+                if not _is_exact_metadata_path(
+                    member.filename,
+                    metadata_filename="METADATA",
+                    parent_suffix=".dist-info",
+                ):
+                    raise ReleaseStateError(
+                        f"Wheel {path.name}: noncanonical METADATA path "
+                        f"{member.filename!r}"
+                    )
+
+            metadata_members = metadata_candidates
             if len(metadata_members) == 0:
                 raise ReleaseStateError(
                     f"Wheel {path.name}: no *.dist-info/METADATA found"
@@ -136,7 +203,14 @@ def _read_wheel_metadata(path: Path) -> bytes:
             return zf.read(metadata_member)
     except ReleaseStateError:
         raise
-    except (zipfile.BadZipFile, OSError, RuntimeError, KeyError) as exc:
+    except (
+        zipfile.BadZipFile,
+        zlib.error,
+        EOFError,
+        OSError,
+        RuntimeError,
+        KeyError,
+    ) as exc:
         raise ReleaseStateError(
             f"Unable to read wheel metadata from {path}: {exc}"
         ) from exc
@@ -164,14 +238,24 @@ def _read_sdist_pkginfo(path: Path) -> bytes:
             members = tf.getmembers()
             _check_tarinfo_safe(members, path.name)
 
-            # top-level: exactly one directory component before PKG-INFO
-            pkg_info_members = [
+            pkg_info_candidates = [
                 member
                 for member in members
-                if re.match(r"[^/]+/PKG-INFO$", member.name)
-                and not member.name.startswith("/")
-                and ".." not in member.name.split("/")
+                if _looks_like_metadata_path(
+                    member.name,
+                    metadata_filename="PKG-INFO",
+                )
             ]
+            for member in pkg_info_candidates:
+                if not _is_exact_metadata_path(
+                    member.name,
+                    metadata_filename="PKG-INFO",
+                ):
+                    raise ReleaseStateError(
+                        f"sdist {path.name}: noncanonical PKG-INFO path {member.name!r}"
+                    )
+
+            pkg_info_members = pkg_info_candidates
             if len(pkg_info_members) == 0:
                 raise ReleaseStateError(
                     f"sdist {path.name}: no top-level PKG-INFO found"
