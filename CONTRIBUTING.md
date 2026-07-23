@@ -100,7 +100,9 @@ re-verifies the remote SHA-256 digests.
 Ordinary manual dispatch still only repairs checksums and missing GHCR aliases
 for an existing published tag. To repair a partial or failed PyPI publication
 without rebuilding or executing code from the old tag, dispatch from the target
-version tag itself and set `repair_pypi=true`:
+version tag itself and set `repair_pypi=true` (available on tags that contain
+this workflow, v0.2.0 and later). This skips the checksum/GHCR backfill and runs
+only the PyPI repair:
 
 ```bash
 gh workflow run release.yml \
