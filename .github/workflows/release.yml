@@ -50,7 +50,12 @@ jobs:
         run: |
           set -euo pipefail
           git tag --points-at HEAD | grep -Fx -- "$RELEASE_TAG"
-          python3 - <<'PY'
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "$RELEASE_TAG is not reachable from origin/main; refusing to release." >&2
+            exit 1
+          fi
+          python3 -I - <<'PY'
           import os
           import tomllib
           from pathlib import Path
@@ -256,6 +261,111 @@ jobs:
           publish_alias "$image:$version"
           docker manifest inspect "$image:$RELEASE_TAG" >/dev/null
           docker manifest inspect "$image:$version" >/dev/null
+
+  pypi_preflight:
+    needs: [validate, publish]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    outputs:
+      publish: ${{ steps.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: refs/tags/${{ github.ref_name }}
+          persist-credentials: false
+
+      - name: Download validated Python distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Prepare distributions for PyPI
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I scripts/pypi_release.py prepare \
+            --project papersqueeze \
+            --version "${RELEASE_TAG#v}" \
+            --source dist \
+            --staging pypi-dist \
+            --manifest pypi-manifest.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Store PyPI manifest
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pypi-manifest
+          path: pypi-manifest.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Store staged PyPI distributions
+        if: steps.prepare.outputs.publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pypi-distributions
+          path: pypi-dist/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  pypi_publish:
+    needs: pypi_preflight
+    if: needs.pypi_preflight.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/papersqueeze
+    permissions:
+      id-token: write
+    steps:
+      - name: Download staged PyPI distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pypi-distributions
+          path: pypi-dist/
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          packages-dir: pypi-dist/
+          skip-existing: true
+
+  pypi_verify:
+    needs: [pypi_preflight, pypi_publish]
+    if: >-
+      always() &&
+      needs.pypi_preflight.result == 'success' &&
+      (needs.pypi_publish.result == 'success' ||
+       needs.pypi_publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: refs/tags/${{ github.ref_name }}
+          persist-credentials: false
+
+      - name: Download PyPI manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pypi-manifest
+          path: .
+
+      - name: Verify PyPI distributions
+        run: |
+          python3 -I scripts/pypi_release.py verify \
+            --manifest pypi-manifest.json \
+            --attempts 6 \
+            --delay-seconds 10
 
   resolve_backfill:
     if: github.event_name == 'workflow_dispatch'
