@@ -246,26 +246,32 @@ def _read_sdist_pkginfo(path: Path) -> bytes:
                     metadata_filename="PKG-INFO",
                 )
             ]
+            exact_pkg_info_candidates: list[tarfile.TarInfo] = []
             for member in pkg_info_candidates:
-                if not _is_exact_metadata_path(
+                if _is_exact_metadata_path(
                     member.name,
                     metadata_filename="PKG-INFO",
                 ):
-                    raise ReleaseStateError(
-                        f"sdist {path.name}: noncanonical PKG-INFO path {member.name!r}"
-                    )
+                    exact_pkg_info_candidates.append(member)
+                    continue
+                parts = member.name.split("/")
+                if len(parts) >= 2 and parts[-2].endswith(".egg-info"):
+                    continue
+                raise ReleaseStateError(
+                    f"sdist {path.name}: noncanonical PKG-INFO path {member.name!r}"
+                )
 
-            if len(pkg_info_candidates) == 0:
+            if len(exact_pkg_info_candidates) == 0:
                 raise ReleaseStateError(
                     f"sdist {path.name}: no top-level PKG-INFO found"
                 )
-            if len(pkg_info_candidates) > 1:
+            if len(exact_pkg_info_candidates) > 1:
                 raise ReleaseStateError(
                     f"sdist {path.name}: multiple top-level PKG-INFO entries: "
-                    f"{[member.name for member in pkg_info_candidates]}"
+                    f"{[member.name for member in exact_pkg_info_candidates]}"
                 )
 
-            metadata_member = pkg_info_candidates[0]
+            metadata_member = exact_pkg_info_candidates[0]
             if not metadata_member.isfile():
                 raise ReleaseStateError(
                     f"sdist {path.name}: PKG-INFO member is not a regular file"

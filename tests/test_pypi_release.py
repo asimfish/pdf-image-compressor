@@ -433,6 +433,24 @@ def test_collect_multiple_top_level_pkg_info_in_sdist(tmp_path):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
 
 
+def test_collect_accepts_setuptools_egg_info_pkg_info_duplicate(tmp_path):
+    """setuptools' nested src/*.egg-info/PKG-INFO duplicate is ignored."""
+    egg_info_pkg_info = b"Metadata-Version: 2.1\nName: papersqueeze\nVersion: 0.2.0\n"
+    sdata = _make_sdist(
+        extra_members=[
+            (
+                "papersqueeze-0.2.0/src/papersqueeze.egg-info/PKG-INFO",
+                egg_info_pkg_info,
+            )
+        ]
+    )
+    _write_dist(tmp_path, sdist_data=sdata)
+
+    files = collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+    assert len(files) == 2
+
+
 def test_collect_missing_pkg_info_in_sdist(tmp_path):
     """sdist without top-level PKG-INFO is rejected."""
     buf = io.BytesIO()
