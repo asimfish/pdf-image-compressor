@@ -5,13 +5,18 @@ All notable changes to PaperSqueeze are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-23
+
 ### Added
 
-- Automated tag-to-release publishing with version checks, quality gates, Python distribution validation, SHA-256 checksums, versioned GHCR image tags, and a non-executing repair path for existing releases.
+- Renamed the Python distribution to `papersqueeze` while keeping the `file_compressor` import package and adding a `papersqueeze` CLI alias alongside `file-compressor`.
+- Automated tag-to-release publishing with main-ancestry checks, quality gates, Python distribution validation, SHA-256 checksums, versioned GHCR image tags, and digest-verified PyPI publication.
+- Added tokenless PyPI Trusted Publishing through GitHub OIDC, staging only missing files and re-verifying remote SHA-256 digests after publication.
+- Added a tag-dispatched PyPI repair path that reuses verified GitHub Release assets without rebuilding or executing code from the old tag.
 
 ### Security
 
-- Isolated untrusted build and test code from release write tokens, locked the package build toolchain, and prevented commit/version container tags from being overwritten.
+- Isolated untrusted build and test code from release write tokens, locked the package build toolchain, prevented commit/version container tags from being overwritten, and kept PyPI publication free of stored API tokens.
 
 ## [0.1.0] - 2026-07-20
 
@@ -35,5 +40,6 @@ All notable changes to PaperSqueeze are documented here. The project follows
 - Isolated compression in a worker process and removed temporary files after each response.
 - Added restrictive browser security headers and disabled private library routes in public mode.
 
-[Unreleased]: https://github.com/asimfish/pdf-image-compressor/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/asimfish/pdf-image-compressor/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/asimfish/pdf-image-compressor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/asimfish/pdf-image-compressor/releases/tag/v0.1.0

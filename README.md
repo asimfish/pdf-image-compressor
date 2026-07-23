@@ -1,6 +1,7 @@
 # PaperSqueeze
 
 [![CI](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/papersqueeze)](https://pypi.org/project/papersqueeze/)
 [![Release](https://img.shields.io/github/v/release/asimfish/pdf-image-compressor)](https://github.com/asimfish/pdf-image-compressor/releases)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/live-PaperSqueeze-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
@@ -50,7 +51,28 @@ uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf --json
 
 ## 安装
 
-需要 Python 3.10+ 和 [uv](https://docs.astral.sh/uv/)。
+需要 Python 3.10+。推荐使用 [uv](https://docs.astral.sh/uv/) 直接从 PyPI 安装：
+
+```bash
+uv tool install papersqueeze
+papersqueeze --help
+papersqueeze web
+```
+
+作为库使用时添加到项目依赖；导入命名空间仍是 `file_compressor`：
+
+```bash
+uv add papersqueeze
+```
+
+也可以从 [GitHub Releases](https://github.com/asimfish/pdf-image-compressor/releases)
+下载已构建的 wheel 和源码包：
+
+```bash
+uv pip install ./papersqueeze-*.whl
+```
+
+开发源码检出：
 
 ```bash
 git clone https://github.com/asimfish/pdf-image-compressor.git
@@ -58,51 +80,44 @@ cd pdf-image-compressor
 uv sync --locked --extra dev
 ```
 
-也可以从 [GitHub Releases](https://github.com/asimfish/pdf-image-compressor/releases)
-下载已构建的 wheel 和源码包：
-
-```bash
-uv pip install ./pdf_image_compressor-*.whl
-```
-
 ## CLI 使用
 
 ```bash
 # 智能压缩到 3 MB
-uv run file-compressor compress input.pdf \
+uv run papersqueeze compress input.pdf \
   --target-size 3MB \
   --pdf-mode auto \
   --compression-level 2
 
 # 始终保留文字层
-uv run file-compressor compress input.pdf \
+uv run papersqueeze compress input.pdf \
   --target-size 3MB \
   --pdf-mode text
 
 # 极限压缩；会失去文字层
-uv run file-compressor compress input.pdf \
+uv run papersqueeze compress input.pdf \
   --target-size 800KB \
   --pdf-mode raster \
   --pdf-dpi 120
 
 # 批量处理目录并输出 JSON 报告
-uv run file-compressor compress ./papers \
+uv run papersqueeze compress ./papers \
   --output-dir ./compressed \
   --json-report
 ```
 
-`--target-size` 支持 `500KB`、`2MB`、`1.5GB` 或纯字节数。
+`--target-size` 支持 `500KB`、`2MB`、`1.5GB` 或纯字节数。旧的 `file-compressor` 命令仍作为兼容别名保留。
 
 ## 本地 Web UI
 
 ```bash
-uv run file-compressor web
+uv run papersqueeze web
 ```
 
 打开 <http://127.0.0.1:8765>。默认模式会在 `~/.pdf-manager` 保存 PDF、备注和不同压缩版本。该资料库模式没有用户鉴权，请只监听本机或可信内网。可指定其他目录：
 
 ```bash
-uv run file-compressor web --data-dir /path/to/library
+uv run papersqueeze web --data-dir /path/to/library
 ```
 
 ## 公开无状态模式
@@ -118,7 +133,7 @@ PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS=300 \
 PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS=120 \
 PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE=12 \
 PDF_COMPRESSOR_CONCURRENCY=1 \
-uv run file-compressor web --host 0.0.0.0 --port 8080
+uv run papersqueeze web --host 0.0.0.0 --port 8080
 ```
 
 文件在独立临时目录中处理，响应完成后自动删除。公开服务默认禁用 OpenAPI 文档，添加 CSP、`nosniff`、禁止嵌入等安全响应头，并限制为单文件、单压缩任务。公开模式未显式配置上传上限时默认为 30 MiB。
@@ -255,7 +270,7 @@ uv run python -m pytest -q
 uv build
 ```
 
-当前测试套件包含 407 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留（含半透明、共享软遮罩、间接类型引用和 `Matte`）、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
+当前测试套件包含 536 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留（含半透明、共享软遮罩、间接类型引用和 `Matte`）、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
 
 ## 开源与贡献
 
