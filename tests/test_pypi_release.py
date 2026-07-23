@@ -4,7 +4,8 @@ TDD suite for scripts/pypi_release.py
 
 Covers all 10 required test categories:
  1. Valid wheel+sdist inspection and hashes
- 2. Wrong name/version, duplicates, malformed/multiple metadata rejection
+ 2. Wrong name/version, duplicates, malformed/multiple metadata rejection,
+    including legacy repair assets and wrong-tag versions
  3. First-release 404 -> empty mapping, both files staged
  4. Full identical version -> no staging / publish=false
  5. Partial identical version -> only missing file staged
@@ -306,6 +307,69 @@ def test_collect_wrong_sdist_version(tmp_path):
     _write_dist(tmp_path, sdist_data=sdata)
     with pytest.raises(ReleaseStateError, match="[Vv]ersion"):
         collect_distributions(tmp_path, "papersqueeze", "0.2.0")
+
+
+def test_repair_rejects_legacy_pdf_image_compressor_assets(tmp_path):
+    """v0.1.0 assets must fail before a repair artifact can reach the OIDC job."""
+    src = tmp_path / "release-dist"
+    src.mkdir()
+    (src / "pdf_image_compressor-0.1.0-py3-none-any.whl").write_bytes(
+        _make_wheel(name="pdf-image-compressor", version="0.1.0")
+    )
+    (src / "pdf_image_compressor-0.1.0.tar.gz").write_bytes(
+        _make_sdist(name="pdf-image-compressor", version="0.1.0")
+    )
+
+    staging = tmp_path / "staging"
+    manifest_path = tmp_path / "manifest.json"
+    github_output = tmp_path / "github-output"
+    github_output.write_text("", encoding="utf-8")
+
+    with pytest.raises(ReleaseStateError, match="[Nn]ame"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.1.0",
+            staging=staging,
+            manifest_path=manifest_path,
+            github_output=github_output,
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+    assert not staging.exists()
+    assert not manifest_path.exists()
+    assert github_output.read_text(encoding="utf-8") == ""
+
+
+def test_repair_rejects_papersqueeze_assets_from_wrong_tag(tmp_path):
+    """A papersqueeze asset built for another tag fails before staging or output."""
+    src = tmp_path / "release-dist"
+    src.mkdir()
+    _write_dist(
+        src,
+        wheel_data=_make_wheel(version="0.1.0"),
+        sdist_data=_make_sdist(version="0.1.0"),
+    )
+
+    staging = tmp_path / "staging"
+    manifest_path = tmp_path / "manifest.json"
+    github_output = tmp_path / "github-output"
+    github_output.write_text("", encoding="utf-8")
+
+    with pytest.raises(ReleaseStateError, match="[Vv]ersion"):
+        prepare(
+            source=src,
+            project="papersqueeze",
+            version="0.2.0",
+            staging=staging,
+            manifest_path=manifest_path,
+            github_output=github_output,
+            _fetch=_mock_fetch_http_error(404),
+        )
+
+    assert not staging.exists()
+    assert not manifest_path.exists()
+    assert github_output.read_text(encoding="utf-8") == ""
 
 
 def test_collect_missing_wheel(tmp_path):
