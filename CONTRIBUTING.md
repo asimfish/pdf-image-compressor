@@ -17,8 +17,10 @@ uv sync --locked --extra dev
 Run the local web interface with:
 
 ```bash
-uv run file-compressor web
+uv run papersqueeze web
 ```
+
+The legacy `file-compressor` command remains available as a compatibility alias.
 
 ## Before opening a pull request
 
@@ -59,21 +61,60 @@ uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
 
 ## Maintainer release
 
+One-time Trusted Publishing setup:
+
+1. Create or confirm a PyPI account with two-factor authentication.
+2. Add a pending trusted publisher with exactly these fields:
+
+   ```text
+   PyPI project: papersqueeze
+   Owner: asimfish
+   Repository: pdf-image-compressor
+   Workflow: release.yml
+   Environment: pypi
+   ```
+
+3. Create a GitHub `pypi` environment, restrict deployments to version tags,
+   and optionally require manual deployment approval.
+
+No long-lived PyPI API token is stored in GitHub; publication uses OIDC.
+
+Release order:
+
 1. Update the version in `pyproject.toml` and add its dated changelog entry.
 2. Merge the release preparation through a pull request and wait for `main` CI.
-3. Create and push an annotated version tag:
+3. Confirm the pending publisher and `pypi` environment match the fields above.
+4. Create and push an annotated version tag:
 
    ```bash
    git tag -a vX.Y.Z -m "PaperSqueeze vX.Y.Z"
    git push origin vX.Y.Z
    ```
 
-The Release workflow verifies that the tag matches the package version, reruns
-all quality gates, builds and checks the Python distributions, creates the
-GitHub Release, and publishes `vX.Y.Z` and `X.Y.Z` GHCR image tags. Its manual
-dispatch only repairs checksums and missing GHCR aliases for an existing
-published tag. It does not execute code from that tag or replace existing wheel
-or source-distribution assets.
+The Release workflow verifies that the tag is reachable from `main`, reruns all
+quality gates, builds and checks the Python distributions, creates the GitHub
+Release, publishes `vX.Y.Z` and `X.Y.Z` GHCR image tags, stages only missing
+PyPI files, publishes them through the protected `pypi` environment, and then
+re-verifies the remote SHA-256 digests.
+
+Ordinary manual dispatch still only repairs checksums and missing GHCR aliases
+for an existing published tag. To repair a partial or failed PyPI publication
+without rebuilding or executing code from the old tag, dispatch from the target
+version tag itself and set `repair_pypi=true` (available on tags that contain
+this workflow, v0.2.0 and later). This skips the checksum/GHCR backfill and runs
+only the PyPI repair:
+
+```bash
+gh workflow run release.yml \
+  --ref vX.Y.Z \
+  -f tag=vX.Y.Z \
+  -f repair_pypi=true
+```
+
+The repair path downloads the existing GitHub Release wheel and source
+distribution, verifies them against GitHub's recorded SHA-256 asset digests,
+rejects non-`papersqueeze` or wrong-version metadata, and uses the same OIDC
+publication and bounded digest verification jobs.
 
 For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead of
 opening a public issue.

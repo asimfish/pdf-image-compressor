@@ -4,8 +4,8 @@ requires = ["setuptools==83.0.0", "wheel==0.47.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pdf-image-compressor"
-version = "0.1.0"
+name = "papersqueeze"
+version = "0.2.0"
 description = "Target-aware PDF compressor that preserves searchable text, links, and vector content."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,7 @@ build = [
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.15.22",
+    "tomli>=2.0; python_version < '3.11'",
     "pip-audit>=2.10.1",
     "httpx2>=2.7.0",
     "numpy>=2.2.6",
@@ -59,6 +60,7 @@ dev = [
 
 [project.scripts]
 file-compressor = "file_compressor.cli:main"
+papersqueeze = "file_compressor.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

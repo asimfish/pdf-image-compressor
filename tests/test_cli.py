@@ -90,6 +90,22 @@ def test_parser_no_command():
     assert args.command is None
 
 
+def test_parser_prog_papersqueeze(capsys):
+    parser = build_parser(prog="papersqueeze")
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    captured = capsys.readouterr()
+    assert captured.out.lower().startswith("usage: papersqueeze")
+
+
+def test_parser_prog_file_compressor(capsys):
+    parser = build_parser(prog="file-compressor")
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    captured = capsys.readouterr()
+    assert captured.out.lower().startswith("usage: file-compressor")
+
+
 # ── _format_result ──
 
 def test_format_result_ok():
