@@ -296,7 +296,7 @@ app = FastAPI(
 app.add_middleware(PublicUploadLimitMiddleware)
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 
-_VALID_MODES = {"auto", "optimize", "raster", "text"}
+_VALID_MODES = {"auto", "fidelity", "optimize", "raster", "text"}
 _MAX_NOTES_LEN = 5000
 _MAX_LABEL_LEN = 500
 
@@ -362,7 +362,7 @@ def _validate_compress_params(
 def _compress_form(
     quality: int = Form(82),
     target_size: Optional[str] = Form(None),
-    pdf_mode: str = Form("auto"),
+    pdf_mode: str = Form("fidelity"),
     pdf_dpi: int = Form(120),
     pdf_grayscale: bool = Form(False),
     strip_metadata: bool = Form(True),

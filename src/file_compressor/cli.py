@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     compress.add_argument("--target-size", type=str, default=None)
     compress.add_argument("--overwrite", action="store_true")
     compress.add_argument("--archive", choices=["zip"], default=None)
-    compress.add_argument("--pdf-mode", choices=["auto", "optimize", "raster", "text"], default="auto")
+    compress.add_argument("--pdf-mode", choices=["fidelity", "auto", "optimize", "raster", "text"], default="fidelity")
     compress.add_argument("--pdf-dpi", type=int, default=120)
     compress.add_argument("--pdf-grayscale", action="store_true")
     compress.add_argument("--compression-level", type=int, choices=range(1, 5), default=2)

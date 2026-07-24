@@ -68,13 +68,16 @@ uv pip install ./pdf_image_compressor-*.whl
 ## CLI 使用
 
 ```bash
-# 智能压缩到 3 MB
+# 默认：保真优先，不栅格化，尽量压缩到 3 MB 以内
+uv run file-compressor compress input.pdf \
+  --target-size 3MB
+
+# 必须严格命中目标时才用 auto；保真路径失败才会整页栅格化
 uv run file-compressor compress input.pdf \
   --target-size 3MB \
-  --pdf-mode auto \
-  --compression-level 2
+  --pdf-mode auto
 
-# 始终保留文字层
+# 始终保留文字层，但允许更强地重压图片
 uv run file-compressor compress input.pdf \
   --target-size 3MB \
   --pdf-mode text

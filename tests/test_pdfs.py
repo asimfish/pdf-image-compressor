@@ -282,6 +282,26 @@ def _assert_matte_image_and_soft_mask_dimensions_match(path: Path) -> None:
         )
 
 
+def test_default_pdf_mode_is_fidelity():
+    assert CompressionConfig().pdf_mode == "fidelity"
+
+
+def test_compress_pdf_fidelity_mode_preserves_text_and_never_grows(tmp_path: Path):
+    source = _make_pdf_with_image(tmp_path / "fidelity.pdf")
+    output = tmp_path / "fidelity_out.pdf"
+    original_size = source.stat().st_size
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="fidelity", output_dir=tmp_path),
+    )
+
+    assert output.exists()
+    assert output.stat().st_size <= original_size
+    assert _text_chars(output) == _text_chars(source)
+
+
 def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path):
     source = _make_pdf_with_soft_mask(tmp_path / "soft_mask.pdf")
     output = tmp_path / "soft_mask_out.pdf"

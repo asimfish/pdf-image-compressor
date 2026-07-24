@@ -18,7 +18,7 @@ class CompressionConfig:
     output_dir: Path = Path("compressed")
     overwrite: bool = False
     archive: Optional[str] = None
-    pdf_mode: str = "auto"
+    pdf_mode: str = "fidelity"
     pdf_dpi: int = 120
     pdf_grayscale: bool = False
     strip_metadata: bool = True
