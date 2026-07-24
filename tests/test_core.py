@@ -83,6 +83,25 @@ def test_compress_path_target_size_pdf(tmp_path: Path):
     assert summary.results[0].status == "ok"
 
 
+def test_compress_path_marks_best_over_target(tmp_path: Path, monkeypatch):
+    import file_compressor.core as core_module
+
+    source = _make_pdf(tmp_path / "over.pdf", pages=2)
+
+    def fake_compress_pdf(_source, output, _config):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"12345")
+        return output
+
+    monkeypatch.setattr(core_module, "compress_pdf", fake_compress_pdf)
+    config = CompressionConfig(target_bytes=1, pdf_mode="fidelity", output_dir=tmp_path)
+
+    summary = compress_path(source, config)
+
+    assert summary.results[0].status == "best_over_target"
+    assert summary.results[0].compressed_size == 5
+
+
 # ── compress_path with archive ──
 
 def test_compress_path_zip(tmp_path: Path):

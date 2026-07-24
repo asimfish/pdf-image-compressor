@@ -103,7 +103,8 @@ def _format_result(result: CompressionResult, label: str = "file") -> str:
         return f"FAILED {label}: {result.source} -> {result.error}"
     ratio = result.compression_ratio
     ratio_text = "-" if ratio is None else f"{ratio * 100:.1f}%"
-    return f"OK {label}: {result.source} -> {result.output} | {format_size(result.original_size)} -> {format_size(result.compressed_size)} | saved {ratio_text}"
+    prefix = "OK (over target)" if result.status in {"best_over_target", "best_over_target_partial"} else "OK"
+    return f"{prefix} {label}: {result.source} -> {result.output} | {format_size(result.original_size)} -> {format_size(result.compressed_size)} | saved {ratio_text}"
 
 
 def _summary_to_json(summary: CompressionSummary) -> dict:

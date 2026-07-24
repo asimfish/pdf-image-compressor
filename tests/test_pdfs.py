@@ -322,6 +322,66 @@ def test_compress_pdf_fidelity_unreachable_target_keeps_resolution(tmp_path: Pat
     assert (output_image["width"], output_image["height"]) == source_dimensions
 
 
+def test_auto_mode_prefers_slight_keep_text_overshoot_over_raster(tmp_path: Path, monkeypatch):
+    import file_compressor.pdfs as pdfs_module
+
+    source = tmp_path / "source.pdf"
+    source.write_bytes(b"0" * 1000)
+    output = tmp_path / "out.pdf"
+
+    def fail_optimize(*args, **kwargs):
+        raise RuntimeError("optimize unavailable")
+
+    def fake_keep_text(_source, candidate, _config):
+        candidate.write_bytes(b"1" * 600)
+        return candidate
+
+    def fail_raster(*args, **kwargs):
+        raise AssertionError("raster fallback must not run for a slight overshoot")
+
+    monkeypatch.setattr(pdfs_module, "optimize_pdf", fail_optimize)
+    monkeypatch.setattr(pdfs_module, "compress_pdf_keep_text", fake_keep_text)
+    monkeypatch.setattr(pdfs_module, "rasterize_pdf_to_target", fail_raster)
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="auto", target_bytes=500, output_dir=tmp_path),
+    )
+
+    assert output.read_bytes() == b"1" * 600
+
+
+def test_auto_mode_never_rasterizes_even_for_large_overshoot(tmp_path: Path, monkeypatch):
+    import file_compressor.pdfs as pdfs_module
+
+    source = tmp_path / "source.pdf"
+    source.write_bytes(b"0" * 1000)
+    output = tmp_path / "out.pdf"
+
+    def fail_optimize(*args, **kwargs):
+        raise RuntimeError("optimize unavailable")
+
+    def fake_keep_text(_source, candidate, _config):
+        candidate.write_bytes(b"1" * 800)
+        return candidate
+
+    def fail_raster(*args, **kwargs):
+        raise AssertionError("auto mode must never rasterize implicitly")
+
+    monkeypatch.setattr(pdfs_module, "optimize_pdf", fail_optimize)
+    monkeypatch.setattr(pdfs_module, "compress_pdf_keep_text", fake_keep_text)
+    monkeypatch.setattr(pdfs_module, "rasterize_pdf_to_target", fail_raster)
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="auto", target_bytes=500, output_dir=tmp_path),
+    )
+
+    assert output.read_bytes() == b"1" * 800
+
+
 def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path):
     source = _make_pdf_with_soft_mask(tmp_path / "soft_mask.pdf")
     output = tmp_path / "soft_mask_out.pdf"
@@ -857,7 +917,7 @@ def test_compress_pdf_with_target_size(tmp_path: Path):
     assert output.stat().st_size <= 60_000
 
 
-def test_compress_pdf_auto_with_target_falls_back_to_raster(tmp_path: Path):
+def test_compress_pdf_auto_with_target_keeps_text_even_when_missing_target(tmp_path: Path):
     source = _make_pdf(tmp_path / "fallback.pdf", pages=5, with_images=True)
     output = tmp_path / "fallback_out.pdf"
 
@@ -871,9 +931,10 @@ def test_compress_pdf_auto_with_target_falls_back_to_raster(tmp_path: Path):
     compress_pdf(source, output, config)
 
     assert output.exists()
+    assert _text_chars(output) > 0
 
 
-def test_compress_pdf_auto_logs_failed_fallback_passes(
+def test_compress_pdf_auto_logs_failed_passes(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ):
@@ -891,17 +952,12 @@ def test_compress_pdf_auto_logs_failed_fallback_passes(
             "file_compressor.pdfs.compress_pdf_keep_text",
             side_effect=RuntimeError("keep-text failed"),
         ),
-        patch(
-            "file_compressor.pdfs.rasterize_pdf_to_target",
-            side_effect=RuntimeError("raster failed"),
-        ),
     ):
         compress_pdf(source, output, config)
 
     assert output.read_bytes() == source.read_bytes()
     assert "Optimize PDF pass failed" in caplog.text
     assert "Keep-text PDF pass failed" in caplog.text
-    assert "Raster PDF pass failed" in caplog.text
 
 
 def test_compress_pdf_auto_with_large_target_returns_optimized(tmp_path: Path):

@@ -142,7 +142,8 @@ def test_format_result_best_over_target():
         status="best_over_target",
     )
     text = _format_result(result, label="archive")
-    assert "OK archive" in text
+    assert "over target" in text
+    assert "archive" in text
 
 
 # ── print_summary ──

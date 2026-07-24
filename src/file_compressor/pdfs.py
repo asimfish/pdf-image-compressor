@@ -411,11 +411,10 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode == "text":
         return compress_pdf_keep_text(source, output, config)
 
-    # Auto mode is quality-first. Preserve the original text/vector layer whenever
-    # the requested target is achievable by recompressing embedded images. Full-page
-    # rasterization is an expensive, destructive fallback: it removes selectable
-    # text and can take minutes on image-heavy papers, so only run it when the
-    # keep-text result cannot meet the target.
+    # Auto mode is quality-first. Preserve the original text/vector layer and
+    # return the closest lossless/keep-text result even when it slightly misses
+    # the target. Full-page rasterization is destructive, so it only runs when
+    # the caller explicitly chooses raster mode.
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
         original_size = source.stat().st_size
         temp = Path(temp_dir)
@@ -453,25 +452,23 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             preferred = next((item for item in candidates if item[2] == "text"), None)
             best = preferred or (min(candidates, key=lambda item: item[1]) if candidates else None)
         else:
-            # The keep-text pass could not hit the requested size. Rasterization is
-            # now justified; honor the caller's explicit grayscale choice rather
-            # than silently discarding color in auto mode.
-            rasterized = temp / "rasterized.pdf"
-            try:
-                rasterize_pdf_to_target(source, rasterized, config)
-                raster_size = rasterized.stat().st_size
-                if raster_size <= original_size:
-                    candidates.append((rasterized, raster_size, "raster"))
-            except Exception as exc:
-                logger.debug("Raster PDF pass failed in auto mode: %s", exc)
-
             under_target = [item for item in candidates if item[1] <= config.target_bytes]
             if under_target:
-                # Quality order is deliberate: lossless > keep-text > raster.
-                priority = {"optimize": 3, "text": 2, "raster": 1}
+                # Quality order is deliberate: lossless > keep-text. Auto never
+                # rasterizes implicitly; explicit raster mode remains available.
+                priority = {"optimize": 2, "text": 1}
                 best = max(under_target, key=lambda item: (priority[item[2]], item[1]))
             else:
-                best = min(candidates, key=lambda item: item[1]) if candidates else None
+                # A keep-text/lossless result that only slightly misses the target is
+                # far more useful than destroying the text layer. Return the closest
+                # vector result and let the caller surface best_over_target.
+                overshoot_limit = int(config.target_bytes * 1.20)
+                near_vector = [item for item in candidates if item[1] <= overshoot_limit]
+                if near_vector:
+                    priority = {"optimize": 2, "text": 1}
+                    best = max(near_vector, key=lambda item: (priority[item[2]], -item[1]))
+                else:
+                    best = min(candidates, key=lambda item: item[1]) if candidates else None
 
         output.parent.mkdir(parents=True, exist_ok=True)
         if best is None:

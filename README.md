@@ -5,7 +5,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/live-PaperSqueeze-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
 
-面向论文和技术文档的开源 PDF 压缩器。它优先保留可搜索文字、公式、链接和矢量结构，只重新编码真正占空间的图片；只有在目标大小无法通过保留文字的方式达到时，`auto` 模式才会整页栅格化。
+面向论文和技术文档的开源 PDF 压缩器。它优先保留可搜索文字、公式、链接和矢量结构，只重新编码真正占空间的图片；`auto` 与默认 `fidelity` 模式都不会为了硬目标把页面整页栅格化，只有显式选择 `raster` 才会牺牲文字层。
 
 既可以作为本地 PDF 版本管理器使用，也可以部署为匿名、无状态的公开压缩网站。
 
@@ -16,7 +16,7 @@
 - **目标大小压缩**：输入 `500KB`、`3MB` 等目标，自动寻找不超过上限的高质量结果。
 - **文字优先**：`text` 模式永不栅格化页面，保留复制、搜索和超链接。
 - **透明图层保真**：重新编码图片后恢复 PDF 外置软遮罩（`SMask`），避免透明标注变成黑底或白框。
-- **质量优先的自动模式**：按“无损优化 → 保留文字重压图片 → 栅格化兜底”的顺序执行。
+- **质量优先的自动模式**：按“无损优化 → 保留文字重压图片”的顺序执行；达不到目标时返回最接近的保真结果，而不是偷偷栅格化。
 - **四档压缩强度**：1 近无损、2 均衡、3 激进、4 最大压缩。
 - **CLI 与 Web UI**：支持单文件、目录批量、JSON 报告和浏览器操作。
 - **两种网站模式**：本地持久化资料库；公开部署时使用匿名无状态页面并自动清理临时文件。
@@ -72,7 +72,7 @@ uv pip install ./pdf_image_compressor-*.whl
 uv run file-compressor compress input.pdf \
   --target-size 3MB
 
-# 必须严格命中目标时才用 auto；保真路径失败才会整页栅格化
+# 想要更强的目标搜索但仍不栅格化时用 auto；达不到目标会返回最接近的保真结果
 uv run file-compressor compress input.pdf \
   --target-size 3MB \
   --pdf-mode auto

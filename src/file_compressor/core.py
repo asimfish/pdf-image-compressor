@@ -45,13 +45,17 @@ def _compress_files(source: Path, config: CompressionConfig, output: Optional[Pa
             explicit_output = output if source.is_file() else None
             target = _output_for_file(file_path, root, output_dir, explicit_output, config)
             written = _compress_one(file_path, target, config)
+            compressed_size = written.stat().st_size
+            status = "ok"
+            if config.target_bytes is not None and compressed_size > config.target_bytes:
+                status = "best_over_target"
             results.append(
                 CompressionResult(
                     source=file_path,
                     output=written,
                     original_size=original_size,
-                    compressed_size=written.stat().st_size,
-                    status="ok",
+                    compressed_size=compressed_size,
+                    status=status,
                 )
             )
         except Exception as exc:

@@ -31,7 +31,7 @@ function app() {
     pdfModeOptions: [
       { value: 'fidelity', label: 'Fidelity max (recommended, no raster)' },
       { value: 'text', label: 'Keep text + shrink images' },
-      { value: 'auto', label: 'Auto (may rasterize)' },
+      { value: 'auto', label: 'Auto (quality-first, no implicit raster)' },
       { value: 'optimize', label: 'Optimize (lossless, keep text)' },
       { value: 'raster', label: 'Raster (max compression, drops text)' },
     ],
