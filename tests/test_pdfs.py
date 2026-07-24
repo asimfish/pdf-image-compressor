@@ -302,6 +302,26 @@ def test_compress_pdf_fidelity_mode_preserves_text_and_never_grows(tmp_path: Pat
     assert _text_chars(output) == _text_chars(source)
 
 
+def test_compress_pdf_fidelity_unreachable_target_keeps_resolution(tmp_path: Path):
+    source = _make_pdf_with_image(tmp_path / "fidelity_target.pdf")
+    output = tmp_path / "fidelity_target_out.pdf"
+    with fitz.open(source) as doc:
+        source_image = doc.extract_image(doc[0].get_images(full=True)[0][0])
+    source_dimensions = (source_image["width"], source_image["height"])
+
+    compress_pdf(
+        source,
+        output,
+        CompressionConfig(pdf_mode="fidelity", target_bytes=1, output_dir=tmp_path),
+    )
+
+    assert output.exists()
+    assert _text_chars(output) == _text_chars(source)
+    with fitz.open(output) as doc:
+        output_image = doc.extract_image(doc[0].get_images(full=True)[0][0])
+    assert (output_image["width"], output_image["height"]) == source_dimensions
+
+
 def test_compress_pdf_text_mode_preserves_soft_mask_transparency(tmp_path: Path):
     source = _make_pdf_with_soft_mask(tmp_path / "soft_mask.pdf")
     output = tmp_path / "soft_mask_out.pdf"

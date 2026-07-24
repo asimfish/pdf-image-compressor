@@ -515,14 +515,14 @@ def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig)
     with TemporaryDirectory(prefix="pdf_fidelity_") as temp_dir:
         original_size = source.stat().st_size
         temp = Path(temp_dir)
-        candidates: list[tuple[Path, int]] = []
+        candidates: list[tuple[Path, int, str]] = []
 
         optimized = temp / "optimized.pdf"
         try:
             optimize_pdf(source, optimized, config)
             optimized_size = optimized.stat().st_size
             if optimized_size <= original_size:
-                candidates.append((optimized, optimized_size))
+                candidates.append((optimized, optimized_size, "optimize"))
         except Exception as exc:
             logger.debug("Optimize PDF pass failed in fidelity mode: %s", exc)
 
@@ -538,7 +538,7 @@ def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig)
                 )
                 candidate_size = candidate.stat().st_size
                 if candidate_size <= original_size:
-                    candidates.append((candidate, candidate_size))
+                    candidates.append((candidate, candidate_size, "text"))
             except Exception as exc:
                 logger.debug(
                     "Keep-text PDF pass failed in fidelity mode at quality %d: %s",
@@ -546,11 +546,14 @@ def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig)
                     exc,
                 )
 
+        chosen: Optional[tuple[Path, int, str]] = None
         if config.target_bytes is not None:
             under_target = [item for item in candidates if item[1] <= config.target_bytes]
-            chosen = min(under_target, key=lambda item: item[1]) if under_target else None
-        else:
-            chosen = None
+            if under_target:
+                chosen = next(
+                    (item for item in under_target if item[2] == "optimize"),
+                    None,
+                ) or min(under_target, key=lambda item: item[1])
         if chosen is None and candidates:
             chosen = min(candidates, key=lambda item: item[1])
 
