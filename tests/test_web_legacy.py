@@ -128,6 +128,37 @@ def test_public_mode_private_api_404_has_security_headers(tmp_path: Path):
     assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
 
 
+def test_public_mode_access_password_flow(tmp_path: Path):
+    from unittest.mock import patch
+
+    client = _client(tmp_path)
+    with (
+        patch("file_compressor.web._PUBLIC_MODE", True),
+        patch("file_compressor.web._ACCESS_PASSWORD", "secret"),
+        patch("file_compressor.web._ACCESS_COOKIE_VALUE", "valid-cookie"),
+    ):
+        locked = client.get("/")
+        assert locked.status_code == 401
+        assert "super_pdf" in locked.text
+        assert "访问密码" in locked.text
+
+        health = client.get("/api/health")
+        assert health.status_code == 200
+
+        wrong = client.post("/login", data={"password": "wrong"}, follow_redirects=False)
+        assert wrong.status_code == 401
+
+        unlocked = client.post("/login", data={"password": "secret"}, follow_redirects=False)
+        assert unlocked.status_code == 303
+        assert "super_pdf_access=" in unlocked.headers["set-cookie"]
+        assert "Max-Age=2592000" in unlocked.headers["set-cookie"]
+
+        client.cookies.set("super_pdf_access", "valid-cookie")
+        opened = client.get("/")
+        assert opened.status_code == 200
+        assert 'value="fidelity" checked' in opened.text
+
+
 def test_public_mode_config_exposes_resource_limits(tmp_path: Path):
     from unittest.mock import patch
 

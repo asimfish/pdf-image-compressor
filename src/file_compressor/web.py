@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import logging
 import math
 import multiprocessing
@@ -17,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -65,6 +67,56 @@ _PUBLIC_RATE_LIMIT_PER_MINUTE = _env_int(
 )
 _PUBLIC_COMPRESSION_SLOTS = _env_int("PDF_COMPRESSOR_CONCURRENCY", 1, 1, 4)
 _public_compression_semaphore = threading.BoundedSemaphore(_PUBLIC_COMPRESSION_SLOTS)
+
+_ACCESS_PASSWORD = os.getenv("PDF_COMPRESSOR_ACCESS_PASSWORD", "")
+_ACCESS_COOKIE_NAME = "super_pdf_access"
+_ACCESS_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+_ACCESS_COOKIE_VALUE = (
+    hmac.new(
+        _ACCESS_PASSWORD.encode("utf-8"),
+        b"super-pdf-access-v1",
+        hashlib.sha256,
+    ).hexdigest()
+    if _ACCESS_PASSWORD
+    else ""
+)
+
+
+def _access_cookie_valid(request: Request) -> bool:
+    if not _ACCESS_PASSWORD:
+        return True
+    value = request.cookies.get(_ACCESS_COOKIE_NAME, "")
+    return hmac.compare_digest(value, _ACCESS_COOKIE_VALUE)
+
+
+def _access_login_html(error: str = "") -> str:
+    error_html = f'<p class="error">{error}</p>' if error else ""
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>super_pdf · 访问验证</title>
+  <style>
+    body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f6f3ea; color: #13231d; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    form {{ width: min(420px, calc(100% - 32px)); padding: 32px; border: 1px solid #d9dfd8; border-radius: 24px; background: rgba(255,255,255,.9); box-shadow: 0 24px 80px rgba(35,56,47,.12); }}
+    h1 {{ margin: 0 0 8px; font-size: 28px; letter-spacing: -.03em; }}
+    p {{ color: #607068; line-height: 1.6; }}
+    input {{ width: 100%; box-sizing: border-box; margin: 18px 0 14px; padding: 13px 14px; border: 1px solid #d9dfd8; border-radius: 14px; font: inherit; }}
+    button {{ width: 100%; padding: 13px 14px; border: 0; border-radius: 14px; color: white; background: #126b4f; font: inherit; font-weight: 700; cursor: pointer; }}
+    .error {{ margin: 0 0 10px; color: #b42318; }}
+  </style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>super_pdf</h1>
+    <p>首次访问需要输入访问密码。验证成功后，本浏览器 30 天内不用再输入。</p>
+    {error_html}
+    <input name="password" type="password" autocomplete="current-password" placeholder="访问密码" required autofocus>
+    <button type="submit">进入</button>
+  </form>
+</body>
+</html>"""
 
 
 def _scope_route_path(scope: Scope) -> str:
@@ -326,6 +378,35 @@ def _apply_security_headers(response: Response) -> Response:
 async def public_mode_guard(request: Request, call_next):
     """Keep the shared library private when running the anonymous public site."""
     route_path = _scope_route_path(request.scope)
+    if _PUBLIC_MODE and _ACCESS_PASSWORD:
+        if route_path == "/login":
+            if request.method == "POST":
+                form = await request.form()
+                password = str(form.get("password", ""))
+                if hmac.compare_digest(password, _ACCESS_PASSWORD):
+                    response = RedirectResponse("/", status_code=303)
+                    response.set_cookie(
+                        _ACCESS_COOKIE_NAME,
+                        _ACCESS_COOKIE_VALUE,
+                        max_age=_ACCESS_COOKIE_MAX_AGE,
+                        httponly=True,
+                        samesite="lax",
+                        secure=request.url.scheme == "https",
+                    )
+                    return _apply_security_headers(response)
+                return _apply_security_headers(
+                    HTMLResponse(
+                        _access_login_html("密码不正确，请重试。"),
+                        status_code=401,
+                    )
+                )
+            return _apply_security_headers(HTMLResponse(_access_login_html()))
+        if route_path == "/api/health" or route_path.startswith("/static/"):
+            return await call_next(request)
+        if not _access_cookie_valid(request):
+            return _apply_security_headers(
+                HTMLResponse(_access_login_html(), status_code=401)
+            )
     if _PUBLIC_MODE and any(
         route_path == prefix or route_path.startswith(prefix + "/")
         for prefix in _PRIVATE_API_PREFIXES
