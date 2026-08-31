@@ -1,254 +1,241 @@
-# PaperSqueeze
+<div align="center">
+
+# PaperSqueeze 📄🗜️
 
 [![CI](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml/badge.svg)](https://github.com/asimfish/pdf-image-compressor/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/asimfish/pdf-image-compressor)](https://github.com/asimfish/pdf-image-compressor/releases)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Live Demo](https://img.shields.io/badge/live-PaperSqueeze-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
+[![Live Demo](https://img.shields.io/badge/live-demo-126b4f.svg)](https://liyufeng854--papersqueeze-serve.modal.run)
 
-面向论文和技术文档的开源 PDF 压缩器。它优先保留可搜索文字、公式、链接和矢量结构，只重新编码真正占空间的图片；`auto` 与默认 `fidelity` 模式都不会为了硬目标把页面整页栅格化，只有显式选择 `raster` 才会牺牲文字层。
+**English** | [中文](README_CN.md)
 
-既可以作为本地 PDF 版本管理器使用，也可以部署为匿名、无状态的公开压缩网站。
+> 🎯 **Squeeze a paper PDF down to any target size — without killing the text.**
+> PaperSqueeze re-encodes only the images that actually take up space, and keeps
+> searchable text, formulas, hyperlinks, vector graphics, and transparency intact.
 
-在线演示：<https://liyufeng854--papersqueeze-serve.modal.run>。免费实例空闲时会缩容，首次访问可能需要等待冷启动。
+[**Try the live demo →**](https://liyufeng854--papersqueeze-serve.modal.run) *(free instance, may need a cold start)*
 
-## 主要能力
+</div>
 
-- **目标大小压缩**：输入 `500KB`、`3MB` 等目标，自动寻找不超过上限的高质量结果。
-- **文字优先**：`text` 模式永不栅格化页面，保留复制、搜索和超链接。
-- **透明图层保真**：重新编码图片后恢复 PDF 外置软遮罩（`SMask`），避免透明标注变成黑底或白框。
-- **质量优先的自动模式**：按“无损优化 → 保留文字重压图片”的顺序执行；达不到目标时返回最接近的保真结果，而不是偷偷栅格化。
-- **四档压缩强度**：1 近无损、2 均衡、3 激进、4 最大压缩。
-- **CLI 与 Web UI**：支持单文件、目录批量、JSON 报告和浏览器操作。
-- **两种网站模式**：本地持久化资料库；公开部署时使用匿名无状态页面并自动清理临时文件。
+---
 
-## 实测结果
+## Contents
 
-已部署的 Modal 网站使用默认 `3MB` 目标，在线处理一份 20 页、30,628,839 字节的论文 PDF，并与 3,194,322 字节的参考文件比较：
+1. [Why PaperSqueeze](#1-why-papersqueeze)
+2. [Quick Start](#2--quick-start)
+3. [Features](#3--features)
+4. [Real-World Benchmark](#4--real-world-benchmark)
+5. [Compression Modes](#5--compression-modes)
+6. [CLI Usage](#6--cli-usage)
+7. [Web UI](#7--web-ui)
+8. [Deployment](#8--deployment)
+9. [Configuration](#9--configuration)
+10. [API](#10--api)
+11. [Testing & Development](#11--testing--development)
+12. [Contributing](#12--contributing)
+13. [Citation](#13--citation)
+14. [Star History](#14--star-history)
+15. [License](#15-license)
 
-- 输出大小：**2,773,250 字节**，比目标参考文件再小 421,072 字节。
-- 压缩率：**90.95%**。
-- 文字：80,827 个字符，和原件完全一致。
-- 链接：163 个，和原件完全一致。
-- 透明度：原件中的 **65 处 SMask 引用全部保留**，透明文字和标注不会被烘焙成白框。
-- 视觉质量：20 页相对原件的 RGB 多通道 SSIM 平均为 **0.9993**，最低 0.9961。
-- 性能：线上端到端约 62.5 秒（包含上传、处理和下载）；本机多次运行约 61–84 秒。具体时间取决于网络、CPU 负载、PDF 图像数量和目标大小。
+---
 
-参考 PDF 与原件不是完全相同的论文版本，因此项目采用“同一原件、同一字节上限”的方式评估压缩质量，而不是对不同内容做误导性的逐像素比较。测试论文文件不包含在仓库中。
+## 1. Why PaperSqueeze
 
-可用自包含基准脚本复现同样的文件大小、文字、链接、透明软遮罩和逐页 RGB 多通道 SSIM 检查；依赖由 `uv` 临时安装，不会进入生产镜像：
+Most PDF compressors hit a size target by rasterizing whole pages — your paper
+becomes a stack of screenshots: no text selection, no search, dead links, blurry
+formulas. Conference submission portals don't care; your readers do.
+
+PaperSqueeze takes the opposite approach:
+
+- **Only images are re-encoded.** Text, fonts, vector figures, and link
+  annotations pass through untouched.
+- **Transparency survives.** External soft masks (`SMask`) are restored after
+  re-encoding, so translucent highlights don't turn into black or white boxes.
+- **Rasterization is never silent.** The default `fidelity` mode and the
+  `auto` mode refuse to rasterize; if the target is unreachable while keeping
+  the text layer, you get the closest faithful result — only an explicit
+  `raster` mode trades away the text layer.
+
+## 2. 🚀 Quick Start
+
+Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
-  --reference reference.pdf \
-  --dpi 96
-
-# 机器可读报告
-uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf --json
-```
-
-比较要求页数和每页尺寸完全一致，不会通过缩放或裁剪掩盖几何变化。
-
-## 安装
-
-需要 Python 3.10+ 和 [uv](https://docs.astral.sh/uv/)。
-
-```bash
+# 1. Install
 git clone https://github.com/asimfish/pdf-image-compressor.git
 cd pdf-image-compressor
 uv sync --locked --extra dev
+
+# 2. Compress to a target size (default fidelity mode — never rasterizes)
+uv run file-compressor compress paper.pdf --target-size 3MB
+
+# 3. Or use the browser UI
+uv run file-compressor web        # → http://127.0.0.1:8765
 ```
 
-也可以从 [GitHub Releases](https://github.com/asimfish/pdf-image-compressor/releases)
-下载已构建的 wheel 和源码包：
+No install at all? Use the [live demo](https://liyufeng854--papersqueeze-serve.modal.run)
+or run the published container:
 
 ```bash
-uv pip install ./pdf_image_compressor-*.whl
+docker run --rm -p 8080:8080 -e PDF_COMPRESSOR_PUBLIC_MODE=1 \
+  ghcr.io/asimfish/pdf-image-compressor:latest   # → http://127.0.0.1:8080
 ```
 
-## CLI 使用
+## 3. ✨ Features
+
+- 🎯 **Target-size compression** — give it `500KB`, `3MB`, or a byte count;
+  it searches for the best quality that fits under the cap.
+- 🔤 **Text-first** — searchable text, copy/paste, and hyperlinks survive in
+  every mode except the explicit `raster` mode.
+- 🪟 **Transparency-faithful** — restores external PDF soft masks (including
+  partial alpha, shared masks, indirect subtypes, and `Matte`) after image
+  re-encoding.
+- 🧭 **Honest auto mode** — lossless optimization → text-preserving image
+  recompression; if the target is unreachable it returns the closest faithful
+  result instead of silently rasterizing.
+- 🎚️ **Four intensity levels** — 1 near-lossless, 2 balanced, 3 aggressive,
+  4 maximum.
+- 🖥️ **CLI + Web UI** — single files, directory batches, JSON reports, or a
+  browser workflow; standalone images (JPEG/PNG/WebP) are supported too.
+- 🌐 **Two site modes** — a persistent local PDF library, or an anonymous
+  stateless public site with automatic temp-file cleanup.
+- 🔐 **Optional access gate** — protect a public deployment with a password
+  (`PDF_COMPRESSOR_ACCESS_PASSWORD`); visitors authenticate once per browser
+  for 30 days.
+- 📦 **Verified container** — every `main` push is built, smoke-tested, and
+  published to GitHub Container Registry; releases get versioned tags.
+
+## 4. 📊 Real-World Benchmark
+
+The deployed demo compressed a 20-page, 30,628,839-byte paper PDF with the
+default 3 MB target, compared against a 3,194,322-byte reference file:
+
+| Metric | Result |
+| --- | --- |
+| Output size | **2,773,250 bytes** (421,072 bytes under the reference) |
+| Compression ratio | **90.95%** |
+| Text | 80,827 characters — identical to the original |
+| Links | 163 — identical to the original |
+| Transparency | all **65 SMask references preserved** |
+| Visual quality | RGB multichannel SSIM avg **0.9993**, min 0.9961 (20 pages) |
+| End-to-end time | ~62 s online (upload + process + download); 61–84 s locally |
+
+Reproduce it with the self-contained benchmark (deps are installed ephemerally
+by `uv`, never entering the production image):
 
 ```bash
-# 默认：保真优先，不栅格化，尽量压缩到 3 MB 以内
-uv run file-compressor compress input.pdf \
-  --target-size 3MB
+uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf \
+  --reference reference.pdf --dpi 96
 
-# 想要更强的目标搜索但仍不栅格化时用 auto；达不到目标会返回最接近的保真结果
-uv run file-compressor compress input.pdf \
-  --target-size 3MB \
-  --pdf-mode auto
-
-# 始终保留文字层，但允许更强地重压图片
-uv run file-compressor compress input.pdf \
-  --target-size 3MB \
-  --pdf-mode text
-
-# 极限压缩；会失去文字层
-uv run file-compressor compress input.pdf \
-  --target-size 800KB \
-  --pdf-mode raster \
-  --pdf-dpi 120
-
-# 批量处理目录并输出 JSON 报告
-uv run file-compressor compress ./papers \
-  --output-dir ./compressed \
-  --json-report
+# machine-readable report
+uv run scripts/compare_pdf_quality.py original.pdf compressed.pdf --json
 ```
 
-`--target-size` 支持 `500KB`、`2MB`、`1.5GB` 或纯字节数。
+The comparison requires identical page counts and page geometry — no scaling or
+cropping can mask structural changes. The test paper is not included in the
+repository; evaluation uses "same original, same byte cap" rather than
+misleading pixel diffs of different content.
 
-## 本地 Web UI
+## 5. 🧭 Compression Modes
+
+| Mode | Text layer | What it does |
+| --- | --- | --- |
+| `fidelity` *(default)* | ✅ kept | Quality-first: lossless optimization, then gentle image recompression; prefers the lossless candidate when it fits the target |
+| `auto` | ✅ kept | Stronger target search than `fidelity`; still never rasterizes — returns the closest faithful result if the target is unreachable |
+| `text` | ✅ kept | Maximum text-preserving image recompression |
+| `optimize` | ✅ kept | Lossless structural optimization only |
+| `raster` | ❌ lost | Rasterizes pages at `--pdf-dpi` — the only mode that trades away text; never chosen implicitly |
+
+## 6. ⌨️ CLI Usage
 
 ```bash
-uv run file-compressor web
+# Default: fidelity-first, no rasterization, aim under 3 MB
+uv run file-compressor compress input.pdf --target-size 3MB
+
+# Stronger target search, still text-safe
+uv run file-compressor compress input.pdf --target-size 3MB --pdf-mode auto
+
+# Keep text, allow harder image recompression
+uv run file-compressor compress input.pdf --target-size 3MB --pdf-mode text
+
+# Extreme compression — loses the text layer (explicit opt-in)
+uv run file-compressor compress input.pdf --target-size 800KB \
+  --pdf-mode raster --pdf-dpi 120
+
+# Batch a directory with a JSON report
+uv run file-compressor compress ./papers --output-dir ./compressed --json-report
 ```
 
-打开 <http://127.0.0.1:8765>。默认模式会在 `~/.pdf-manager` 保存 PDF、备注和不同压缩版本。该资料库模式没有用户鉴权，请只监听本机或可信内网。可指定其他目录：
+`--target-size` accepts `500KB`, `2MB`, `1.5GB`, or a plain byte count.
+Other useful flags: `--compression-level 1..4`, `--pdf-grayscale`,
+`--keep-metadata`, `--to-webp` (images), `--archive zip`.
+
+## 7. 🖥️ Web UI
+
+**Local library mode** (persistent):
 
 ```bash
-uv run file-compressor web --data-dir /path/to/library
+uv run file-compressor web                          # → http://127.0.0.1:8765
+uv run file-compressor web --data-dir /path/to/lib  # custom library location
 ```
 
-## 公开无状态模式
+PDFs, notes, and compression versions are stored in `~/.pdf-manager`. This mode
+has no authentication — bind it to localhost or a trusted network only.
 
-公开模式只开放首页、配置、健康检查和单文件压缩接口，不暴露本地资料库 API：
+**Public stateless mode** (anonymous): exposes only the landing page, config,
+health check, and single-file compression; every upload is processed in an
+isolated temp directory and deleted after the response. Restrictive security
+headers are applied and OpenAPI docs are disabled.
 
 ```bash
-PDF_COMPRESSOR_PUBLIC_MODE=1 \
-PDF_COMPRESSOR_MAX_UPLOAD_MB=30 \
-PDF_COMPRESSOR_MAX_PAGES=100 \
-PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS=120 \
-PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS=300 \
-PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS=120 \
-PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE=12 \
-PDF_COMPRESSOR_CONCURRENCY=1 \
-uv run file-compressor web --host 0.0.0.0 --port 8080
+PDF_COMPRESSOR_PUBLIC_MODE=1 uv run file-compressor web --host 0.0.0.0 --port 8080
 ```
 
-文件在独立临时目录中处理，响应完成后自动删除。公开服务默认禁用 OpenAPI 文档，添加 CSP、`nosniff`、禁止嵌入等安全响应头，并限制为单文件、单压缩任务。公开模式未显式配置上传上限时默认为 30 MiB。
+See [Configuration](#9--configuration) for limits, timeouts, rate limiting, and
+the optional password gate. A commented [`.env.example`](.env.example) is included.
 
-## Docker
-
-```bash
-docker build -t papersqueeze .
-docker run --rm -p 8080:8080 \
-  -e PDF_COMPRESSOR_PUBLIC_MODE=1 \
-  -e PDF_COMPRESSOR_MAX_UPLOAD_MB=30 \
-  papersqueeze
-```
-
-访问 <http://127.0.0.1:8080>，健康检查为 `GET /api/health`。
-
-每次推送到 `main` 后，CI 会构建、启动并冒烟测试容器，再发布到 GitHub Container Registry：
+## 8. ☁️ Deployment
 
 ```bash
-docker pull ghcr.io/asimfish/pdf-image-compressor:latest
-docker run --rm -p 8080:8080 \
+docker run --rm -p 8080:8080 -e PDF_COMPRESSOR_PUBLIC_MODE=1 \
   ghcr.io/asimfish/pdf-image-compressor:latest
 ```
 
-每个正式版本还会发布版本化的 `vX.Y.Z` 和 `X.Y.Z` 标签。例如：
+Step-by-step guides for **Docker / Modal (free tier) / Hugging Face Spaces /
+Google Cloud Run** live in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+([中文](docs/DEPLOYMENT_CN.md)). The image is platform-neutral OCI — it runs
+anywhere containers do.
 
-```bash
-docker pull ghcr.io/asimfish/pdf-image-compressor:v0.1.0
-```
+## 9. ⚙️ Configuration
 
-版本标签直接复用同一提交在 `main` CI 中通过容器冒烟测试的镜像，不会重新构建另一份内容。
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PDF_COMPRESSOR_PUBLIC_MODE` | off | Set `1` to enable the anonymous stateless public site |
+| `PDF_COMPRESSOR_ACCESS_PASSWORD` | unset | Optional public-mode password gate; visitors authenticate once per browser for 30 days |
+| `PDF_COMPRESSOR_MAX_UPLOAD_MB` | 30 public / 500 library | Per-file upload cap (1–500 MiB) |
+| `PDF_COMPRESSOR_MAX_PAGES` | 100 | Public-mode page cap (1–2000) |
+| `PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS` | 120 | Public-mode total upload window (10–900 s) |
+| `PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS` | 300 | Public-mode compression cap (30–1800 s); the isolated worker is killed on timeout |
+| `PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS` | 120 | Public-mode download window (10–900 s); temp files are cleaned on timeout |
+| `PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE` | 12 | Compression requests accepted per instance per minute (1–120) |
+| `PDF_COMPRESSOR_CONCURRENCY` | 1 | Concurrent compression jobs per instance (1–4) |
+| `PORT` | 8080 | Container listen port |
 
-这份镜像可部署到任何支持 Docker/OCI 的平台，不依赖特定云厂商。
+## 10. 🔌 API
 
-## 免费部署到 Modal
+Public mode:
 
-Modal Starter 当前每月提供 $30 免费计算额度，容器空闲时自动缩容到 0，适合低频公开访问。首次使用先创建账号并登录：
+- `GET /` — compression page
+- `GET /api/health` — health check
+- `GET /api/config` — upload limits for the frontend
+- `POST /compress` — upload one PDF, receive the compressed PDF
 
-当前公开实例：<https://liyufeng854--papersqueeze-serve.modal.run>
+Local library mode additionally provides `/api/pdfs`, `/api/versions`, batch
+compression/deletion, page previews, notes, and version downloads. In dev mode
+the full OpenAPI schema is at `/docs`.
 
-```bash
-uvx modal setup
-```
-
-登录完成后直接部署当前工作区：
-
-```bash
-uvx modal deploy deploy_modal.py
-```
-
-脚本使用 2 CPU、2 GiB 内存和 Modal 默认临时磁盘，最多只启动 1 个容器；容器可同时响应 8 个轻量 HTTP 请求，但应用内部仍只允许 1 个压缩任务。空闲 60 秒后缩容，不保留上传文件。部署成功后 Modal 会输出稳定的 `modal.run` HTTPS 地址。查看用量或停止应用：
-
-```bash
-uvx modal billing
-uvx modal app stop papersqueeze
-```
-
-免费额度和平台政策可能变化；如账户绑定了付费方式，请在 Modal 控制台设置预算提醒。冷启动以及超过 150 秒的请求可能发生跳转或延迟。
-
-## 部署到 Hugging Face Spaces
-
-Hugging Face Docker Spaces 不要求 Google Cloud 结算账号，但当前即使使用 `cpu-basic` 也需要 Hugging Face PRO；免费账号只能创建无法运行本项目 Python 后端的 Static Space。订阅 PRO 后，先登录，再运行仓库内的部署脚本：
-
-```bash
-uvx --from huggingface_hub hf auth login
-uv run --no-project deploy_huggingface_space.py
-```
-
-脚本默认创建公开的 `<HF用户名>/papersqueeze`。如需使用组织或其他名称：
-
-```bash
-HF_SPACE_ID=your-org/your-space \
-uv run --no-project deploy_huggingface_space.py
-```
-
-Space 使用现有 Dockerfile，监听 8080 端口，并默认启用公开无状态模式。脚本按完整快照覆盖部署，Space 中手动添加的其他文件会被清除。实例可能休眠，首次访问需要等待冷启动。
-
-## 部署到 Google Cloud Run
-
-项目附带可重复执行的部署脚本，默认使用东京区域、1 GiB 内存、并发 1、最大实例 1、空闲缩容到 0：
-
-```bash
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-bash deploy_cloud_run.sh
-```
-
-也可以覆盖默认值：
-
-```bash
-CLOUD_RUN_REGION=asia-east1 \
-CLOUD_RUN_SERVICE=my-pdf-compressor \
-bash deploy_cloud_run.sh
-```
-
-说明：
-
-- Cloud Run 的 HTTP/1 请求上限为 32 MiB，因此公开部署默认限制为 30 MiB；示例中的 29.2 MiB 论文可以上传。
-- 1 GiB 是根据真实样本约 689 MiB 峰值设置的安全下限。
-- `--max-instances 1` 和 `--concurrency 1` 用于限制公开匿名服务的资源消耗；请同时在 Google Cloud 设置预算告警。
-- 脚本会启用 Cloud Run、Cloud Build 和 Artifact Registry API；首次构建可能产生少量云资源费用。
-- 匿名模式没有用户级配额；若面向大量公众长期运营，请在前方增加 Cloud Armor、API Gateway 或其他限流/鉴权层。
-
-## 配置项
-
-- `PDF_COMPRESSOR_PUBLIC_MODE`：设为 `1` 启用公开无状态页面。
-- `PDF_COMPRESSOR_MAX_UPLOAD_MB`：单文件上限，范围 1–500 MiB；公开模式默认 30，资料库模式默认 500。
-- `PDF_COMPRESSOR_MAX_PAGES`：公开 PDF 最大页数，范围 1–2000。
-- `PDF_COMPRESSOR_UPLOAD_TIMEOUT_SECONDS`：公开模式上传总时限，范围 10–900 秒，默认 120。
-- `PDF_COMPRESSOR_PROCESSING_TIMEOUT_SECONDS`：公开模式压缩进程总时限，范围 30–1800 秒，默认 300；超时会终止隔离进程。
-- `PDF_COMPRESSOR_DOWNLOAD_TIMEOUT_SECONDS`：公开模式下载总时限，范围 10–900 秒，默认 120；超时会终止传输并清理临时文件。
-- `PDF_COMPRESSOR_RATE_LIMIT_PER_MINUTE`：单实例每分钟最多接受的压缩请求数，范围 1–120，默认 12。
-- `PDF_COMPRESSOR_CONCURRENCY`：单实例同时接收、压缩和下载的任务数，范围 1–4。
-- `PORT`：容器监听端口，默认 `8080`。
-
-## API
-
-公开模式：
-
-- `GET /`：公开压缩页面。
-- `GET /api/health`：健康检查。
-- `GET /api/config`：前端上传限制。
-- `POST /compress`：上传并返回压缩后的单个 PDF。
-
-本地资料库模式还提供 `/api/pdfs`、`/api/versions`、批量压缩、批量删除、页面预览、备注和版本下载接口。开发模式可在 `/docs` 查看完整 OpenAPI 文档。
-
-## 测试
+## 11. 🧪 Testing & Development
 
 ```bash
 uv sync --locked --extra dev
@@ -258,20 +245,38 @@ uv run python -m pytest -q
 uv build
 ```
 
-当前测试套件包含 407 个用例，覆盖 CLI、PDF/image 压缩、目标大小、文字与透明图层保留（含半透明、共享软遮罩、间接类型引用和 `Matte`）、视觉质量基准、Web API、部署打包、存储和错误处理。GitHub Actions 会在 Python 3.10 与 3.12 上运行 Ruff、依赖漏洞审计和测试，并构建分发包、验证容器。
+The suite currently has **414 tests** covering CLI, PDF/image compression,
+target sizing, text & transparency preservation (partial alpha, shared soft
+masks, indirect subtypes, `Matte`), visual-quality benchmarks, the web API,
+deployment packaging, storage, and error handling. CI runs Ruff, dependency
+audits, and the tests on Python 3.10 and 3.12, then builds the distribution and
+verifies the container.
 
-## 开源与贡献
+## 12. 🤝 Contributing
 
-欢迎提交 Issue 和 Pull Request。开发环境、检查命令和提交要求见
-[CONTRIBUTING.md](CONTRIBUTING.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
-安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要公开披露。
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Changes to compression behavior must report sizes, text/link/soft-mask
+preservation, at least one visual metric (SSIM/PSNR), runtime & peak memory,
+and include a regression test. Report vulnerabilities privately via
+[SECURITY.md](SECURITY.md).
 
-涉及压缩算法的改动，请同时提供：
+## 13. 📖 Citation
 
-1. 原始大小与输出大小。
-2. 文本和链接的数量及语义指纹是否保留。
-3. 至少一项视觉质量指标（如 SSIM/PSNR）。
-4. 运行时间与峰值内存。
-5. 对应的回归测试。
+If PaperSqueeze helps your work, please cite it (see [CITATION.cff](CITATION.cff)):
 
-本项目使用 [MIT License](LICENSE)。
+```bibtex
+@software{papersqueeze,
+  author  = {Li, Yufeng},
+  title   = {PaperSqueeze: target-aware PDF compression that preserves searchable text, links, and vector content},
+  year    = {2026},
+  url     = {https://github.com/asimfish/pdf-image-compressor}
+}
+```
+
+## 14. ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=asimfish/pdf-image-compressor&type=Date)](https://star-history.com/#asimfish/pdf-image-compressor&Date)
+
+## 15. License
+
+[MIT](LICENSE)
