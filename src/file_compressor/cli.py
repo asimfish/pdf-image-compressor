@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     compress.add_argument("--target-size", type=str, default=None)
     compress.add_argument("--overwrite", action="store_true")
     compress.add_argument("--archive", choices=["zip"], default=None)
-    compress.add_argument("--pdf-mode", choices=["auto", "optimize", "raster", "text"], default="auto")
+    compress.add_argument("--pdf-mode", choices=["fidelity", "auto", "optimize", "raster", "text"], default="fidelity")
     compress.add_argument("--pdf-dpi", type=int, default=120)
     compress.add_argument("--pdf-grayscale", action="store_true")
     compress.add_argument("--compression-level", type=int, choices=range(1, 5), default=2)
@@ -103,7 +103,8 @@ def _format_result(result: CompressionResult, label: str = "file") -> str:
         return f"FAILED {label}: {result.source} -> {result.error}"
     ratio = result.compression_ratio
     ratio_text = "-" if ratio is None else f"{ratio * 100:.1f}%"
-    return f"OK {label}: {result.source} -> {result.output} | {format_size(result.original_size)} -> {format_size(result.compressed_size)} | saved {ratio_text}"
+    prefix = "OK (over target)" if result.status in {"best_over_target", "best_over_target_partial"} else "OK"
+    return f"{prefix} {label}: {result.source} -> {result.output} | {format_size(result.original_size)} -> {format_size(result.compressed_size)} | saved {ratio_text}"
 
 
 def _summary_to_json(summary: CompressionSummary) -> dict:

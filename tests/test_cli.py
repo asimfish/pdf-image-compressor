@@ -27,7 +27,7 @@ def test_parser_compress_defaults():
     assert args.target_size is None
     assert args.overwrite is False
     assert args.archive is None
-    assert args.pdf_mode == "auto"
+    assert args.pdf_mode == "fidelity"
     assert args.pdf_dpi == 120
     assert args.pdf_grayscale is False
     assert args.keep_metadata is False
@@ -142,7 +142,8 @@ def test_format_result_best_over_target():
         status="best_over_target",
     )
     text = _format_result(result, label="archive")
-    assert "OK archive" in text
+    assert "over target" in text
+    assert "archive" in text
 
 
 # ── print_summary ──

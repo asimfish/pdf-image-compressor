@@ -29,8 +29,9 @@ function app() {
     filterTab: 'All',
     presets: ['200KB', '500KB', '1MB', '2MB', '5MB'],
     pdfModeOptions: [
-      { value: 'text', label: 'Keep text + shrink images (recommended)' },
-      { value: 'auto', label: 'Auto (may rasterize)' },
+      { value: 'fidelity', label: 'Fidelity max (recommended, no raster)' },
+      { value: 'text', label: 'Keep text + shrink images' },
+      { value: 'auto', label: 'Auto (quality-first, no implicit raster)' },
       { value: 'optimize', label: 'Optimize (lossless, keep text)' },
       { value: 'raster', label: 'Raster (max compression, drops text)' },
     ],
@@ -39,7 +40,7 @@ function app() {
     apiError: false,
     batchCompressing: false,
     showBatchCompress: false,
-    batchForm: { quality: 82, target_size: '', pdf_mode: 'text', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, label: '' },
+    batchForm: { quality: 82, target_size: '', pdf_mode: 'fidelity', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, label: '' },
     batchResults: null,
     batchCompressError: '',
     selectMode: false,
@@ -54,12 +55,12 @@ function app() {
     dragOver: false,
     globalDragActive: false,
     _globalDragCounter: 0,
-    uploadForm: { quality: 82, target_size: '', pdf_mode: 'text', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, notes: '' },
+    uploadForm: { quality: 82, target_size: '', pdf_mode: 'fidelity', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, notes: '' },
     // Compress
     showCompress: false,
     compressTarget: null,
     compressing: false,
-    compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'text', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, label: '' },
+    compressForm: { quality: 82, target_size: '500KB', pdf_mode: 'fidelity', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, label: '' },
     compressResult: null,
     compressError: '',
     _compressGen: 0,
@@ -90,7 +91,7 @@ function app() {
     toast: '',
     toastType: 'success',
     _defaults(extra = {}) {
-      return { quality: 82, target_size: '', pdf_mode: 'text', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, ...extra };
+      return { quality: 82, target_size: '', pdf_mode: 'fidelity', pdf_dpi: 120, pdf_grayscale: false, strip_metadata: true, compression_level: 2, ...extra };
     },
     _buildCompressFd(form, extras) {
       const fd = new FormData();

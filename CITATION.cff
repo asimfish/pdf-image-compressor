@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use PaperSqueeze in your work, please cite it as below."
+title: "PaperSqueeze: target-aware PDF compression that preserves searchable text, links, and vector content"
+type: software
+authors:
+  - family-names: "Li"
+    given-names: "Yufeng"
+repository-code: "https://github.com/asimfish/pdf-image-compressor"
+url: "https://github.com/asimfish/pdf-image-compressor"
+license: MIT
+keywords:
+  - pdf
+  - compression
+  - pdf-optimization
+  - academic-papers
+  - pymupdf

@@ -400,8 +400,10 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
 
 
 def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
-    if config.pdf_mode not in {"auto", "optimize", "raster", "text"}:
-        raise ValueError("pdf_mode must be auto, optimize, raster, or text")
+    if config.pdf_mode not in {"auto", "fidelity", "optimize", "raster", "text"}:
+        raise ValueError("pdf_mode must be auto, fidelity, optimize, raster, or text")
+    if config.pdf_mode == "fidelity":
+        return compress_pdf_fidelity(source, output, config)
     if config.pdf_mode == "optimize":
         return optimize_pdf(source, output, config)
     if config.pdf_mode == "raster":
@@ -409,11 +411,10 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
     if config.pdf_mode == "text":
         return compress_pdf_keep_text(source, output, config)
 
-    # Auto mode is quality-first. Preserve the original text/vector layer whenever
-    # the requested target is achievable by recompressing embedded images. Full-page
-    # rasterization is an expensive, destructive fallback: it removes selectable
-    # text and can take minutes on image-heavy papers, so only run it when the
-    # keep-text result cannot meet the target.
+    # Auto mode is quality-first. Preserve the original text/vector layer and
+    # return the closest lossless/keep-text result even when it slightly misses
+    # the target. Full-page rasterization is destructive, so it only runs when
+    # the caller explicitly chooses raster mode.
     with TemporaryDirectory(prefix="pdf_compress_") as temp_dir:
         original_size = source.stat().st_size
         temp = Path(temp_dir)
@@ -451,25 +452,23 @@ def compress_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
             preferred = next((item for item in candidates if item[2] == "text"), None)
             best = preferred or (min(candidates, key=lambda item: item[1]) if candidates else None)
         else:
-            # The keep-text pass could not hit the requested size. Rasterization is
-            # now justified; honor the caller's explicit grayscale choice rather
-            # than silently discarding color in auto mode.
-            rasterized = temp / "rasterized.pdf"
-            try:
-                rasterize_pdf_to_target(source, rasterized, config)
-                raster_size = rasterized.stat().st_size
-                if raster_size <= original_size:
-                    candidates.append((rasterized, raster_size, "raster"))
-            except Exception as exc:
-                logger.debug("Raster PDF pass failed in auto mode: %s", exc)
-
             under_target = [item for item in candidates if item[1] <= config.target_bytes]
             if under_target:
-                # Quality order is deliberate: lossless > keep-text > raster.
-                priority = {"optimize": 3, "text": 2, "raster": 1}
+                # Quality order is deliberate: lossless > keep-text. Auto never
+                # rasterizes implicitly; explicit raster mode remains available.
+                priority = {"optimize": 2, "text": 1}
                 best = max(under_target, key=lambda item: (priority[item[2]], item[1]))
             else:
-                best = min(candidates, key=lambda item: item[1]) if candidates else None
+                # A keep-text/lossless result that only slightly misses the target is
+                # far more useful than destroying the text layer. Return the closest
+                # vector result and let the caller surface best_over_target.
+                overshoot_limit = int(config.target_bytes * 1.20)
+                near_vector = [item for item in candidates if item[1] <= overshoot_limit]
+                if near_vector:
+                    priority = {"optimize": 2, "text": 1}
+                    best = max(near_vector, key=lambda item: (priority[item[2]], -item[1]))
+                else:
+                    best = min(candidates, key=lambda item: item[1]) if candidates else None
 
         output.parent.mkdir(parents=True, exist_ok=True)
         if best is None:
@@ -496,6 +495,72 @@ def optimize_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
 
 # Near-lossless quality for the "smallest with minimal quality loss" pass.
 _NEAR_LOSSLESS_QUALITY = 92
+
+# Fidelity mode never rasterizes and never scales images down. It only chooses
+# between lossless PDF optimization and near-lossless, same-resolution JPEG
+# re-encodes that are actually smaller than the original image bytes.
+_FIDELITY_IMAGE_QUALITIES = (95, _NEAR_LOSSLESS_QUALITY)
+
+
+def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig) -> Path:
+    """Compress as much as possible without rasterizing or scaling images.
+
+    Candidates are limited to lossless PDF optimization and same-resolution,
+    near-lossless image re-encodes. The smallest result that is not larger than
+    the source wins; if every pass fails, the source is copied unchanged.
+    """
+    with TemporaryDirectory(prefix="pdf_fidelity_") as temp_dir:
+        original_size = source.stat().st_size
+        temp = Path(temp_dir)
+        candidates: list[tuple[Path, int, str]] = []
+
+        optimized = temp / "optimized.pdf"
+        try:
+            optimize_pdf(source, optimized, config)
+            optimized_size = optimized.stat().st_size
+            if optimized_size <= original_size:
+                candidates.append((optimized, optimized_size, "optimize"))
+        except Exception as exc:
+            logger.debug("Optimize PDF pass failed in fidelity mode: %s", exc)
+
+        for quality in _FIDELITY_IMAGE_QUALITIES:
+            candidate = temp / f"keeptext_q{quality}.pdf"
+            try:
+                _recompress_images_keep_text(
+                    source,
+                    candidate,
+                    1.0,
+                    quality,
+                    config.strip_metadata,
+                )
+                candidate_size = candidate.stat().st_size
+                if candidate_size <= original_size:
+                    candidates.append((candidate, candidate_size, "text"))
+            except Exception as exc:
+                logger.debug(
+                    "Keep-text PDF pass failed in fidelity mode at quality %d: %s",
+                    quality,
+                    exc,
+                )
+
+        chosen: Optional[tuple[Path, int, str]] = None
+        if config.target_bytes is not None:
+            under_target = [item for item in candidates if item[1] <= config.target_bytes]
+            if under_target:
+                chosen = next(
+                    (item for item in under_target if item[2] == "optimize"),
+                    None,
+                ) or min(under_target, key=lambda item: item[1])
+        if chosen is None and candidates:
+            chosen = min(candidates, key=lambda item: item[1])
+
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if chosen is None:
+            shutil.copy2(source, output)
+        else:
+            shutil.copy2(chosen[0], output)
+        return output
+
 
 # (scale, quality) candidates for keep-text target search, ordered so the
 # resulting file size is (roughly) descending — highest quality / largest first.

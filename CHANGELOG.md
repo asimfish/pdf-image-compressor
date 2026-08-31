@@ -7,7 +7,14 @@ All notable changes to PaperSqueeze are documented here. The project follows
 
 ### Added
 
+- `fidelity` compression mode as the new default: quality-first, never rasterizes, and prefers the lossless candidate when it fits the target size.
+- Optional password access gate for public deployments via `PDF_COMPRESSOR_ACCESS_PASSWORD`, with a 30-day per-browser cookie.
+- Bilingual documentation: English `README.md` with Chinese `README_CN.md`, deployment guides `docs/DEPLOYMENT.md` / `docs/DEPLOYMENT_CN.md`, a commented `.env.example`, and `CITATION.cff`.
 - Automated tag-to-release publishing with version checks, quality gates, Python distribution validation, SHA-256 checksums, versioned GHCR image tags, and a non-executing repair path for existing releases.
+
+### Changed
+
+- `auto` mode no longer rasterizes pages to hit a target size; it returns the closest text-preserving result instead. Only the explicit `raster` mode trades away the text layer.
 
 ### Security
 
