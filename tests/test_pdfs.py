@@ -1085,3 +1085,151 @@ def test_rasterize_pdf_dst_open_failure(tmp_path: Path):
             rasterize_pdf(source, output, dpi=100, quality=70, grayscale=False, strip_metadata=False)
 
     mock_src.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ICC colorspace preservation (regression: wide-gamut scans washed out after
+# compression because replace_image rebinds images to a generic sRGB profile)
+# ---------------------------------------------------------------------------
+
+
+def _make_noise_jpeg(size: tuple[int, int] = (400, 300), mode: str = "RGB") -> bytes:
+    """Poorly-compressible JPEG so a lower-quality re-encode is always smaller."""
+    import io
+    import random
+
+    from PIL import Image
+
+    width, height = size
+    channels = len(mode)
+    random.seed(7)
+    with Image.new(mode, size) as img:
+        px = img.load()
+        for y in range(0, height, 4):
+            for x in range(0, width, 4):
+                c = tuple(random.randint(0, 255) for _ in range(channels))
+                for dy in range(4):
+                    for dx in range(4):
+                        if x + dx < width and y + dy < height:
+                            px[x + dx, y + dy] = c
+        with io.BytesIO() as buf:
+            img.save(buf, format="JPEG", quality=95)
+            return buf.getvalue()
+
+
+def _make_pdf_with_icc_image(path: Path) -> tuple[Path, bytes, int]:
+    """PDF whose embedded JPEG is bound to an ICCBased colorspace by reference,
+    the way scanner/notes-app exports (e.g. Display P3) arrive in practice.
+
+    Returns the path, the raw ICC profile bytes and the original image size.
+    """
+    from PIL import ImageCms
+
+    data = _make_noise_jpeg()
+    icc_bytes = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_text((72, 60), "icc regression", fontsize=14)
+        page.insert_image(fitz.Rect(50, 100, 450, 400), stream=data)
+        img_xref = page.get_images(full=True)[0][0]
+
+        icc_xref = doc.get_new_xref()
+        doc.update_object(icc_xref, "<< /N 3 >>")
+        doc.update_stream(icc_xref, icc_bytes, new=True)
+        cs_xref = doc.get_new_xref()
+        doc.update_object(cs_xref, f"[/ICCBased {icc_xref} 0 R]")
+        doc.xref_set_key(img_xref, "ColorSpace", f"{cs_xref} 0 R")
+        doc.save(path)
+    return path, icc_bytes, len(data)
+
+
+def _embedded_image_icc(path: Path) -> tuple[bytes | None, int]:
+    """Return (ICC profile bytes or None, embedded image size) for page 1."""
+    with fitz.open(path) as doc:
+        img_xref = doc[0].get_images(full=True)[0][0]
+        info = doc.extract_image(img_xref)
+        cs_type, cs_value = doc.xref_get_key(img_xref, "ColorSpace")
+        if cs_type != "xref":
+            return None, len(info["image"])
+        cs_obj = doc.xref_object(int(cs_value.split()[0]), compressed=True)
+        if "/ICCBased" not in cs_obj:
+            return None, len(info["image"])
+        icc_ref = int(cs_obj.strip("[]").split()[1])
+        return doc.xref_stream(icc_ref), len(info["image"])
+
+
+def test_keep_text_compression_preserves_icc_colorspace(tmp_path: Path):
+    from file_compressor.pdfs import compress_pdf_keep_text
+
+    source, icc_bytes, original_len = _make_pdf_with_icc_image(tmp_path / "icc.pdf")
+    output = tmp_path / "icc_out.pdf"
+
+    config = CompressionConfig(compression_level=3, output_dir=tmp_path)
+    compress_pdf_keep_text(source, output, config)
+
+    restored_icc, new_len = _embedded_image_icc(output)
+    assert new_len < original_len, "image should have been re-encoded"
+    assert restored_icc == icc_bytes
+
+
+def test_optimize_images_preserves_icc_colorspace(tmp_path: Path):
+    source, icc_bytes, original_len = _make_pdf_with_icc_image(tmp_path / "icc_opt.pdf")
+    output = tmp_path / "icc_opt_out.pdf"
+
+    config = CompressionConfig(compression_level=3, output_dir=tmp_path)
+    optimize_images_in_pdf(source, output, config)
+
+    restored_icc, new_len = _embedded_image_icc(output)
+    assert new_len < original_len, "image should have been re-encoded"
+    assert restored_icc == icc_bytes
+
+
+def test_keep_text_compression_drops_icc_after_component_change(tmp_path: Path):
+    """A CMYK image flattened to RGB must NOT keep its 4-component ICC entry."""
+    from file_compressor.pdfs import compress_pdf_keep_text
+
+    data = _make_noise_jpeg(mode="CMYK")
+    source = tmp_path / "cmyk.pdf"
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_image(fitz.Rect(50, 100, 450, 400), stream=data)
+        doc.save(source)
+
+    output = tmp_path / "cmyk_out.pdf"
+    config = CompressionConfig(compression_level=4, output_dir=tmp_path)
+    compress_pdf_keep_text(source, output, config)
+
+    with fitz.open(output) as doc:
+        img_xref = doc[0].get_images(full=True)[0][0]
+        info = doc.extract_image(img_xref)
+        # the re-encoded image is RGB, so a stale CMYK colorspace would corrupt it
+        assert info["colorspace"] == 3
+        assert "CMYK" not in info["cs-name"]
+        # the page must still render
+        assert doc[0].get_pixmap(alpha=False).samples
+
+
+def test_keep_text_target_refines_quality_between_ladder_rungs(tmp_path: Path):
+    """With a byte budget, the search must not settle for the coarse ladder rung
+    when several JPEG quality points of budget headroom remain."""
+    from file_compressor.pdfs import _recompress_images_keep_text, compress_pdf_keep_text
+
+    source = _make_pdf_with_image(tmp_path / "refine.pdf", pages=2)
+    rung_hi = tmp_path / "rung92.pdf"
+    rung_lo = tmp_path / "rung85.pdf"
+    _recompress_images_keep_text(source, rung_hi, 1.0, 92, False)
+    _recompress_images_keep_text(source, rung_lo, 1.0, 85, False)
+    size_hi = rung_hi.stat().st_size
+    size_lo = rung_lo.stat().st_size
+    assert size_lo < size_hi
+
+    target = (size_lo + size_hi) // 2
+    output = tmp_path / "refined.pdf"
+    config = CompressionConfig(target_bytes=target, output_dir=tmp_path)
+    compress_pdf_keep_text(source, output, config)
+
+    out_size = output.stat().st_size
+    assert out_size <= target
+    assert out_size > size_lo, "refinement should beat the coarse q85 rung"
+    assert _text_chars(output) == _text_chars(source)

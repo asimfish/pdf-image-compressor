@@ -248,6 +248,27 @@ def _soft_mask_requires_matching_dimensions(
     return value_type != "null"
 
 
+def _colorspace_survives_reencode(
+    cs_type: str,
+    source_components: Optional[int],
+    encoded_mode: str,
+) -> bool:
+    """Return whether the source /ColorSpace entry is still valid for the
+    re-encoded JPEG.
+
+    The re-encoder emits RGB (3 components) or grayscale (1 component) JPEG
+    data. The source colorspace — typically an ICC profile reference — keeps
+    describing the pixels only when the component count is unchanged; a
+    CMYK->RGB flattening for example must fall back to the replacement
+    default. Only reference/array entries need restoring: plain name entries
+    (/DeviceRGB etc.) carry no ICC data worth preserving.
+    """
+    if cs_type not in ("xref", "array"):
+        return False
+    encoded_components = 3 if encoded_mode == "RGB" else 1
+    return source_components == encoded_components
+
+
 def _replace_pdf_image_preserving_soft_mask(
     page: _PdfImagePage,
     doc: _PdfImageUpdater,
@@ -255,8 +276,21 @@ def _replace_pdf_image_preserving_soft_mask(
     xref: int,
     smask_xref: int,
     stream: bytes,
+    colorspace_raw: Optional[str] = None,
 ) -> None:
     page.replace_image(xref, stream=stream)
+    if colorspace_raw:
+        # replace_image rebinds the image to PyMuPDF's generic sRGB profile;
+        # restore the document's original ICC colorspace so wide-gamut scans
+        # (e.g. Display P3 notes exports) keep their colors after compression.
+        try:
+            doc.xref_set_key(xref, "ColorSpace", colorspace_raw)
+        except Exception:
+            logger.warning(
+                "Could not restore original ColorSpace %r for image xref=%d",
+                colorspace_raw,
+                xref,
+            )
     if smask_xref > 0:
         try:
             doc.xref_set_key(xref, "SMask", f"{smask_xref} 0 R")
@@ -345,6 +379,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                     with ExitStack() as stack:
                         image_source = stack.enter_context(io.BytesIO(img_bytes))
                         pil_img = stack.enter_context(Image.open(image_source))
+                        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
                         pil_img = _prepare_pdf_image_for_jpeg(
                             pil_img,
                             stack,
@@ -371,6 +406,12 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                         # Save as JPEG with quality based on level and ratio
                         base_quality = defaults["quality"]
                         quality = max(20, min(95, int(base_quality * ratio * 1.5)))
+                        # Re-encoding keeps pixel values, so the source ICC
+                        # colorspace stays valid as long as the component count
+                        # did not change (e.g. no CMYK->RGB flattening).
+                        keep_source_colorspace = _colorspace_survives_reencode(
+                            cs_type, base_image.get("colorspace"), pil_img.mode
+                        )
                         with io.BytesIO() as buf:
                             pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
                             new_img_bytes = buf.getvalue()
@@ -382,6 +423,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                             xref=xref,
                             smask_xref=smask_xref,
                             stream=new_img_bytes,
+                            colorspace_raw=cs_value if keep_source_colorspace else None,
                         )
                 except _SoftMaskRestoreError:
                     raise
@@ -601,6 +643,7 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                     with ExitStack() as stack:
                         image_source = stack.enter_context(io.BytesIO(img_bytes))
                         pil = stack.enter_context(Image.open(image_source))
+                        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
                         pil = _prepare_pdf_image_for_jpeg(
                             pil,
                             stack,
@@ -618,6 +661,12 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                                 pil = stack.enter_context(
                                     pil.resize((nw, nh), Image.Resampling.LANCZOS)
                                 )
+                        # Re-encoding keeps pixel values, so the source ICC
+                        # colorspace stays valid as long as the component count
+                        # did not change (e.g. no CMYK->RGB flattening).
+                        keep_source_colorspace = _colorspace_survives_reencode(
+                            cs_type, base.get("colorspace"), pil.mode
+                        )
                         with io.BytesIO() as buf:
                             pil.save(buf, format="JPEG", quality=quality, optimize=True)
                             new_bytes = buf.getvalue()
@@ -628,6 +677,7 @@ def _recompress_images_keep_text(source: Path, output: Path, scale: float, quali
                             xref=xref,
                             smask_xref=smask_xref,
                             stream=new_bytes,
+                            colorspace_raw=cs_value if keep_source_colorspace else None,
                         )
                 except _SoftMaskRestoreError:
                     raise
@@ -674,6 +724,7 @@ def compress_pdf_keep_text(source: Path, output: Path, config: CompressionConfig
     smallest: Optional[tuple[Path, int]] = None
     with TemporaryDirectory(prefix="pdf_keeptext_") as temp_dir:
         temp = Path(temp_dir)
+        fit_index: Optional[int] = None
         for index, (scale, quality) in enumerate(_KEEP_TEXT_CANDIDATES):
             candidate = temp / f"cand_{index}.pdf"
             _recompress_images_keep_text(source, candidate, scale, quality, config.strip_metadata)
@@ -682,7 +733,29 @@ def compress_pdf_keep_text(source: Path, output: Path, config: CompressionConfig
                 smallest = (candidate, size)
             if size <= target:
                 best_under = (candidate, size)
+                fit_index = index
                 break
+        if best_under is not None and fit_index:
+            # The coarse ladder jumps several JPEG quality points per rung, so
+            # the first fitting rung can leave a lot of budget unused (e.g.
+            # picking q78 when q82 still fits). Binary-search the quality gap
+            # between the fitting rung and the rung that failed, at the fitting
+            # rung's scale. Encoded sizes are near-monotonic in quality; every
+            # accepted probe is verified against the target, so the refined
+            # result never overshoots the budget.
+            fit_scale, fit_quality = _KEEP_TEXT_CANDIDATES[fit_index]
+            low = fit_quality + 1
+            high = _KEEP_TEXT_CANDIDATES[fit_index - 1][1] - 1
+            while low <= high:
+                mid = (low + high) // 2
+                probe = temp / f"cand_refine_{mid}.pdf"
+                _recompress_images_keep_text(source, probe, fit_scale, mid, config.strip_metadata)
+                probe_size = probe.stat().st_size
+                if probe_size <= target:
+                    best_under = (probe, probe_size)
+                    low = mid + 1
+                else:
+                    high = mid - 1
         chosen = best_under or smallest
         output.parent.mkdir(parents=True, exist_ok=True)
         if chosen is None:
