@@ -4,7 +4,14 @@ import fitz
 import pytest
 
 from file_compressor.models import CompressionConfig
-from file_compressor.pdfs import compress_pdf, optimize_images_in_pdf, optimize_pdf, rasterize_pdf, render_page
+from file_compressor.pdfs import (
+    compress_pdf,
+    compress_pdf_keep_text,
+    optimize_images_in_pdf,
+    optimize_pdf,
+    rasterize_pdf,
+    render_page,
+)
 
 
 def _make_pdf(path: Path, pages: int = 3, with_images: bool = False) -> Path:
@@ -825,7 +832,7 @@ def test_text_mode_does_not_save_partial_soft_mask_replacement(tmp_path: Path):
     output = tmp_path / "soft_mask_restore_failure_out.pdf"
 
     with patch(
-        "file_compressor.pdfs._replace_pdf_image_preserving_soft_mask",
+        "file_compressor.pdfs._rewrite_image_object",
         side_effect=_SoftMaskRestoreError("Unable to restore PDF soft mask 99"),
     ):
         with pytest.raises(_SoftMaskRestoreError, match="soft mask 99"):
@@ -1160,8 +1167,6 @@ def _embedded_image_icc(path: Path) -> tuple[bytes | None, int]:
 
 
 def test_keep_text_compression_preserves_icc_colorspace(tmp_path: Path):
-    from file_compressor.pdfs import compress_pdf_keep_text
-
     source, icc_bytes, original_len = _make_pdf_with_icc_image(tmp_path / "icc.pdf")
     output = tmp_path / "icc_out.pdf"
 
@@ -1187,8 +1192,6 @@ def test_optimize_images_preserves_icc_colorspace(tmp_path: Path):
 
 def test_keep_text_compression_drops_icc_after_component_change(tmp_path: Path):
     """A CMYK image flattened to RGB must NOT keep its 4-component ICC entry."""
-    from file_compressor.pdfs import compress_pdf_keep_text
-
     data = _make_noise_jpeg(mode="CMYK")
     source = tmp_path / "cmyk.pdf"
     with fitz.open() as doc:
@@ -1233,3 +1236,512 @@ def test_keep_text_target_refines_quality_between_ladder_rungs(tmp_path: Path):
     assert out_size <= target
     assert out_size > size_lo, "refinement should beat the coarse q85 rung"
     assert _text_chars(output) == _text_chars(source)
+
+
+def _make_pdf_with_indexed_image(path: Path) -> Path:
+    """PDF whose image is an 8-bit /Indexed palette over DeviceRGB.
+
+    Dithered gradient indices are high-entropy (poor Flate) while the decoded
+    picture is smooth (good JPEG), so the re-encoder always replaces it.
+    """
+    import random
+
+    from PIL import Image
+
+    width = height = 400
+    random.seed(11)
+    with Image.new("RGB", (width, height)) as img:
+        px = img.load()
+        for y in range(height):
+            for x in range(width):
+                px[x, y] = (
+                    min(255, x * 255 // width + random.randint(-12, 12)) % 256,
+                    y * 255 // height,
+                    (x + y) * 255 // (width + height),
+                )
+        palette_img = img.quantize(colors=256, dither=Image.Dither.FLOYDSTEINBERG)
+        indices = palette_img.tobytes()
+        lookup = bytes(palette_img.getpalette()[:768])
+
+    with fitz.open() as doc:
+        page = doc.new_page()
+        placeholder = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 8, 8), 0)
+        page.insert_image(fitz.Rect(50, 50, 450, 450), pixmap=placeholder)
+        xref = page.get_images(full=True)[0][0]
+        doc.update_object(
+            xref,
+            f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height}"
+            f" /BitsPerComponent 8 /ColorSpace [/Indexed /DeviceRGB 255 <{lookup.hex()}>] >>",
+        )
+        doc.update_stream(xref, indices, new=True, compress=1)
+        doc.save(path)
+    return path
+
+
+def _render_mean_abs_diff(a: Path, b: Path) -> float:
+    with fitz.open(a) as da, fitz.open(b) as db:
+        pa = da[0].get_pixmap(alpha=False)
+        pb = db[0].get_pixmap(alpha=False)
+        assert (pa.width, pa.height, pa.n) == (pb.width, pb.height, pb.n)
+        sa, sb = pa.samples, pb.samples
+    return sum(abs(x - y) for x, y in zip(sa, sb)) / len(sa)
+
+
+def test_keep_text_compression_never_reattaches_indexed_colorspace(tmp_path: Path):
+    """extract_image decodes palette images to RGB samples; re-attaching the
+    /Indexed entry to the re-encoded JPEG would remap every pixel through the
+    palette and scramble the colors (mean render diff ~25/255 vs ~1.5)."""
+    source = _make_pdf_with_indexed_image(tmp_path / "indexed.pdf")
+    output = tmp_path / "indexed_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=1, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        info = doc.extract_image(doc[0].get_images(full=True)[0][0])
+    assert info["ext"] == "jpeg", "palette image should have been re-encoded"
+    assert "Indexed" not in info["cs-name"]
+    assert info["colorspace"] == 3
+    assert _render_mean_abs_diff(source, output) < 8
+
+
+class _FakeColorspaceDoc:
+    def __init__(self, cs_type: str, cs_value: str, objects: dict[int, str] | None = None):
+        self._entry = (cs_type, cs_value)
+        self._objects = objects or {}
+
+    def is_stream(self, xref: int) -> bool:
+        return False
+
+    def xref_get_key(self, xref: int, key: str) -> tuple[str, str]:
+        assert key == "ColorSpace"
+        return self._entry
+
+    def xref_object(self, xref: int, *, compressed: bool) -> str:
+        return self._objects[xref]
+
+
+@pytest.mark.parametrize(
+    ("cs_type", "cs_value", "objects", "components", "mode", "expected"),
+    [
+        # ICC by reference, component count intact -> restore
+        ("xref", "5 0 R", {5: "[/ICCBased 10 0 R]"}, 3, "RGB", "5 0 R"),
+        ("xref", "5 0 R", {5: "[/ICCBased 10 0 R]"}, 1, "L", "5 0 R"),
+        # inline calibrated spaces keep their meaning for the same components
+        ("array", "[/CalRGB<</WhitePoint[.95 1 1.09]>>]", None, 3, "RGB", "[/CalRGB<</WhitePoint[.95 1 1.09]>>]"),
+        ("array", "[/CalGray<</WhitePoint[.95 1 1.09]>>]", None, 1, "L", "[/CalGray<</WhitePoint[.95 1 1.09]>>]"),
+        # component count changed (CMYK ICC flattened to RGB, gray ICC on RGB)
+        ("xref", "5 0 R", {5: "[/ICCBased 10 0 R]"}, 4, "RGB", None),
+        ("xref", "5 0 R", {5: "[/ICCBased 10 0 R]"}, 1, "RGB", None),
+        # decoded-to-base-space families must never be re-attached
+        ("array", "[/Indexed /DeviceRGB 255 <00>]", None, 1, "L", None),
+        ("array", "[/Indexed /DeviceGray 255 <00>]", None, 1, "L", None),
+        ("xref", "7 0 R", {7: "[/Indexed 9 0 R 58 49 0 R]"}, 1, "L", None),
+        ("array", "[/Lab<</WhitePoint[.95 1 1.09]>>]", None, 3, "RGB", None),
+        ("array", "[/Separation /Spot /DeviceCMYK 12 0 R]", None, 1, "L", None),
+        ("array", "[/DeviceN [/A /B /C] /DeviceRGB 12 0 R]", None, 3, "RGB", None),
+        # plain names carry no profile worth restoring
+        ("name", "/DeviceRGB", None, 3, "RGB", None),
+        ("null", "null", None, 3, "RGB", None),
+    ],
+)
+def test_restorable_colorspace_families(cs_type, cs_value, objects, components, mode, expected):
+    from file_compressor.pdfs import _restorable_colorspace
+
+    doc = _FakeColorspaceDoc(cs_type, cs_value, objects)
+    assert _restorable_colorspace(doc, 42, components, mode) == expected
+
+
+def test_fidelity_mode_honors_reachable_target_below_near_lossless(tmp_path: Path):
+    """Regression: the default mode used to give up on the budget as soon as
+    q92 did not fit and return a near-lossless file far above the target."""
+    from file_compressor.pdfs import _recompress_images_keep_text
+
+    source = _make_pdf_with_image(tmp_path / "fidelity_budget.pdf", pages=2)
+    q92 = tmp_path / "q92.pdf"
+    q70 = tmp_path / "q70.pdf"
+    _recompress_images_keep_text(source, q92, 1.0, 92, False)
+    _recompress_images_keep_text(source, q70, 1.0, 70, False)
+    size_q92 = q92.stat().st_size
+    size_q70 = q70.stat().st_size
+    assert size_q70 < size_q92
+    target = (size_q70 + size_q92) // 2
+
+    output = tmp_path / "fidelity_budget_out.pdf"
+    compress_pdf(source, output, CompressionConfig(pdf_mode="fidelity", target_bytes=target, output_dir=tmp_path))
+
+    out_size = output.stat().st_size
+    assert out_size <= target, "fidelity mode must honor a reachable byte budget"
+    assert out_size > size_q70, "should keep the highest quality that fits, not jump to a low rung"
+    assert _text_chars(output) == _text_chars(source)
+    with fitz.open(source) as src_doc, fitz.open(output) as out_doc:
+        src_img = src_doc.extract_image(src_doc[0].get_images(full=True)[0][0])
+        out_img = out_doc.extract_image(out_doc[0].get_images(full=True)[0][0])
+    assert (out_img["width"], out_img["height"]) == (src_img["width"], src_img["height"])
+
+
+def test_fidelity_mode_keeps_native_resolution_of_screen_dpi_images(tmp_path: Path):
+    """The test image is placed at ~144 DPI, below every DPI cap on the ladder,
+    so a budget under the lowest same-resolution rung must be met by quality
+    alone while the pixel dimensions stay untouched."""
+    from file_compressor.pdfs import _recompress_images_keep_text
+
+    source = _make_pdf_with_image(tmp_path / "fidelity_tight.pdf", pages=2)
+    lowest_full_res = tmp_path / "q70.pdf"
+    _recompress_images_keep_text(source, lowest_full_res, 1.0, 70, False)
+    target = int(lowest_full_res.stat().st_size * 0.9)
+
+    output = tmp_path / "fidelity_tight_out.pdf"
+    compress_pdf(source, output, CompressionConfig(pdf_mode="fidelity", target_bytes=target, output_dir=tmp_path))
+
+    assert output.stat().st_size <= target
+    assert _text_chars(output) == _text_chars(source)
+    with fitz.open(source) as src_doc, fitz.open(output) as out_doc:
+        src_img = src_doc.extract_image(src_doc[0].get_images(full=True)[0][0])
+        out_img = out_doc.extract_image(out_doc[0].get_images(full=True)[0][0])
+    assert (out_img["width"], out_img["height"]) == (src_img["width"], src_img["height"])
+
+
+def _make_pdf_with_mixed_dpi_images(path: Path) -> Path:
+    """One oversampled photo (2000 px drawn 2.5 in wide = 800 DPI) next to a
+    small icon drawn at its native 72 DPI."""
+    import io
+    import random
+
+    from PIL import Image
+
+    random.seed(5)
+
+    def noisy(width: int, height: int) -> bytes:
+        with Image.new("RGB", (width, height)) as img:
+            px = img.load()
+            for y in range(0, height, 4):
+                for x in range(0, width, 4):
+                    c = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+                    for dy in range(4):
+                        for dx in range(4):
+                            if x + dx < width and y + dy < height:
+                                px[x + dx, y + dy] = c
+            with io.BytesIO() as buf:
+                img.save(buf, format="JPEG", quality=95)
+                return buf.getvalue()
+
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_text((72, 60), "mixed dpi", fontsize=14)
+        page.insert_image(fitz.Rect(50, 100, 230, 235), stream=noisy(2000, 1500))
+        page.insert_image(fitz.Rect(300, 100, 400, 180), stream=noisy(100, 80))
+        doc.save(path)
+    return path
+
+
+def test_target_search_downscales_only_oversampled_images(tmp_path: Path):
+    """Under a tight budget the 800 DPI photo must lose pixels while the icon
+    drawn at native resolution keeps every one of them."""
+    from file_compressor.pdfs import _recompress_images_keep_text, compress_pdf_keep_text
+
+    source = _make_pdf_with_mixed_dpi_images(tmp_path / "mixed.pdf")
+    lowest_full_res = tmp_path / "q70.pdf"
+    _recompress_images_keep_text(source, lowest_full_res, 1.0, 70, False)
+    target = lowest_full_res.stat().st_size // 2
+
+    output = tmp_path / "mixed_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(target_bytes=target, output_dir=tmp_path))
+
+    assert output.stat().st_size <= target
+    assert _text_chars(output) == _text_chars(source)
+    with fitz.open(output) as doc:
+        images = {}
+        for img in doc[0].get_images(full=True):
+            info = doc.extract_image(img[0])
+            images[(info["width"] > 500)] = (info["width"], info["height"])
+    big, small = images[True], images[False]
+    assert big[0] < 2000, "oversampled photo should have been downscaled"
+    assert big[0] >= 600, "a 300 DPI cap keeps at least 750 px for a 2.5 in placement"
+    assert small == (100, 80), "native-resolution icon must not be resampled"
+
+
+def test_refine_between_rungs_bisects_quality_at_same_scale():
+    from file_compressor.pdfs import _KeepTextAttempt, _refine_between_rungs, _Rung
+
+    # size model: 1000 bytes per quality point, budget admits up to q82
+    probed: list[_Rung] = []
+
+    def probe(rung: _Rung) -> _KeepTextAttempt:
+        probed.append(rung)
+        return _KeepTextAttempt(Path(f"q{rung.quality}"), rung.quality * 1000, rung)
+
+    best = _refine_between_rungs(_Rung(1.0, 78), _Rung(1.0, 85), 82_000, probe)
+    assert best is not None and best.rung.quality == 82
+    assert all(r.scale == 1.0 and r.max_dpi is None for r in probed)
+    assert {r.quality for r in probed} <= set(range(79, 85))
+
+
+def test_refine_between_rungs_walks_mixed_scale_quality_segment():
+    from file_compressor.pdfs import _KeepTextAttempt, _refine_between_rungs, _Rung
+
+    # size grows with pixel count (scale^2) and quality; budget sits inside the gap
+    def size_of(rung: _Rung) -> int:
+        return int(1_000_000 * rung.scale * rung.scale * (rung.quality / 70))
+
+    probed: list[_Rung] = []
+
+    def probe(rung: _Rung) -> _KeepTextAttempt:
+        probed.append(rung)
+        return _KeepTextAttempt(Path("p"), size_of(rung), rung)
+
+    fit, over = _Rung(0.85, 62), _Rung(1.0, 70)
+    target = (size_of(fit) + size_of(over)) // 2
+    best = _refine_between_rungs(fit, over, target, probe)
+
+    assert best is not None
+    assert best.size <= target
+    assert best.size > size_of(fit), "refinement must use budget the coarse rung left unused"
+    assert 0.85 < best.rung.scale < 1.0 and 62 < best.rung.quality < 70
+    assert len(probed) <= 4
+    assert all(0.85 <= r.scale <= 1.0 and 62 <= r.quality <= 70 for r in probed)
+
+
+def test_refine_between_rungs_interpolates_dpi_cap():
+    """Between a capped rung and an uncapped one the bisection must relax the
+    cap (toward twice the fitting cap) together with the quality, never drop
+    it, and every probe must stay inside the gap."""
+    from file_compressor.pdfs import _KeepTextAttempt, _refine_between_rungs, _Rung
+
+    def size_of(rung: _Rung) -> int:
+        cap = rung.max_dpi or 600
+        return int(1_000_000 * (cap / 600) ** 2 * (rung.quality / 70))
+
+    probed: list[_Rung] = []
+
+    def probe(rung: _Rung) -> _KeepTextAttempt:
+        probed.append(rung)
+        return _KeepTextAttempt(Path("p"), size_of(rung), rung)
+
+    fit, over = _Rung(1.0, 66, 300), _Rung(1.0, 70)
+    target = (size_of(fit) + size_of(over)) // 2
+    best = _refine_between_rungs(fit, over, target, probe)
+
+    assert best is not None and best.size <= target
+    assert best.size > size_of(fit)
+    assert all(r.scale == 1.0 and 300 <= r.max_dpi <= 600 and 66 <= r.quality <= 70 for r in probed)
+    assert best.rung.max_dpi > 300
+
+    # two capped rungs interpolate between the caps
+    probed.clear()
+    best = _refine_between_rungs(_Rung(1.0, 62, 250), _Rung(1.0, 66, 300), 10**12, probe)
+    assert best is not None
+    assert all(250 <= r.max_dpi <= 300 and 62 <= r.quality <= 66 for r in probed)
+
+
+def test_refine_between_rungs_returns_none_when_nothing_fits():
+    from file_compressor.pdfs import _KeepTextAttempt, _refine_between_rungs, _Rung
+
+    def probe(rung: _Rung) -> _KeepTextAttempt:
+        return _KeepTextAttempt(Path("p"), 10**9, rung)
+
+    assert _refine_between_rungs(_Rung(1.0, 78), _Rung(1.0, 85), 1, probe) is None
+    assert _refine_between_rungs(_Rung(0.85, 62), _Rung(1.0, 70), 1, probe) is None
+    assert _refine_between_rungs(_Rung(1.0, 66, 300), _Rung(1.0, 70), 1, probe) is None
+
+
+def test_keep_text_target_refines_upward_when_top_rung_fits(tmp_path: Path):
+    """A generous budget must not stop at the ladder's top rung (q92) when
+    q93-q95 still fit."""
+    from file_compressor.pdfs import _recompress_images_keep_text, compress_pdf_keep_text
+
+    source = _make_pdf_with_image(tmp_path / "generous.pdf", pages=2)
+    q92 = tmp_path / "q92.pdf"
+    q95 = tmp_path / "q95.pdf"
+    _recompress_images_keep_text(source, q92, 1.0, 92, False)
+    _recompress_images_keep_text(source, q95, 1.0, 95, False)
+    size_q92, size_q95 = q92.stat().st_size, q95.stat().st_size
+    assert size_q92 < size_q95
+
+    output = tmp_path / "generous_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(target_bytes=size_q95 + 10, output_dir=tmp_path))
+
+    out_size = output.stat().st_size
+    assert out_size <= size_q95 + 10
+    assert out_size > size_q92, "should climb above the q92 rung when the budget allows"
+
+
+def test_closest_without_waste_prefers_quality_within_tolerance():
+    from file_compressor.pdfs import _KeepTextAttempt, _Rung, _closest_without_waste
+
+    # every rung misses the budget; 13.0 MB is the floor (vector content)
+    attempts = [
+        _KeepTextAttempt(Path("q70"), 19_000_000, _Rung(1.0, 70)),
+        _KeepTextAttempt(Path("q58"), 15_000_000, _Rung(1.0, 58, 200)),
+        _KeepTextAttempt(Path("q50"), 14_100_000, _Rung(1.0, 50, 150)),
+        _KeepTextAttempt(Path("q40"), 13_600_000, _Rung(1.0, 40, 110)),
+        _KeepTextAttempt(Path("q30"), 13_200_000, _Rung(1.0, 30, 80)),
+        _KeepTextAttempt(Path("q24"), 13_000_000, _Rung(1.0, 24, 72)),
+    ]
+    chosen = _closest_without_waste(attempts)
+    # q50 is 8.5% above the floor (allowed); q58 is 15% above (rejected)
+    assert chosen is not None and chosen.rung.quality == 50
+    assert _closest_without_waste([]) is None
+    assert _closest_without_waste(attempts[:1]) is attempts[0]
+
+
+def test_keep_text_unreachable_target_does_not_crush_images_for_nothing(tmp_path: Path, monkeypatch):
+    """With an unreachable budget the fallback must not be the lowest rung when
+    a much better rung is only marginally larger."""
+    import file_compressor.pdfs as pdfs_module
+
+    source = _make_pdf(tmp_path / "src.pdf", pages=1)
+    sizes = {92: 1900, 85: 1500, 78: 1410, 70: 1360, 66: 1330, 62: 1310, 58: 1300, 54: 1290}
+
+    def fake_encode(self, output, scale, quality, max_dpi=None):
+        output.write_bytes(b"x" * sizes.get(quality, 1280))
+        return output
+
+    monkeypatch.setattr(pdfs_module._KeepTextSession, "encode", fake_encode)
+    output = tmp_path / "out.pdf"
+    pdfs_module.compress_pdf_keep_text(source, output, CompressionConfig(target_bytes=100, output_dir=tmp_path))
+    # floor is 1280 bytes; anything up to 1408 qualifies, so q78 (1410) is out and q70 (1360) wins
+    assert output.stat().st_size == 1360
+
+
+@pytest.mark.parametrize("fit_at", [0, 1, 2, 5, 9, 13])
+def test_first_fitting_rung_finds_boundary_with_few_probes(fit_at: int):
+    from file_compressor.pdfs import _first_fitting_rung
+
+    count = 14
+    sizes = [1000 - 50 * i for i in range(count)]  # strictly decreasing
+    target = sizes[fit_at]
+    probed: list[int] = []
+
+    def size_of(index: int) -> int:
+        probed.append(index)
+        return sizes[index]
+
+    assert _first_fitting_rung(count, target, size_of) == fit_at
+    assert len(set(probed)) <= 8, probed
+    if fit_at:
+        assert fit_at - 1 in probed, "the failing neighbour must be encoded for refinement"
+
+
+def test_first_fitting_rung_returns_none_when_nothing_fits():
+    from file_compressor.pdfs import _first_fitting_rung
+
+    sizes = [1000 - 50 * i for i in range(14)]
+    probed: list[int] = []
+
+    def size_of(index: int) -> int:
+        probed.append(index)
+        return sizes[index]
+
+    assert _first_fitting_rung(14, 1, size_of) is None
+    assert 13 in probed and len(set(probed)) <= 6
+    assert _first_fitting_rung(0, 1, size_of) is None
+
+
+def _render_page_samples(path: Path, page: int = 0, zoom: float = 0.5):
+    """Render a page to raw RGB bytes via MuPDF (proxy for viewer output)."""
+    with fitz.open(path) as doc:
+        pm = doc[page].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        return pm.samples, pm.width, pm.height
+
+
+def test_keep_text_image_object_has_no_null_dict_entries(tmp_path: Path):
+    """Regression: page.replace_image left `/Interpolate null` etc. behind, which
+    Ghostscript type-checks and then drops the whole image (blank page). The
+    in-place rewrite must never emit a null dictionary value."""
+    source = _make_pdf_with_image(tmp_path / "nulls.pdf", pages=2)
+    # give the image a boolean /Interpolate so the original has a value to lose
+    with fitz.open(source) as doc:
+        for page in doc:
+            for img in page.get_images(full=True):
+                doc.xref_set_key(img[0], "Interpolate", "true")
+        doc.saveIncr()
+
+    output = tmp_path / "nulls_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=3, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        for page in doc:
+            for img in page.get_images(full=True):
+                xref = img[0]
+                for key in doc.xref_get_keys(xref):
+                    value_type, _ = doc.xref_get_key(xref, key)
+                    assert value_type != "null", f"{key} is null on xref {xref}"
+
+
+def test_keep_text_preserves_carried_dictionary_keys(tmp_path: Path):
+    """Rendering hints and structure links that still apply after re-encoding
+    must be kept, not silently dropped, by the in-place rewrite."""
+    source = _make_pdf_with_image(tmp_path / "carry.pdf", pages=2)
+    with fitz.open(source) as doc:
+        img_xref = doc[0].get_images(full=True)[0][0]
+        doc.xref_set_key(img_xref, "Interpolate", "true")
+        doc.xref_set_key(img_xref, "Intent", "/Perceptual")
+        doc.saveIncr()
+
+    output = tmp_path / "carry_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=4, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        img_xref = doc[0].get_images(full=True)[0][0]
+        assert doc.xref_get_key(img_xref, "Interpolate") == ("bool", "true")
+        assert doc.xref_get_key(img_xref, "Intent") == ("name", "/Perceptual")
+        assert doc.extract_image(img_xref)["ext"] == "jpeg"
+
+
+def test_keep_text_rewrite_preserves_soft_mask_and_renders(tmp_path: Path):
+    """The in-place rewrite must keep an external /SMask attached and the page
+    must still render (the transparent region stays transparent)."""
+    source = _make_pdf_with_soft_mask(tmp_path / "smask.pdf")
+    output = tmp_path / "smask_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=3, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        assert doc[0].get_images(full=True)[0][1] > 0  # smask xref still set
+        assert doc[0].get_pixmap(alpha=False).samples  # renders without error
+
+
+def test_keep_text_parallel_matches_serial_output(tmp_path: Path, monkeypatch):
+    """The thread pool must not change the result: a single worker and the
+    default pool must produce byte-identical documents."""
+    import file_compressor.pdfs as pdfs_module
+
+    source = _make_pdf_with_image(tmp_path / "parallel.pdf", pages=4)
+
+    serial = tmp_path / "serial.pdf"
+    monkeypatch.setattr(pdfs_module, "_ENCODE_WORKERS", 1)
+    compress_pdf_keep_text(source, serial, CompressionConfig(compression_level=3, output_dir=tmp_path))
+
+    parallel = tmp_path / "parallel_out.pdf"
+    monkeypatch.setattr(pdfs_module, "_ENCODE_WORKERS", 8)
+    compress_pdf_keep_text(source, parallel, CompressionConfig(compression_level=3, output_dir=tmp_path))
+
+    assert _render_page_samples(serial) == _render_page_samples(parallel)
+
+
+def test_keep_text_session_reuses_extraction_across_rungs(tmp_path: Path):
+    """The target search must extract each image once and reuse it for every
+    rung it encodes, not re-open and re-extract per rung."""
+    import file_compressor.pdfs as pdfs_module
+
+    source = _make_pdf_with_image(tmp_path / "session.pdf", pages=3)
+    calls = {"n": 0}
+    original_init = pdfs_module._KeepTextSession.__init__
+
+    def counting_init(self, src, strip):
+        calls["n"] += 1
+        original_init(self, src, strip)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(pdfs_module._KeepTextSession, "__init__", counting_init)
+    try:
+        q92 = tmp_path / "q92.pdf"
+        q70 = tmp_path / "q70.pdf"
+        pdfs_module._recompress_images_keep_text(source, q92, 1.0, 92, False)
+        pdfs_module._recompress_images_keep_text(source, q70, 1.0, 70, False)
+        target = (q92.stat().st_size + q70.stat().st_size) // 2
+        calls["n"] = 0
+        output = tmp_path / "session_out.pdf"
+        pdfs_module.compress_pdf_keep_text(source, output, CompressionConfig(target_bytes=target, output_dir=tmp_path))
+        # one session for the whole multi-rung + refinement search
+        assert calls["n"] == 1
+    finally:
+        monkeypatch.undo()

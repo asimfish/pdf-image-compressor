@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import re
 import shutil
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional, Protocol
+from typing import Callable, NamedTuple, Optional, Protocol
 
 from PIL import Image, ImageFilter, ImageEnhance, ImageStat
 
@@ -39,7 +42,12 @@ class _PdfImagePage(Protocol):
     def replace_image(self, xref: int, *, stream: bytes) -> None: ...
 
 
-class _SoftMaskRestoreError(RuntimeError):
+class _ImageRewriteError(RuntimeError):
+    """Raised when an image object was partially rewritten and the document can
+    no longer be saved without corrupting that image."""
+
+
+class _SoftMaskRestoreError(_ImageRewriteError):
     """Raised after image replacement when its PDF soft mask cannot be restored."""
 
 
@@ -163,12 +171,14 @@ def _prepare_pdf_image_for_jpeg(
     *,
     doc: _PdfSoftMaskInspector,
     smask_xref: int,
+    xref: int = 0,
 ) -> Image.Image:
     """Return a JPEG-compatible base image without destroying PDF transparency.
 
     External PDF soft masks stay separate and are restored after replacement.
     Pillow-embedded alpha has no separate PDF object, so it is flattened to white.
-    Any derived images are owned by ``stack``.
+    CMYK samples are converted through MuPDF when ``xref`` is given. Any derived
+    images are owned by ``stack``.
     """
     mask: Optional[Image.Image] = None
     if smask_xref > 0:
@@ -220,9 +230,39 @@ def _prepare_pdf_image_for_jpeg(
         background = stack.enter_context(Image.new("RGB", image.size, "white"))
         background.paste(rgb, mask=mask)
         return background
-    if image.mode == "CMYK" or image.mode not in ("RGB", "L"):
+    if image.mode == "CMYK":
+        converted = _cmyk_to_rgb_via_mupdf(doc, xref, image.size) if xref else None
+        if converted is not None:
+            return stack.enter_context(converted)
+        return stack.enter_context(image.convert("RGB"))
+    if image.mode not in ("RGB", "L"):
         return stack.enter_context(image.convert("RGB"))
     return image
+
+
+def _cmyk_to_rgb_via_mupdf(doc: object, xref: int, expected_size: tuple[int, int]) -> Optional[Image.Image]:
+    """Decode a CMYK image through MuPDF's colour pipeline instead of Pillow's.
+
+    Pillow's CMYK->RGB is the naive (1-C)(1-K) formula and lands ~10/255 away
+    from what PDF viewers show for the same DeviceCMYK data; MuPDF's conversion
+    (ICC-aware when the colourspace carries a profile) is measurably closer to
+    Quartz, Ghostscript and MuPDF renderings of the original. Returns None when
+    the document does not support pixmap extraction (test doubles, corrupt
+    streams) so the caller can fall back to Pillow.
+    """
+    try:
+        fitz = _fitz()
+        pixmap = fitz.Pixmap(doc, xref)
+        if pixmap.alpha:
+            pixmap = fitz.Pixmap(pixmap, 0)
+        if pixmap.n != 3:
+            pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
+        if (pixmap.width, pixmap.height) != expected_size:
+            return None
+        return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+    except Exception as exc:
+        logger.debug("MuPDF CMYK conversion unavailable for xref=%d: %s", xref, exc)
+        return None
 
 
 def _soft_mask_requires_matching_dimensions(
@@ -248,25 +288,153 @@ def _soft_mask_requires_matching_dimensions(
     return value_type != "null"
 
 
-def _colorspace_survives_reencode(
-    cs_type: str,
+# Colorspace families whose sample values are exactly what the JPEG encoder
+# emits for the same component count. extract_image decodes every other family
+# (Indexed palettes, Separation/DeviceN tints, Lab, Pattern) into base-space
+# samples, so re-attaching the source entry to the re-encoded image would
+# corrupt its colors.
+_REENCODE_SAFE_COLORSPACE_FAMILIES = ("/ICCBased", "/CalRGB", "/CalGray")
+_COLORSPACE_FAMILY_RE = re.compile(r"\s*\[?\s*(/[A-Za-z0-9]+)")
+
+
+def _restorable_colorspace(
+    doc: _PdfSoftMaskInspector,
+    xref: int,
     source_components: Optional[int],
     encoded_mode: str,
-) -> bool:
-    """Return whether the source /ColorSpace entry is still valid for the
-    re-encoded JPEG.
+) -> Optional[str]:
+    """Return the raw /ColorSpace value to re-attach after re-encoding, or None.
 
-    The re-encoder emits RGB (3 components) or grayscale (1 component) JPEG
-    data. The source colorspace — typically an ICC profile reference — keeps
-    describing the pixels only when the component count is unchanged; a
-    CMYK->RGB flattening for example must fall back to the replacement
-    default. Only reference/array entries need restoring: plain name entries
-    (/DeviceRGB etc.) carry no ICC data worth preserving.
+    page.replace_image rebinds every replaced image to a generic sRGB profile.
+    Wide-gamut sources (Display P3 scans, calibrated RGB) would render washed
+    out, so the original entry is restored when it still describes the new
+    samples: the family must be one whose values the encoder reproduces as-is
+    and the component count must be unchanged (a CMYK->RGB flattening, for
+    example, must keep the replacement default). Plain name entries
+    (/DeviceRGB etc.) carry no profile worth preserving.
     """
+    try:
+        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
+    except Exception:
+        return None
     if cs_type not in ("xref", "array"):
-        return False
+        return None
+    resolved = cs_value
+    if cs_type == "xref":
+        try:
+            resolved = doc.xref_object(int(cs_value.split()[0]), compressed=True)
+        except Exception:
+            return None
+    match = _COLORSPACE_FAMILY_RE.match(resolved or "")
+    if match is None or match.group(1) not in _REENCODE_SAFE_COLORSPACE_FAMILIES:
+        return None
     encoded_components = 3 if encoded_mode == "RGB" else 1
-    return source_components == encoded_components
+    if source_components != encoded_components:
+        return None
+    return cs_value
+
+
+def _image_is_reencodable(doc: object, xref: int, extracted: dict) -> bool:
+    """Reject images whose dictionary semantics would not survive a JPEG swap.
+
+    Stencil masks (/ImageMask) are painted with the fill colour and colour-key
+    or stencil /Mask entries refer to the original sample values, so both are
+    left alone. A non-default /Decode array remaps the samples: when
+    ``extract_image`` decoded the image itself (Indexed, CMYK-with-Decode,
+    inverted gray) the remap is already baked into the pixels and the entry can
+    be dropped, but when it passed the original stream through untouched (a
+    DCT stream with an inverting Decode) re-encoding would flip the image.
+    """
+    try:
+        mask_type, mask_value = doc.xref_get_key(xref, "ImageMask")  # type: ignore[attr-defined]
+        if mask_type == "bool" and mask_value.lower() == "true":
+            return False
+        if doc.xref_get_key(xref, "Mask")[0] != "null":  # type: ignore[attr-defined]
+            return False
+        decode_type, decode_value = doc.xref_get_key(xref, "Decode")  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.debug("Unable to inspect image dictionary for xref=%d: %s", xref, exc)
+        return False
+    if decode_type == "null":
+        return True
+    components = extracted.get("colorspace")
+    if decode_type != "array" or not components:
+        return False
+    try:
+        values = [float(token) for token in decode_value.strip("[]").split()]
+    except ValueError:
+        return False
+    default = [component for _ in range(components) for component in (0.0, 1.0)]
+    if values == default:
+        return True
+    try:
+        raw = doc.xref_stream_raw(xref)  # type: ignore[attr-defined]
+    except Exception:
+        return False
+    return raw != extracted.get("image")
+
+
+# Image dictionary entries that stay meaningful after the sample data has been
+# re-encoded and are carried over from the original image: rendering hints,
+# optional-content membership and tagged-PDF structure links.
+_CARRIED_IMAGE_KEYS: dict[str, tuple[str, ...]] = {
+    "Interpolate": ("bool",),
+    "Intent": ("name",),
+    "OC": ("xref",),
+    "StructParent": ("int",),
+}
+
+
+def _snapshot_carried_image_keys(doc: _PdfSoftMaskInspector, xref: int) -> dict[str, str]:
+    carried: dict[str, str] = {}
+    for key, accepted_types in _CARRIED_IMAGE_KEYS.items():
+        try:
+            value_type, value = doc.xref_get_key(xref, key)
+        except Exception:
+            continue
+        if value_type in accepted_types:
+            carried[key] = value
+    return carried
+
+
+def _delete_xref_keys(doc: object, xref: int, keys: list[str]) -> None:
+    """Remove dictionary entries outright.
+
+    ``Document.xref_set_key(xref, key, "null")`` serialises a literal ``null``
+    instead of dropping the entry, so the low-level MuPDF binding is used.
+    """
+    fitz = _fitz()
+    pdf = fitz.mupdf.pdf_document_from_fz_document(doc.this)  # type: ignore[attr-defined]
+    obj = fitz.mupdf.pdf_load_object(pdf, xref)
+    for key in keys:
+        fitz.mupdf.pdf_dict_dels(obj, key)
+
+
+def _sanitize_replaced_image_dict(doc: object, xref: int, carried: dict[str, str]) -> None:
+    """Repair the image dictionary that ``page.replace_image`` leaves behind.
+
+    replace_image copies the new image object over the old xref and writes a
+    literal ``null`` for every key the old dictionary had but the new one lacks
+    (/Interpolate, /Intent, /Name, ...). Ghostscript type-checks these entries
+    (``/Interpolate null`` is not a boolean) and silently drops the whole image,
+    rendering a blank page. Null entries are removed and the entries that still
+    apply to the re-encoded samples are restored from the original.
+    """
+    get_keys = getattr(doc, "xref_get_keys", None)
+    if get_keys is None:
+        return
+    try:
+        null_keys = [
+            key
+            for key in get_keys(xref)
+            if doc.xref_get_key(xref, key)[0] == "null"  # type: ignore[attr-defined]
+        ]
+        if null_keys:
+            _delete_xref_keys(doc, xref, null_keys)
+        for key, value in carried.items():
+            doc.xref_set_key(xref, key, value)  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning("Could not sanitize image dictionary for xref=%d: %s", xref, exc)
 
 
 def _replace_pdf_image_preserving_soft_mask(
@@ -278,7 +446,9 @@ def _replace_pdf_image_preserving_soft_mask(
     stream: bytes,
     colorspace_raw: Optional[str] = None,
 ) -> None:
+    carried = _snapshot_carried_image_keys(doc, xref) if hasattr(doc, "xref_get_key") else {}
     page.replace_image(xref, stream=stream)
+    _sanitize_replaced_image_dict(doc, xref, carried)
     if colorspace_raw:
         # replace_image rebinds the image to PyMuPDF's generic sRGB profile;
         # restore the document's original ICC colorspace so wide-gamut scans
@@ -374,17 +544,19 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                 # Skip tiny images
                 if w < 50 or h < 50 or len(img_bytes) < 1024:
                     continue
+                if not _image_is_reencodable(doc, xref, base_image):
+                    continue
 
                 try:
                     with ExitStack() as stack:
                         image_source = stack.enter_context(io.BytesIO(img_bytes))
                         pil_img = stack.enter_context(Image.open(image_source))
-                        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
                         pil_img = _prepare_pdf_image_for_jpeg(
                             pil_img,
                             stack,
                             doc=doc,
                             smask_xref=smask_xref,
+                            xref=xref,
                         )
 
                         # Calculate new dimensions
@@ -406,11 +578,8 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                         # Save as JPEG with quality based on level and ratio
                         base_quality = defaults["quality"]
                         quality = max(20, min(95, int(base_quality * ratio * 1.5)))
-                        # Re-encoding keeps pixel values, so the source ICC
-                        # colorspace stays valid as long as the component count
-                        # did not change (e.g. no CMYK->RGB flattening).
-                        keep_source_colorspace = _colorspace_survives_reencode(
-                            cs_type, base_image.get("colorspace"), pil_img.mode
+                        colorspace_raw = _restorable_colorspace(
+                            doc, xref, base_image.get("colorspace"), pil_img.mode
                         )
                         with io.BytesIO() as buf:
                             pil_img.save(buf, format="JPEG", quality=quality, optimize=True)
@@ -423,7 +592,7 @@ def optimize_images_in_pdf(source: Path, output: Path, config: CompressionConfig
                             xref=xref,
                             smask_xref=smask_xref,
                             stream=new_img_bytes,
-                            colorspace_raw=cs_value if keep_source_colorspace else None,
+                            colorspace_raw=colorspace_raw,
                         )
                 except _SoftMaskRestoreError:
                     raise
@@ -538,33 +707,69 @@ def optimize_pdf(source: Path, output: Path, config: CompressionConfig) -> Path:
 # Near-lossless quality for the "smallest with minimal quality loss" pass.
 _NEAR_LOSSLESS_QUALITY = 92
 
-# Fidelity mode never rasterizes and never scales images down. It only chooses
-# between lossless PDF optimization and near-lossless, same-resolution JPEG
-# re-encodes that are actually smaller than the original image bytes.
+# Without a byte budget, fidelity mode never scales images down. It only
+# chooses between lossless PDF optimization and near-lossless, same-resolution
+# JPEG re-encodes that are actually smaller than the original image bytes.
 _FIDELITY_IMAGE_QUALITIES = (95, _NEAR_LOSSLESS_QUALITY)
 
 
 def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig) -> Path:
-    """Compress as much as possible without rasterizing or scaling images.
+    """Quality-first compression that never rasterizes pages.
 
-    Candidates are limited to lossless PDF optimization and same-resolution,
-    near-lossless image re-encodes. The smallest result that is not larger than
-    the source wins; if every pass fails, the source is copied unchanged.
+    Without a target, candidates are limited to lossless PDF optimization and
+    same-resolution, near-lossless image re-encodes; the smallest result that is
+    not larger than the source wins, and the source is copied unchanged if every
+    pass fails.
+
+    With a target, the byte budget is a hard constraint: the lossless pass wins
+    when it fits, otherwise the keep-text quality ladder is walked from q95 down
+    (with binary refinement between rungs) and the highest quality that fits is
+    returned. Only when even the lowest rung misses the budget does the closest
+    text-preserving result come back, so callers can surface best_over_target.
     """
     with TemporaryDirectory(prefix="pdf_fidelity_") as temp_dir:
         original_size = source.stat().st_size
         temp = Path(temp_dir)
-        candidates: list[tuple[Path, int, str]] = []
+        output.parent.mkdir(parents=True, exist_ok=True)
 
-        optimized = temp / "optimized.pdf"
+        optimized: Optional[tuple[Path, int]] = None
+        optimized_path = temp / "optimized.pdf"
         try:
-            optimize_pdf(source, optimized, config)
-            optimized_size = optimized.stat().st_size
+            optimize_pdf(source, optimized_path, config)
+            optimized_size = optimized_path.stat().st_size
             if optimized_size <= original_size:
-                candidates.append((optimized, optimized_size, "optimize"))
+                optimized = (optimized_path, optimized_size)
         except Exception as exc:
             logger.debug("Optimize PDF pass failed in fidelity mode: %s", exc)
 
+        if config.target_bytes is not None:
+            if optimized is not None and optimized[1] <= config.target_bytes:
+                shutil.copy2(optimized[0], output)
+                return output
+            best_under, attempts = _search_keep_text_under_target(
+                source,
+                temp,
+                config.target_bytes,
+                config.strip_metadata,
+                _FIDELITY_LADDER,
+            )
+            if best_under is not None:
+                shutil.copy2(best_under.path, output)
+                return output
+            # Even the lowest rung misses the budget, so downscaling bought
+            # nothing: hand back the smallest same-resolution result instead of
+            # a needlessly degraded one and let the caller flag over-target.
+            full_res = [item for item in attempts if item.native_resolution]
+            fallback = min(full_res or attempts, key=lambda item: item.size) if attempts else None
+            if fallback is not None:
+                shutil.copy2(fallback.path, output)
+            elif optimized is not None:
+                shutil.copy2(optimized[0], output)
+            else:
+                shutil.copy2(source, output)
+            return output
+
+        candidates: list[tuple[Path, int]] = [optimized] if optimized else []
         for quality in _FIDELITY_IMAGE_QUALITIES:
             candidate = temp / f"keeptext_q{quality}.pdf"
             try:
@@ -577,122 +782,317 @@ def compress_pdf_fidelity(source: Path, output: Path, config: CompressionConfig)
                 )
                 candidate_size = candidate.stat().st_size
                 if candidate_size <= original_size:
-                    candidates.append((candidate, candidate_size, "text"))
+                    candidates.append((candidate, candidate_size))
             except Exception as exc:
                 logger.debug(
                     "Keep-text PDF pass failed in fidelity mode at quality %d: %s",
                     quality,
                     exc,
                 )
-
-        chosen: Optional[tuple[Path, int, str]] = None
-        if config.target_bytes is not None:
-            under_target = [item for item in candidates if item[1] <= config.target_bytes]
-            if under_target:
-                chosen = next(
-                    (item for item in under_target if item[2] == "optimize"),
-                    None,
-                ) or min(under_target, key=lambda item: item[1])
-        if chosen is None and candidates:
-            chosen = min(candidates, key=lambda item: item[1])
-
-        output.parent.mkdir(parents=True, exist_ok=True)
-        if chosen is None:
-            shutil.copy2(source, output)
-        else:
-            shutil.copy2(chosen[0], output)
+        chosen = min(candidates, key=lambda item: item[1]) if candidates else None
+        shutil.copy2(chosen[0] if chosen else source, output)
         return output
 
 
-# (scale, quality) candidates for keep-text target search, ordered so the
-# resulting file size is (roughly) descending — highest quality / largest first.
-_KEEP_TEXT_CANDIDATES: list[tuple[float, int]] = [
-    (1.0, 92), (1.0, 85), (1.0, 78), (1.0, 70),
-    (0.85, 62), (0.72, 55), (0.60, 48), (0.50, 42),
-    (0.42, 36), (0.34, 30), (0.28, 24),
+class _Rung(NamedTuple):
+    """One step of a keep-text quality ladder.
+
+    ``scale`` is a uniform resize factor (1.0 = keep pixels). ``max_dpi`` caps
+    the effective resolution of each image relative to its largest placement on
+    the page: only oversampled images shrink, images already at or below the
+    cap are left at native resolution.
+    """
+
+    scale: float
+    quality: int
+    max_dpi: Optional[int] = None
+
+
+# Keep-text target search ladder, ordered so the resulting file size is
+# (roughly) descending. Quality drops first at native resolution; from q70 on,
+# each rung also tightens a placement-aware DPI cap so that budget is recovered
+# from oversampled images (a 4000 px figure printed 5 in wide is 800 DPI; a
+# 300 DPI cap is invisible on screen or paper) instead of from a uniform
+# downscale that blurs small images displayed at their native size.
+_KEEP_TEXT_CANDIDATES: list[_Rung] = [
+    _Rung(1.0, 92), _Rung(1.0, 85), _Rung(1.0, 78), _Rung(1.0, 70),
+    _Rung(1.0, 66, 300), _Rung(1.0, 62, 250), _Rung(1.0, 58, 200), _Rung(1.0, 54, 170),
+    _Rung(1.0, 50, 150), _Rung(1.0, 45, 130), _Rung(1.0, 40, 110), _Rung(1.0, 35, 96),
+    _Rung(1.0, 30, 80), _Rung(1.0, 24, 72),
 ]
 
+# Fidelity mode starts one near-lossless rung higher so a generous budget is
+# spent on quality instead of settling at q92.
+_FIDELITY_LADDER: list[_Rung] = [_Rung(1.0, 95), *_KEEP_TEXT_CANDIDATES]
 
-def _recompress_images_keep_text(source: Path, output: Path, scale: float, quality: int, strip_metadata: bool) -> Path:
+
+def _image_effective_dpi(doc: object) -> dict[int, float]:
+    """Return, per image xref, the effective DPI of its most demanding placement.
+
+    An image drawn at several sizes needs enough pixels for the largest one, so
+    the lowest DPI across placements is kept. Images that are not drawn on any
+    page (or whose placement cannot be read) are absent and never downscaled.
+    """
+    fitz = _fitz()
+    dpi: dict[int, float] = {}
+    for page in doc:  # type: ignore[attr-defined]
+        try:
+            infos = page.get_image_info(xrefs=True)
+        except Exception as exc:
+            logger.debug("Unable to read image placements on page %s: %s", page.number, exc)
+            continue
+        for info in infos:
+            xref = int(info.get("xref", 0) or 0)
+            width = int(info.get("width", 0) or 0)
+            height = int(info.get("height", 0) or 0)
+            if not xref or width <= 0 or height <= 0:
+                continue
+            rect = fitz.Rect(info["bbox"])
+            if rect.width <= 0 or rect.height <= 0:
+                continue
+            effective = max(width / (rect.width / 72.0), height / (rect.height / 72.0))
+            dpi[xref] = min(dpi.get(xref, float("inf")), effective)
+    return dpi
+
+
+class _CachedImage(NamedTuple):
+    """One re-encodable image, extracted once per document and reused per rung."""
+
+    xref: int
+    smask_xref: int
+    original_len: int
+    data: bytes  # compressed source bytes (or PNG for images pre-converted on the main thread)
+    width: int
+    height: int
+    flatten_alpha: bool  # Pillow-embedded alpha with no PDF soft mask: flatten to white
+    dimensions_locked: bool  # /Matte soft mask: base must keep its pixel dimensions
+    placed_dpi: Optional[float]
+    colorspace_raw: Optional[str]  # original /ColorSpace to keep (None -> Device*)
+    encoded_mode: str  # "L" or "RGB"
+
+
+class _EncodedImage(NamedTuple):
+    xref: int
+    data: bytes
+    width: int
+    height: int
+
+
+# Pillow releases the GIL while decoding, resampling and JPEG-encoding, so a
+# small thread pool gives near-linear speedups on image-heavy documents.
+_ENCODE_WORKERS = max(2, min(8, os.cpu_count() or 4))
+
+
+def _pil_encoded_mode(image: Image.Image, flatten_alpha: bool) -> str:
+    if flatten_alpha:
+        return "RGB"
+    return "L" if image.mode == "L" else "RGB"
+
+
+class _KeepTextSession:
+    """Keep-text re-encoding of one document, shared across ladder rungs.
+
+    Image extraction, placement analysis and colourspace decisions are made once
+    (they are identical for every rung and dominate the runtime through
+    PyMuPDF); each rung then only decodes, resamples and JPEG-encodes the cached
+    bytes on a thread pool and rewrites the image objects in a fresh copy of the
+    source document.
+    """
+
+    def __init__(self, source: Path, strip_metadata: bool) -> None:
+        self.source = source
+        self.strip_metadata = strip_metadata
+        self.images: list[_CachedImage] = []
+        fitz = _fitz()
+        doc = fitz.open(source)
+        try:
+            effective_dpi = _image_effective_dpi(doc)
+            seen: set[int] = set()
+            for page in doc:
+                for img in page.get_images(full=True):
+                    xref, smask_xref = img[0], img[1]
+                    if xref in seen:
+                        continue
+                    seen.add(xref)
+                    cached = self._extract(doc, xref, smask_xref, effective_dpi.get(xref))
+                    if cached is not None:
+                        self.images.append(cached)
+        finally:
+            doc.close()
+
+    @staticmethod
+    def _extract(
+        doc: object, xref: int, smask_xref: int, placed_dpi: Optional[float]
+    ) -> Optional[_CachedImage]:
+        base = doc.extract_image(xref)  # type: ignore[attr-defined]
+        if not base:
+            return None
+        data = base["image"]
+        width, height = base["width"], base["height"]
+        if width < 50 or height < 50 or len(data) < 1024:
+            return None
+        if not _image_is_reencodable(doc, xref, base):
+            return None
+        try:
+            with ExitStack() as stack:
+                pil = stack.enter_context(Image.open(io.BytesIO(data)))
+                # Validates the soft mask (raises for unusable masks) and tells
+                # us whether Pillow-level alpha has to be flattened.
+                prepared = _prepare_pdf_image_for_jpeg(
+                    pil,
+                    stack,
+                    doc=doc,  # type: ignore[arg-type]
+                    smask_xref=smask_xref,
+                    xref=xref,
+                )
+                flatten_alpha = smask_xref <= 0 and (
+                    "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info)
+                )
+                if pil.mode == "CMYK" and prepared is not pil:
+                    # Colour conversion needs the document (MuPDF pipeline), so it
+                    # is done once here; workers receive lossless RGB bytes.
+                    with io.BytesIO() as buf:
+                        prepared.save(buf, format="PNG", compress_level=1)
+                        data = buf.getvalue()
+                    flatten_alpha = False
+                encoded_mode = _pil_encoded_mode(prepared, flatten_alpha)
+                dimensions_locked = _soft_mask_requires_matching_dimensions(
+                    doc,  # type: ignore[arg-type]
+                    smask_xref,
+                )
+                colorspace_raw = _restorable_colorspace(
+                    doc,  # type: ignore[arg-type]
+                    xref,
+                    base.get("colorspace"),
+                    encoded_mode,
+                )
+        except Exception as exc:
+            logger.debug("Skipping PDF image xref=%d during text-preserving compression: %s", xref, exc)
+            return None
+        return _CachedImage(
+            xref=xref,
+            smask_xref=smask_xref,
+            original_len=len(base["image"]),
+            data=data,
+            width=width,
+            height=height,
+            flatten_alpha=flatten_alpha,
+            dimensions_locked=dimensions_locked,
+            placed_dpi=placed_dpi,
+            colorspace_raw=colorspace_raw,
+            encoded_mode=encoded_mode,
+        )
+
+    def encode(self, output: Path, scale: float, quality: int, max_dpi: Optional[int] = None) -> Path:
+        """Write ``output`` with every cached image re-encoded for one rung."""
+        fitz = _fitz()
+        quality = clamp_quality(quality)
+        with ThreadPoolExecutor(max_workers=_ENCODE_WORKERS) as pool:
+            encoded = list(
+                pool.map(lambda item: _encode_cached_image(item, scale, quality, max_dpi), self.images)
+            )
+        doc = fitz.open(self.source)
+        try:
+            for item, result in zip(self.images, encoded):
+                if result is None or len(result.data) >= item.original_len:
+                    continue
+                try:
+                    _rewrite_image_object(doc, item, result)
+                except _ImageRewriteError:
+                    raise
+                except Exception as exc:
+                    # The stream may already have been swapped, so the object
+                    # cannot be trusted anymore: abort instead of saving a
+                    # document with a corrupt image.
+                    logger.error("PDF image xref=%d could not be rewritten: %s", item.xref, exc)
+                    raise _ImageRewriteError(f"Unable to rewrite PDF image xref {item.xref}") from exc
+            if self.strip_metadata:
+                doc.set_metadata({})
+                if hasattr(doc, "del_xml_metadata"):
+                    doc.del_xml_metadata()
+            output.parent.mkdir(parents=True, exist_ok=True)
+            doc.save(output, garbage=4, deflate=True, clean=True)
+            return output
+        finally:
+            doc.close()
+
+
+def _encode_cached_image(
+    item: _CachedImage, scale: float, quality: int, max_dpi: Optional[int]
+) -> Optional[_EncodedImage]:
+    """Decode, resample and JPEG-encode one cached image (pure Pillow, thread-safe)."""
+    image_scale = scale
+    if max_dpi and item.placed_dpi and item.placed_dpi > max_dpi:
+        image_scale = min(image_scale, max_dpi / item.placed_dpi)
+    try:
+        with ExitStack() as stack:
+            pil = stack.enter_context(Image.open(io.BytesIO(item.data)))
+            if item.flatten_alpha:
+                rgba = stack.enter_context(pil.convert("RGBA"))
+                background = stack.enter_context(Image.new("RGB", pil.size, "white"))
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                pil = background
+            if pil.mode != item.encoded_mode:
+                pil = stack.enter_context(pil.convert(item.encoded_mode))
+            width, height = pil.size
+            if image_scale < 0.99 and not item.dimensions_locked:
+                new_w = max(64, int(width * image_scale))
+                new_h = max(64, int(height * image_scale))
+                if new_w < width:
+                    pil = stack.enter_context(pil.resize((new_w, new_h), Image.Resampling.LANCZOS))
+                    width, height = pil.size
+            with io.BytesIO() as buf:
+                pil.save(buf, format="JPEG", quality=quality, optimize=True)
+                return _EncodedImage(item.xref, buf.getvalue(), width, height)
+    except Exception as exc:
+        logger.debug("Skipping PDF image xref=%d during encoding: %s", item.xref, exc)
+        return None
+
+
+def _rewrite_image_object(doc: object, item: _CachedImage, result: _EncodedImage) -> None:
+    """Swap the sample data of an existing image XObject in place.
+
+    Unlike ``page.replace_image`` this keeps the dictionary the document author
+    wrote (/SMask, /Interpolate, /Intent, /OC, /StructParent, an ICC
+    /ColorSpace that still applies) and never leaves ``null`` placeholders that
+    Ghostscript rejects. Only the entries describing the sample format are
+    rewritten for the new JPEG data.
+    """
+    xref = item.xref
+    doc.update_stream(xref, result.data, new=True, compress=0)  # type: ignore[attr-defined]
+    doc.xref_set_key(xref, "Filter", "/DCTDecode")  # type: ignore[attr-defined]
+    doc.xref_set_key(xref, "Width", str(result.width))  # type: ignore[attr-defined]
+    doc.xref_set_key(xref, "Height", str(result.height))  # type: ignore[attr-defined]
+    doc.xref_set_key(xref, "BitsPerComponent", "8")  # type: ignore[attr-defined]
+    if item.colorspace_raw is None:
+        device = "/DeviceGray" if item.encoded_mode == "L" else "/DeviceRGB"
+        doc.xref_set_key(xref, "ColorSpace", device)  # type: ignore[attr-defined]
+    stale = [
+        key
+        for key in ("Decode", "DecodeParms")
+        if doc.xref_get_key(xref, key)[0] != "null"  # type: ignore[attr-defined]
+    ]
+    if stale:
+        _delete_xref_keys(doc, xref, stale)
+
+
+def _recompress_images_keep_text(
+    source: Path,
+    output: Path,
+    scale: float,
+    quality: int,
+    strip_metadata: bool,
+    max_dpi: Optional[int] = None,
+) -> Path:
     """Re-encode embedded raster images at the given scale/quality while keeping
     all text, vectors and structure intact — the text layer is never rasterized.
 
-    An image is only replaced when the re-encoded version is actually smaller,
-    so already-efficient images are left untouched (avoids needless quality loss).
+    ``scale`` resizes every image uniformly; ``max_dpi`` additionally shrinks
+    images whose effective resolution on the page exceeds the cap. An image is
+    only replaced when the re-encoded version is actually smaller, so
+    already-efficient images are left untouched (avoids needless quality loss).
     """
-    fitz = _fitz()
-    quality = clamp_quality(quality)
-    doc = fitz.open(source)
-    try:
-        processed: set[int] = set()
-        for page in doc:
-            for img in page.get_images(full=True):
-                xref = img[0]
-                smask_xref = img[1]
-                if xref in processed:
-                    continue
-                processed.add(xref)
-                base = doc.extract_image(xref)
-                if not base:
-                    continue
-                img_bytes = base["image"]
-                w, h = base["width"], base["height"]
-                if w < 50 or h < 50 or len(img_bytes) < 1024:
-                    continue
-                try:
-                    with ExitStack() as stack:
-                        image_source = stack.enter_context(io.BytesIO(img_bytes))
-                        pil = stack.enter_context(Image.open(image_source))
-                        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
-                        pil = _prepare_pdf_image_for_jpeg(
-                            pil,
-                            stack,
-                            doc=doc,
-                            smask_xref=smask_xref,
-                        )
-                        dimensions_locked = _soft_mask_requires_matching_dimensions(
-                            doc,
-                            smask_xref,
-                        )
-                        if scale < 0.99 and not dimensions_locked:
-                            nw = max(64, int(w * scale))
-                            nh = max(64, int(h * scale))
-                            if nw < w:
-                                pil = stack.enter_context(
-                                    pil.resize((nw, nh), Image.Resampling.LANCZOS)
-                                )
-                        # Re-encoding keeps pixel values, so the source ICC
-                        # colorspace stays valid as long as the component count
-                        # did not change (e.g. no CMYK->RGB flattening).
-                        keep_source_colorspace = _colorspace_survives_reencode(
-                            cs_type, base.get("colorspace"), pil.mode
-                        )
-                        with io.BytesIO() as buf:
-                            pil.save(buf, format="JPEG", quality=quality, optimize=True)
-                            new_bytes = buf.getvalue()
-                    if len(new_bytes) < len(img_bytes):
-                        _replace_pdf_image_preserving_soft_mask(
-                            page,
-                            doc,
-                            xref=xref,
-                            smask_xref=smask_xref,
-                            stream=new_bytes,
-                            colorspace_raw=cs_value if keep_source_colorspace else None,
-                        )
-                except _SoftMaskRestoreError:
-                    raise
-                except Exception as exc:
-                    logger.debug("Skipping PDF image xref=%d during text-preserving compression: %s", xref, exc)
-                    continue
-        if strip_metadata:
-            doc.set_metadata({})
-            if hasattr(doc, "del_xml_metadata"):
-                doc.del_xml_metadata()
-        output.parent.mkdir(parents=True, exist_ok=True)
-        doc.save(output, garbage=4, deflate=True, clean=True)
-        return output
-    finally:
-        doc.close()
+    return _KeepTextSession(source, strip_metadata).encode(output, scale, quality, max_dpi)
 
 
 def compress_pdf_keep_text(source: Path, output: Path, config: CompressionConfig) -> Path:
@@ -719,50 +1119,225 @@ def compress_pdf_keep_text(source: Path, output: Path, config: CompressionConfig
     if config.target_bytes is None:
         return _recompress_images_keep_text(source, output, scale, quality, config.strip_metadata)
 
-    target = config.target_bytes
-    best_under: Optional[tuple[Path, int]] = None
-    smallest: Optional[tuple[Path, int]] = None
     with TemporaryDirectory(prefix="pdf_keeptext_") as temp_dir:
-        temp = Path(temp_dir)
-        fit_index: Optional[int] = None
-        for index, (scale, quality) in enumerate(_KEEP_TEXT_CANDIDATES):
-            candidate = temp / f"cand_{index}.pdf"
-            _recompress_images_keep_text(source, candidate, scale, quality, config.strip_metadata)
-            size = candidate.stat().st_size
-            if smallest is None or size < smallest[1]:
-                smallest = (candidate, size)
-            if size <= target:
-                best_under = (candidate, size)
-                fit_index = index
-                break
-        if best_under is not None and fit_index:
-            # The coarse ladder jumps several JPEG quality points per rung, so
-            # the first fitting rung can leave a lot of budget unused (e.g.
-            # picking q78 when q82 still fits). Binary-search the quality gap
-            # between the fitting rung and the rung that failed, at the fitting
-            # rung's scale. Encoded sizes are near-monotonic in quality; every
-            # accepted probe is verified against the target, so the refined
-            # result never overshoots the budget.
-            fit_scale, fit_quality = _KEEP_TEXT_CANDIDATES[fit_index]
-            low = fit_quality + 1
-            high = _KEEP_TEXT_CANDIDATES[fit_index - 1][1] - 1
-            while low <= high:
-                mid = (low + high) // 2
-                probe = temp / f"cand_refine_{mid}.pdf"
-                _recompress_images_keep_text(source, probe, fit_scale, mid, config.strip_metadata)
-                probe_size = probe.stat().st_size
-                if probe_size <= target:
-                    best_under = (probe, probe_size)
-                    low = mid + 1
-                else:
-                    high = mid - 1
-        chosen = best_under or smallest
+        best_under, attempts = _search_keep_text_under_target(
+            source,
+            Path(temp_dir),
+            config.target_bytes,
+            config.strip_metadata,
+            _KEEP_TEXT_CANDIDATES,
+        )
+        chosen = best_under or _closest_without_waste(attempts)
         output.parent.mkdir(parents=True, exist_ok=True)
         if chosen is None:
             shutil.copy2(source, output)
         else:
-            shutil.copy2(chosen[0], output)
+            shutil.copy2(chosen.path, output)
     return output
+
+
+class _KeepTextAttempt(NamedTuple):
+    path: Path
+    size: int
+    rung: _Rung
+
+    @property
+    def native_resolution(self) -> bool:
+        return self.rung.scale >= 0.99 and self.rung.max_dpi is None
+
+
+# When no rung reaches the budget, a lower rung that saves only a few percent
+# more is not worth its quality loss; the search settles for the best rung
+# within this factor of the smallest achievable size.
+_UNREACHABLE_SIZE_TOLERANCE = 1.10
+
+
+def _closest_without_waste(attempts: list[_KeepTextAttempt]) -> Optional[_KeepTextAttempt]:
+    """Pick the fallback when every ladder rung misses the target.
+
+    The budget cannot be met without rasterizing, so the remaining bytes are
+    dominated by content the ladder cannot shrink (vector art, fonts, text).
+    Returns the highest-quality attempt whose size is within
+    ``_UNREACHABLE_SIZE_TOLERANCE`` of the smallest one.
+    """
+    if not attempts:
+        return None
+    smallest = min(attempts, key=lambda item: item.size)
+    eligible = [item for item in attempts if item.size <= smallest.size * _UNREACHABLE_SIZE_TOLERANCE]
+    return max(
+        eligible,
+        key=lambda item: (item.rung.quality, item.rung.max_dpi or float("inf"), item.rung.scale),
+    )
+
+
+def _search_keep_text_under_target(
+    source: Path,
+    temp: Path,
+    target: int,
+    strip_metadata: bool,
+    ladder: list[_Rung],
+) -> tuple[Optional[_KeepTextAttempt], list[_KeepTextAttempt]]:
+    """Walk a quality ladder from highest quality down.
+
+    Returns ``(best_under_target, attempts)``: the highest-quality candidate
+    that fits the budget (or None) and every ladder rung that was encoded, so
+    callers can pick a fallback when nothing fits.
+
+    The coarse ladder jumps several JPEG quality points (and, on the lower
+    rungs, a resolution step) per rung, so the first fitting rung can leave a
+    lot of budget unused (e.g. picking q78 when q82 still fits). After the
+    first fit, binary-search the gap up to the rung that failed. Encoded size is
+    near-monotonic along the segment joining the two rungs and every accepted
+    probe is verified against the target, so the refined result never
+    overshoots the budget.
+    """
+    attempts: list[_KeepTextAttempt] = []
+    encoded: dict[int, _KeepTextAttempt] = {}
+    session = _KeepTextSession(source, strip_metadata)
+
+    def encode(index: int) -> _KeepTextAttempt:
+        if index not in encoded:
+            rung = ladder[index]
+            path = temp / f"cand_{index}.pdf"
+            session.encode(path, rung.scale, rung.quality, rung.max_dpi)
+            encoded[index] = _KeepTextAttempt(path, path.stat().st_size, rung)
+            attempts.append(encoded[index])
+        return encoded[index]
+
+    fit_index = _first_fitting_rung(len(ladder), target, lambda i: encode(i).size)
+    best_under = encoded[fit_index] if fit_index is not None else None
+    if best_under is not None and fit_index is not None:
+        fit = ladder[fit_index]
+        if fit_index:
+            over: Optional[_Rung] = ladder[fit_index - 1]
+        elif fit.quality < _MAX_JPEG_QUALITY:
+            # The top rung already fits: spend the remaining budget on quality
+            # up to the encoder ceiling instead of settling for the rung.
+            over = _Rung(fit.scale, _MAX_JPEG_QUALITY + 1, fit.max_dpi)
+        else:
+            over = None
+        if over is not None:
+
+            def probe(rung: _Rung) -> _KeepTextAttempt:
+                dpi_tag = f"_d{rung.max_dpi}" if rung.max_dpi else ""
+                path = temp / f"cand_refine_s{int(round(rung.scale * 1000)):04d}_q{rung.quality}{dpi_tag}.pdf"
+                session.encode(path, rung.scale, rung.quality, rung.max_dpi)
+                return _KeepTextAttempt(path, path.stat().st_size, rung)
+
+            refined = _refine_between_rungs(fit, over, target, probe)
+            if refined is not None:
+                best_under = refined
+    return best_under, attempts
+
+
+def _first_fitting_rung(count: int, target: int, size_of: Callable[[int], int]) -> Optional[int]:
+    """Locate the highest-quality ladder rung whose encoded size fits ``target``.
+
+    Rung sizes decrease (near-)monotonically with the index, so instead of
+    encoding every rung from the top, gallop downward (indices 0, 1, 3, 7, ...)
+    until a rung fits, then bisect the last gap. Both the failing neighbour and
+    the fit are encoded, which is exactly what the follow-up refinement needs.
+    Returns None when even the last rung is too large.
+    """
+    if count == 0:
+        return None
+    if size_of(0) <= target:
+        return 0
+    low = 0  # highest index known to fail
+    step = 1
+    high: Optional[int] = None  # lowest index known to fit
+    while high is None:
+        candidate = low + step
+        if candidate >= count:
+            candidate = count - 1
+        if size_of(candidate) <= target:
+            high = candidate
+        elif candidate == count - 1:
+            return None
+        else:
+            low = candidate
+            step *= 2
+    while high - low > 1:
+        mid = (low + high) // 2
+        if size_of(mid) <= target:
+            high = mid
+        else:
+            low = mid
+    return high
+
+
+# JPEG quality ceiling for budget searches. Above 95 libjpeg's quantization
+# tables approach unity and file size balloons for no visible gain.
+_MAX_JPEG_QUALITY = 95
+
+
+# Number of bisection steps along a mixed scale/DPI/quality gap. Four steps
+# resolve the segment to 1/16 while costing about as much as the pure-quality
+# search.
+_MIXED_REFINEMENT_STEPS = 4
+
+
+def _refine_between_rungs(
+    fit: _Rung,
+    over: _Rung,
+    target: int,
+    probe: Callable[[_Rung], _KeepTextAttempt],
+) -> Optional[_KeepTextAttempt]:
+    """Bisect from ``fit`` (known to satisfy the budget) toward ``over`` (known
+    to exceed it) and return the largest probed result that still fits.
+
+    Rungs that differ only in quality bisect the integer quality interval. Rungs
+    that also differ in scale or DPI cap bisect the parameter ``t`` of the
+    segment between them, so the resolution step is refined together with the
+    quality step instead of leaving the whole gap unused.
+    """
+    best: Optional[_KeepTextAttempt] = None
+
+    def consider(attempt: _KeepTextAttempt) -> bool:
+        nonlocal best
+        if attempt.size > target:
+            return False
+        if best is None or attempt.size > best.size:
+            best = attempt
+        return True
+
+    same_scale = abs(over.scale - fit.scale) < 1e-9
+    if same_scale and over.max_dpi == fit.max_dpi:
+        low, high = fit.quality + 1, over.quality - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if consider(probe(_Rung(fit.scale, mid, fit.max_dpi))):
+                low = mid + 1
+            else:
+                high = mid - 1
+        return best
+
+    # A rung without a cap leaves oversampled images untouched; approximate
+    # that end of the segment with twice the fitting cap so the DPI axis can be
+    # interpolated. The endpoint itself is never probed, so the approximation
+    # only shapes the path of the bisection.
+    fit_dpi = fit.max_dpi
+    over_dpi = over.max_dpi if over.max_dpi is not None else (fit_dpi * 2 if fit_dpi else None)
+    low_t, high_t = 0.0, 1.0
+    tried: set[_Rung] = set()
+    for _ in range(_MIXED_REFINEMENT_STEPS):
+        mid_t = (low_t + high_t) / 2
+        scale = round(fit.scale + mid_t * (over.scale - fit.scale), 4)
+        quality = int(round(fit.quality + mid_t * (over.quality - fit.quality)))
+        max_dpi = (
+            int(round(fit_dpi + mid_t * (over_dpi - fit_dpi)))
+            if fit_dpi is not None and over_dpi is not None
+            else fit_dpi
+        )
+        rung = _Rung(scale, quality, max_dpi)
+        if rung in tried:
+            break
+        tried.add(rung)
+        if consider(probe(rung)):
+            low_t = mid_t
+        else:
+            high_t = mid_t
+    return best
 
 
 _SIZE_TOLERANCE = 1.02
