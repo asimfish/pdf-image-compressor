@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import shutil
+import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -869,18 +870,125 @@ class _CachedImage(NamedTuple):
     placed_dpi: Optional[float]
     colorspace_raw: Optional[str]  # original /ColorSpace to keep (None -> Device*)
     encoded_mode: str  # "L" or "RGB"
+    graphic: bool = False  # line art / plots: palette PNG instead of JPEG
 
 
 class _EncodedImage(NamedTuple):
+    """A re-encoded sample stream plus the dictionary entries describing it."""
+
     xref: int
     data: bytes
     width: int
     height: int
+    filter: str = "/DCTDecode"
+    bits_per_component: int = 8
+    decode_parms: Optional[str] = None
+    colorspace: Optional[str] = None  # explicit entry (Indexed palette); None -> caller decides
 
 
 # Pillow releases the GIL while decoding, resampling and JPEG-encoding, so a
 # small thread pool gives near-linear speedups on image-heavy documents.
 _ENCODE_WORKERS = max(2, min(8, os.cpu_count() or 4))
+
+# Resampling by less than this factor trades interpolation blur and a shifted
+# pixel grid for a byte saving too small to matter (a 0.94x resize saves ~12%
+# while dropping one JPEG quality point saves about as much); such images keep
+# their native pixels.
+_MAX_KEEP_NATIVE_SCALE = 0.85
+
+
+# Small images with at most this many distinct colours are treated as flat
+# graphics (charts, logos, thumbnails) and left in their lossless encoding:
+# JPEG rings on their hard edges and the byte saving is negligible.
+_FLAT_GRAPHIC_MAX_COLORS = 256
+# Above this size a low-colour image is a page scan or a large screenshot,
+# where JPEG re-encoding is the only way to meet a budget and the saving is
+# substantial; those stay eligible.
+_FLAT_GRAPHIC_MAX_PIXELS = 1_000_000
+
+
+def _is_flat_graphic(image: Image.Image) -> bool:
+    if image.width * image.height > _FLAT_GRAPHIC_MAX_PIXELS:
+        return False
+    probe = image if image.mode in ("RGB", "L") else image.convert("RGB")
+    try:
+        return probe.getcolors(maxcolors=_FLAT_GRAPHIC_MAX_COLORS) is not None
+    finally:
+        if probe is not image:
+            probe.close()
+
+
+# Graphic-like images (plots, diagrams, line art rendered to PNG) are mostly
+# one background colour with thin anti-aliased strokes. JPEG smears their
+# chroma and rings on every edge; a palette PNG is smaller *and* near-lossless
+# for them (measured on vector-field figures: 0.5x palette PNG scored SSIM 0.98
+# at 673 KB where JPEG needed 1.1 MB for 0.90).
+_GRAPHIC_MIN_BACKGROUND_FRACTION = 0.5
+_GRAPHIC_MAX_THUMB_COLORS = 3000
+_GRAPHIC_MAX_PIXELS = 1_200_000  # page scans are larger and need JPEG to meet a budget
+_GRAPHIC_THUMB = 128
+# Sparse line art compresses so well as PNG that it can afford twice the
+# resolution photos get at the same rung.
+_GRAPHIC_DPI_RELIEF = 2.0
+
+
+def _is_graphic_like(image: Image.Image) -> bool:
+    if image.width * image.height > _GRAPHIC_MAX_PIXELS:
+        return False
+    thumb = image.convert("RGB") if image.mode != "RGB" else image.copy()
+    try:
+        thumb.thumbnail((_GRAPHIC_THUMB, _GRAPHIC_THUMB), Image.Resampling.NEAREST)
+        colors = thumb.getcolors(maxcolors=_GRAPHIC_MAX_THUMB_COLORS)
+        if colors is None:
+            return False
+        dominant = max(count for count, _ in colors)
+        return dominant / (thumb.width * thumb.height) >= _GRAPHIC_MIN_BACKGROUND_FRACTION
+    finally:
+        thumb.close()
+
+
+def _png_chunks(data: bytes) -> dict[bytes, bytes]:
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG stream")
+    chunks: dict[bytes, bytes] = {}
+    pos = 8
+    while pos + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[pos : pos + 4])
+        kind = data[pos + 4 : pos + 8]
+        chunks[kind] = chunks.get(kind, b"") + data[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+    return chunks
+
+
+def _encode_graphic_png(pil: Image.Image, xref: int, base_colorspace: Optional[str]) -> _EncodedImage:
+    """Encode line art as a palette (or grayscale) PNG and repackage its IDAT
+    payload as a PDF Flate stream with PNG predictors, byte-for-byte as
+    compact as the PNG itself."""
+    with ExitStack() as stack:
+        if pil.mode == "L":
+            encoded = pil
+        else:
+            rgb = pil if pil.mode == "RGB" else stack.enter_context(pil.convert("RGB"))
+            exact = rgb.getcolors(maxcolors=256)
+            encoded = stack.enter_context(
+                rgb.convert("P", palette=Image.Palette.ADAPTIVE, colors=len(exact) if exact else 256)
+            )
+        with io.BytesIO() as buf:
+            encoded.save(buf, format="PNG", optimize=True)
+            chunks = _png_chunks(buf.getvalue())
+    width, height, bit_depth, color_type = struct.unpack(">IIBB", chunks[b"IHDR"][:10])
+    if color_type == 3:
+        palette = chunks[b"PLTE"]
+        base = base_colorspace or "/DeviceRGB"
+        colorspace = f"[/Indexed {base} {len(palette) // 3 - 1} <{palette.hex()}>]"
+    elif color_type == 0:
+        colorspace = base_colorspace or "/DeviceGray"
+    else:
+        raise ValueError(f"unexpected PNG colour type {color_type}")
+    parms = f"<</Predictor 15/Colors 1/BitsPerComponent {bit_depth}/Columns {width}>>"
+    return _EncodedImage(
+        xref, chunks[b"IDAT"], width, height, "/FlateDecode", bit_depth, parms, colorspace
+    )
 
 
 def _pil_encoded_mode(image: Image.Image, flatten_alpha: bool) -> str:
@@ -945,6 +1053,12 @@ class _KeepTextSession:
                     smask_xref=smask_xref,
                     xref=xref,
                 )
+                if base["ext"] != "jpeg" and _is_flat_graphic(prepared):
+                    # Plots, logos and screenshots: JPEG rings on their hard
+                    # edges and saves next to nothing over the lossless source.
+                    logger.debug("Keeping flat-colour image xref=%d lossless", xref)
+                    return None
+                graphic = base["ext"] != "jpeg" and _is_graphic_like(prepared)
                 flatten_alpha = smask_xref <= 0 and (
                     "A" in pil.getbands() or (pil.mode == "P" and "transparency" in pil.info)
                 )
@@ -981,6 +1095,7 @@ class _KeepTextSession:
             placed_dpi=placed_dpi,
             colorspace_raw=colorspace_raw,
             encoded_mode=encoded_mode,
+            graphic=graphic,
         )
 
     def encode(self, output: Path, scale: float, quality: int, max_dpi: Optional[int] = None) -> Path:
@@ -1022,8 +1137,9 @@ def _encode_cached_image(
 ) -> Optional[_EncodedImage]:
     """Decode, resample and JPEG-encode one cached image (pure Pillow, thread-safe)."""
     image_scale = scale
-    if max_dpi and item.placed_dpi and item.placed_dpi > max_dpi:
-        image_scale = min(image_scale, max_dpi / item.placed_dpi)
+    cap = max_dpi * _GRAPHIC_DPI_RELIEF if (max_dpi and item.graphic) else max_dpi
+    if cap and item.placed_dpi and item.placed_dpi > cap:
+        image_scale = min(image_scale, cap / item.placed_dpi)
     try:
         with ExitStack() as stack:
             pil = stack.enter_context(Image.open(io.BytesIO(item.data)))
@@ -1035,12 +1151,14 @@ def _encode_cached_image(
             if pil.mode != item.encoded_mode:
                 pil = stack.enter_context(pil.convert(item.encoded_mode))
             width, height = pil.size
-            if image_scale < 0.99 and not item.dimensions_locked:
+            if image_scale <= _MAX_KEEP_NATIVE_SCALE and not item.dimensions_locked:
                 new_w = max(64, int(width * image_scale))
                 new_h = max(64, int(height * image_scale))
                 if new_w < width:
                     pil = stack.enter_context(pil.resize((new_w, new_h), Image.Resampling.LANCZOS))
                     width, height = pil.size
+            if item.graphic:
+                return _encode_graphic_png(pil, item.xref, item.colorspace_raw)
             with io.BytesIO() as buf:
                 pil.save(buf, format="JPEG", quality=quality, optimize=True)
                 return _EncodedImage(item.xref, buf.getvalue(), width, height)
@@ -1060,11 +1178,13 @@ def _rewrite_image_object(doc: object, item: _CachedImage, result: _EncodedImage
     """
     xref = item.xref
     doc.update_stream(xref, result.data, new=True, compress=0)  # type: ignore[attr-defined]
-    doc.xref_set_key(xref, "Filter", "/DCTDecode")  # type: ignore[attr-defined]
+    doc.xref_set_key(xref, "Filter", result.filter)  # type: ignore[attr-defined]
     doc.xref_set_key(xref, "Width", str(result.width))  # type: ignore[attr-defined]
     doc.xref_set_key(xref, "Height", str(result.height))  # type: ignore[attr-defined]
-    doc.xref_set_key(xref, "BitsPerComponent", "8")  # type: ignore[attr-defined]
-    if item.colorspace_raw is None:
+    doc.xref_set_key(xref, "BitsPerComponent", str(result.bits_per_component))  # type: ignore[attr-defined]
+    if result.colorspace is not None:
+        doc.xref_set_key(xref, "ColorSpace", result.colorspace)  # type: ignore[attr-defined]
+    elif item.colorspace_raw is None:
         device = "/DeviceGray" if item.encoded_mode == "L" else "/DeviceRGB"
         doc.xref_set_key(xref, "ColorSpace", device)  # type: ignore[attr-defined]
     stale = [
@@ -1074,6 +1194,8 @@ def _rewrite_image_object(doc: object, item: _CachedImage, result: _EncodedImage
     ]
     if stale:
         _delete_xref_keys(doc, xref, stale)
+    if result.decode_parms is not None:
+        doc.xref_set_key(xref, "DecodeParms", result.decode_parms)  # type: ignore[attr-defined]
 
 
 def _recompress_images_keep_text(
@@ -1301,15 +1423,26 @@ def _refine_between_rungs(
             best = attempt
         return True
 
-    same_scale = abs(over.scale - fit.scale) < 1e-9
-    if same_scale and over.max_dpi == fit.max_dpi:
-        low, high = fit.quality + 1, over.quality - 1
+    def bisect_quality(scale: float, max_dpi: Optional[int], low: int, high: int) -> None:
         while low <= high:
             mid = (low + high) // 2
-            if consider(probe(_Rung(fit.scale, mid, fit.max_dpi))):
+            if consider(probe(_Rung(scale, mid, max_dpi))):
                 low = mid + 1
             else:
                 high = mid - 1
+
+    same_scale = abs(over.scale - fit.scale) < 1e-9
+    if same_scale and over.max_dpi == fit.max_dpi:
+        bisect_quality(fit.scale, fit.max_dpi, fit.quality + 1, over.quality - 1)
+        return best
+
+    # The rungs also differ in resolution. Pixels are worth more than JPEG
+    # quality points at the same byte cost (resampling blurs and shifts the
+    # grid, while q66 vs q69 is invisible), so first try to stay at the
+    # failing rung's resolution with a lower quality; only when no such
+    # quality fits is the resolution step refined together with the quality.
+    bisect_quality(over.scale, over.max_dpi, fit.quality, over.quality - 1)
+    if best is not None:
         return best
 
     # A rung without a cap leaves oversampled images untouched; approximate

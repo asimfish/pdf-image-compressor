@@ -1287,10 +1287,16 @@ def _render_mean_abs_diff(a: Path, b: Path) -> float:
     return sum(abs(x - y) for x, y in zip(sa, sb)) / len(sa)
 
 
-def test_keep_text_compression_never_reattaches_indexed_colorspace(tmp_path: Path):
+def test_keep_text_compression_never_reattaches_indexed_colorspace(tmp_path: Path, monkeypatch):
     """extract_image decodes palette images to RGB samples; re-attaching the
     /Indexed entry to the re-encoded JPEG would remap every pixel through the
-    palette and scramble the colors (mean render diff ~25/255 vs ~1.5)."""
+    palette and scramble the colors (mean render diff ~25/255 vs ~1.5).
+
+    Palette images normally stay lossless as flat graphics; the flat-graphic
+    detection is disabled here to exercise the colourspace guard itself."""
+    import file_compressor.pdfs as pdfs_module
+
+    monkeypatch.setattr(pdfs_module, "_FLAT_GRAPHIC_MAX_PIXELS", 0)
     source = _make_pdf_with_indexed_image(tmp_path / "indexed.pdf")
     output = tmp_path / "indexed_out.pdf"
     compress_pdf_keep_text(source, output, CompressionConfig(compression_level=1, output_dir=tmp_path))
@@ -1496,8 +1502,11 @@ def test_refine_between_rungs_walks_mixed_scale_quality_segment():
     assert best.size <= target
     assert best.size > size_of(fit), "refinement must use budget the coarse rung left unused"
     assert 0.85 < best.rung.scale < 1.0 and 62 < best.rung.quality < 70
-    assert len(probed) <= 4
+    # up to 3 native-resolution quality probes, then at most 4 mixed probes
+    assert len(probed) <= 7
     assert all(0.85 <= r.scale <= 1.0 and 62 <= r.quality <= 70 for r in probed)
+    native_probes = [r for r in probed if r.scale == 1.0]
+    assert native_probes and native_probes[0] == probed[0], "native resolution must be tried first"
 
 
 def test_refine_between_rungs_interpolates_dpi_cap():
@@ -1522,13 +1531,17 @@ def test_refine_between_rungs_interpolates_dpi_cap():
 
     assert best is not None and best.size <= target
     assert best.size > size_of(fit)
-    assert all(r.scale == 1.0 and 300 <= r.max_dpi <= 600 and 66 <= r.quality <= 70 for r in probed)
-    assert best.rung.max_dpi > 300
+    assert all(
+        r.scale == 1.0 and (r.max_dpi is None or 300 <= r.max_dpi <= 600) and 66 <= r.quality <= 70
+        for r in probed
+    )
+    assert best.rung.max_dpi is not None and best.rung.max_dpi > 300
 
-    # two capped rungs interpolate between the caps
+    # two capped rungs: the higher-resolution rung's cap is tried first (fits
+    # here with an unlimited budget), so no interpolated cap is needed
     probed.clear()
     best = _refine_between_rungs(_Rung(1.0, 62, 250), _Rung(1.0, 66, 300), 10**12, probe)
-    assert best is not None
+    assert best is not None and best.rung.max_dpi == 300
     assert all(250 <= r.max_dpi <= 300 and 62 <= r.quality <= 66 for r in probed)
 
 
@@ -1745,3 +1758,221 @@ def test_keep_text_session_reuses_extraction_across_rungs(tmp_path: Path):
         assert calls["n"] == 1
     finally:
         monkeypatch.undo()
+
+
+def test_keep_text_leaves_flat_colour_graphics_lossless(tmp_path: Path):
+    """A chart-like PNG with a handful of colours must not be turned into a
+    JPEG (ringing on hard edges for a negligible byte saving), while a
+    photographic PNG on the same page is still re-encoded."""
+    import io
+    import random
+
+    from PIL import Image, ImageDraw
+
+    with Image.new("RGB", (600, 400), "white") as chart:
+        draw = ImageDraw.Draw(chart)
+        for i, colour in enumerate(("red", "green", "blue", "black")):
+            draw.rectangle((50 + i * 130, 60, 150 + i * 130, 340), fill=colour)
+        with io.BytesIO() as buf:
+            chart.save(buf, format="PNG", optimize=True)
+            chart_png = buf.getvalue()
+
+    random.seed(3)
+    with Image.new("RGB", (600, 400)) as photo:
+        px = photo.load()
+        for y in range(400):
+            for x in range(600):
+                px[x, y] = (x * 255 // 600, y * 255 // 400, random.randint(0, 255))
+        with io.BytesIO() as buf:
+            photo.save(buf, format="PNG")
+            photo_png = buf.getvalue()
+
+    source = tmp_path / "flat.pdf"
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_image(fitz.Rect(40, 60, 340, 260), stream=chart_png)
+        page.insert_image(fitz.Rect(40, 300, 340, 500), stream=photo_png)
+        doc.save(source)
+
+    output = tmp_path / "flat_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=3, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        kinds = {}
+        for img in doc[0].get_images(full=True):
+            info = doc.extract_image(img[0])
+            with Image.open(io.BytesIO(info["image"])) as im:
+                flat = im.convert("RGB").getcolors(256) is not None
+            kinds["chart" if flat else "photo"] = info["ext"]
+    assert kinds["chart"] == "png", "flat graphic must stay lossless"
+    assert kinds["photo"] == "jpeg", "photographic image should still be re-encoded"
+
+
+def test_encode_skips_near_identity_resampling():
+    """A DPI cap that would shrink an image by only a few percent must leave the
+    pixel grid untouched; a real reduction is still applied."""
+    import io
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _CachedImage, _encode_cached_image
+
+    with Image.new("RGB", (1000, 800), (90, 140, 200)) as img:
+        with io.BytesIO() as buf:
+            img.save(buf, format="PNG")
+            data = buf.getvalue()
+
+    def item(placed_dpi: float) -> _CachedImage:
+        return _CachedImage(
+            xref=1, smask_xref=0, original_len=10**9, data=data, width=1000, height=800,
+            flatten_alpha=False, dimensions_locked=False, placed_dpi=placed_dpi,
+            colorspace_raw=None, encoded_mode="RGB",
+        )
+
+    near = _encode_cached_image(item(placed_dpi=320), 1.0, 70, max_dpi=300)  # 0.94x -> keep
+    assert near is not None and (near.width, near.height) == (1000, 800)
+    real = _encode_cached_image(item(placed_dpi=600), 1.0, 70, max_dpi=300)  # 0.5x -> shrink
+    assert real is not None and real.width == 500 and real.height == 400
+    locked = _encode_cached_image(item(placed_dpi=600)._replace(dimensions_locked=True), 1.0, 70, max_dpi=300)
+    assert locked is not None and (locked.width, locked.height) == (1000, 800)
+
+
+def test_large_low_colour_scan_is_still_reencoded(tmp_path: Path):
+    """A 16-colour page scan is 'flat' by colour count but is exactly where a
+    byte budget has to come from; only small flat graphics are protected."""
+    import io
+
+    from PIL import Image
+
+    with Image.new("P", (1000, 1400)) as scan:
+        scan.putpalette([v for i in range(16) for v in (i * 17, i * 17, i * 17)] + [0] * (768 - 48))
+        px = scan.load()
+        for y in range(1400):
+            for x in range(1000):
+                px[x, y] = ((x * 7 + y * 3) // 50) % 16
+        with io.BytesIO() as buf:
+            scan.save(buf, format="PNG", optimize=True)
+            data = buf.getvalue()
+
+    source = tmp_path / "scan.pdf"
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_image(fitz.Rect(20, 20, 520, 720), stream=data)
+        doc.save(source)
+
+    output = tmp_path / "scan_out.pdf"
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=4, output_dir=tmp_path))
+    with fitz.open(output) as doc:
+        assert doc.extract_image(doc[0].get_images(full=True)[0][0])["ext"] == "jpeg"
+
+
+def test_refine_prefers_native_resolution_over_quality_points():
+    """Between a native-resolution rung that fails and a DPI-capped rung that
+    fits, a lower quality at native resolution that fits must win over any
+    resampled candidate."""
+    from file_compressor.pdfs import _KeepTextAttempt, _refine_between_rungs, _Rung
+
+    def size_of(rung: _Rung) -> int:
+        pixels = 1.0 if rung.max_dpi is None else (rung.max_dpi / 600) ** 2
+        return int(1_000_000 * pixels * (rung.quality / 70))
+
+    probed: list[_Rung] = []
+
+    def probe(rung: _Rung) -> _KeepTextAttempt:
+        probed.append(rung)
+        return _KeepTextAttempt(Path("p"), size_of(rung), rung)
+
+    fit, over = _Rung(1.0, 66, 300), _Rung(1.0, 70)
+    target = size_of(_Rung(1.0, 68))  # native q68 fits exactly, q69/q70 do not
+    best = _refine_between_rungs(fit, over, target, probe)
+    assert best is not None
+    assert best.rung.max_dpi is None and best.rung.quality == 68
+    assert best.size <= target
+
+
+def _make_line_art_png(width: int = 700, height: int = 700) -> bytes:
+    """Anti-aliased coloured strokes on white: >256 colours (not 'flat') but
+    ~90% background, the profile of a plot or vector-field figure."""
+    import io
+    import math
+
+    from PIL import Image, ImageDraw
+
+    with Image.new("RGB", (width * 2, height * 2), "white") as big:
+        draw = ImageDraw.Draw(big)
+        for i in range(0, width * 2, 28):
+            for j in range(0, height * 2, 28):
+                angle = math.atan2(j - height, i - width)
+                colour = (int(127 + 120 * math.cos(angle)), int(127 + 120 * math.sin(angle)), 160)
+                draw.line((i, j, i + 12 * math.cos(angle), j + 12 * math.sin(angle)), fill=colour, width=3)
+        with big.resize((width, height), Image.Resampling.LANCZOS) as art:
+            with io.BytesIO() as buf:
+                art.save(buf, format="PNG")
+                return buf.getvalue()
+
+
+def test_graphic_like_detection_separates_line_art_from_photos():
+    import io
+    import random
+
+    from PIL import Image
+
+    from file_compressor.pdfs import _is_flat_graphic, _is_graphic_like
+
+    with Image.open(io.BytesIO(_make_line_art_png())) as art:
+        assert not _is_flat_graphic(art), "anti-aliased art has far more than 256 colours"
+        assert _is_graphic_like(art)
+
+    random.seed(9)
+    with Image.new("RGB", (400, 300)) as photo:
+        px = photo.load()
+        for y in range(300):
+            for x in range(400):
+                px[x, y] = (x * 255 // 400, y * 255 // 300, random.randint(0, 255))
+        assert not _is_graphic_like(photo)
+
+
+def test_line_art_is_stored_as_palette_png_stream(tmp_path: Path):
+    """Graphic-like images are re-encoded as an Indexed Flate stream with PNG
+    predictors instead of a JPEG, keep their soft mask, and still render."""
+    import io
+
+    from PIL import Image
+
+    art = _make_line_art_png()
+    with Image.open(io.BytesIO(art)) as im:
+        alpha = Image.new("L", im.size, 200)
+        rgba = im.convert("RGBA")
+        rgba.putalpha(alpha)
+        with io.BytesIO() as buf:
+            rgba.save(buf, format="PNG")
+            art_with_alpha = buf.getvalue()
+
+    source = tmp_path / "art.pdf"
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_image(fitz.Rect(40, 40, 240, 240), stream=art_with_alpha)  # 700px in 200pt = 252 DPI
+        doc.save(source)
+    with fitz.open(source) as doc:
+        assert doc[0].get_images(full=True)[0][1] > 0, "fixture should carry a soft mask"
+
+    output = tmp_path / "art_out.pdf"
+    # a budget that forces the DPI-capped rungs (uniform JPEG would fit easily at q92)
+    compress_pdf_keep_text(source, output, CompressionConfig(compression_level=4, output_dir=tmp_path))
+
+    with fitz.open(output) as doc:
+        img = doc[0].get_images(full=True)[0]
+        xref, smask = img[0], img[1]
+        assert smask > 0, "soft mask must survive the rewrite"
+        assert doc.xref_get_key(xref, "Filter") == ("name", "/FlateDecode")
+        cs_type, cs_value = doc.xref_get_key(xref, "ColorSpace")
+        assert cs_type == "array" and cs_value.startswith("[/Indexed")
+        parms = doc.xref_get_key(xref, "DecodeParms")[1]
+        assert "/Predictor 15" in parms and "/Colors 1" in parms
+        info = doc.extract_image(xref)
+        assert info["ext"] == "png"
+        assert doc[0].get_pixmap(alpha=False).samples
+
+    # the palette stream must be visibly closer to the original than a JPEG would be
+    assert output.stat().st_size < source.stat().st_size
+    assert _render_mean_abs_diff(source, output) < 12

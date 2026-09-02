@@ -196,11 +196,17 @@ def _render_rgb(page: fitz.Page, dpi: int) -> np.ndarray:
         alpha=False,
         annots=True,
     )
-    return np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
+    samples = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(
         pixmap.height,
         pixmap.width,
         3,
-    )
+    ).copy()
+    # MuPDF keeps decoded resources in one process-wide store. Rendering two
+    # documents whose object numbers overlap (a compressed copy is renumbered
+    # by garbage collection) can serve one file's cached image for the other,
+    # silently corrupting the comparison; drop the store after every page.
+    fitz.TOOLS.store_shrink(100)
+    return samples
 
 
 def _compare_documents(

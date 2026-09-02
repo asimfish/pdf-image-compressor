@@ -20,7 +20,10 @@ All notable changes to PaperSqueeze are documented here. The project follows
 - Lower ladder rungs cap image resolution relative to each image's largest placement on the page (300 → 72 DPI) instead of downscaling every image uniformly, so icons drawn at native size keep every pixel while oversampled figures give up invisible detail.
 - When the budget is unreachable without rasterizing, the search returns the highest-quality rung within 10% of the smallest achievable size instead of the lowest rung.
 - CMYK images are converted through MuPDF's colour pipeline (ICC-aware) rather than Pillow's naive formula; measured closest to Quartz, Ghostscript and MuPDF renderings of the original.
-- Each image is extracted once per document and re-encoded on a thread pool for every ladder rung (scanned-book benchmark 738 s → 132 s).
+- Each image is extracted once per document and re-encoded on a thread pool for every ladder rung (scanned-book benchmark 738 s → 35 s).
+- Graphic-like images (plots, diagrams, line art: mostly one background colour with thin anti-aliased strokes) are re-encoded as palette PNG streams (PNG predictors, byte-identical compression to the PNG itself) instead of JPEG, which smeared their chroma and rang on every edge; small flat-colour images (≤ 256 colours, ≤ 1 MP) stay in their lossless source encoding.
+- Between two ladder rungs the search now first lowers quality at the higher rung's resolution and only resamples when no native-resolution quality fits; images are never resampled by less than 15 %, which only blurred them for a negligible saving.
+- `scripts/compare_pdf_quality.py` clears MuPDF's decoded-resource store after every page render; rendering two documents with overlapping object numbers alternately could serve one file's cached image for the other and report bogus SSIM scores.
 
 ### Fixed
 
