@@ -15,6 +15,19 @@ All notable changes to PaperSqueeze are documented here. The project follows
 ### Changed
 
 - `auto` mode no longer rasterizes pages to hit a target size; it returns the closest text-preserving result instead. Only the explicit `raster` mode trades away the text layer.
+- `fidelity` mode now honors a byte budget: after the lossless and near-lossless passes it walks the keep-text quality ladder (from q95) and returns the highest quality that fits, downscaling only when the budget cannot be met at native resolution. Previously it gave up as soon as q92 did not fit and returned a file far above the target.
+- The keep-text target search now refines quality between ladder rungs (binary search), refines the resolution step together with quality on the lower rungs, climbs above the top rung when the budget allows, and locates the fitting rung with a galloping bisection instead of walking every rung.
+- Lower ladder rungs cap image resolution relative to each image's largest placement on the page (300 → 72 DPI) instead of downscaling every image uniformly, so icons drawn at native size keep every pixel while oversampled figures give up invisible detail.
+- When the budget is unreachable without rasterizing, the search returns the highest-quality rung within 10% of the smallest achievable size instead of the lowest rung.
+- CMYK images are converted through MuPDF's colour pipeline (ICC-aware) rather than Pillow's naive formula; measured closest to Quartz, Ghostscript and MuPDF renderings of the original.
+- Each image is extracted once per document and re-encoded on a thread pool for every ladder rung (scanned-book benchmark 738 s → 132 s).
+
+### Fixed
+
+- Re-encoded images are now rewritten in place instead of through `page.replace_image`, which left literal `null` dictionary entries (`/Interpolate null`, `/Intent null`, …). Ghostscript type-checks those entries and dropped the whole image, rendering blank pages; the rewrite also keeps `/SMask`, `/Interpolate`, `/Intent`, `/OC`, `/StructParent` and a still-valid ICC `/ColorSpace` untouched.
+- Wide-gamut images (e.g. Display P3 notes exports) kept their ICC colourspace; previously every re-encoded image was rebound to a generic sRGB profile and rendered washed out.
+- Palette (`/Indexed`), Separation/DeviceN, Lab, `/ImageMask` stencil, `/Mask`-keyed and inverted-`/Decode` DCT images are no longer re-encoded into mismatched colourspaces; their colours were scrambled before.
+- A partially rewritten image object aborts compression instead of saving a corrupt document.
 
 ### Security
 
