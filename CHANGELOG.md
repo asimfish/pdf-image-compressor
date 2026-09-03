@@ -7,6 +7,7 @@ All notable changes to PaperSqueeze are documented here. The project follows
 
 ### Added
 
+- `scripts/benchmark_corpus.py`: reproducible head-to-head benchmark over a user-supplied corpus manifest (identical byte budgets, optional PixShift comparison, SSIM/text/link/soft-mask scoring, Markdown + JSON output), documented with full results and caveats in `docs/BENCHMARK.md` / `docs/BENCHMARK_CN.md`.
 - `fidelity` compression mode as the new default: quality-first, never rasterizes, and prefers the lossless candidate when it fits the target size.
 - Optional password access gate for public deployments via `PDF_COMPRESSOR_ACCESS_PASSWORD`, with a 30-day per-browser cookie.
 - Bilingual documentation: English `README.md` with Chinese `README_CN.md`, deployment guides `docs/DEPLOYMENT.md` / `docs/DEPLOYMENT_CN.md`, a commented `.env.example`, and `CITATION.cff`.
